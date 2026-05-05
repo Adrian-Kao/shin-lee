@@ -24,10 +24,20 @@ curl -fs http://127.0.0.1:8010/v1/health > /dev/null && ok "gateway alive"
 curl -fs http://127.0.0.1:8011/v1/health > /dev/null && ok "ai_engine alive"
 
 # Phase 1: rag backend (memory | qdrant)
-RAG_BACKEND=$(curl -fs http://127.0.0.1:8011/v1/health | python3 -c "import sys,json;print(json.load(sys.stdin)['rag_stats'].get('backend','?'))")
+RAG_HEALTH=$(curl -fs http://127.0.0.1:8011/v1/health)
+RAG_BACKEND=$(echo "$RAG_HEALTH" | python3 -c "import sys,json;print(json.load(sys.stdin)['rag_stats'].get('backend','?'))")
 case "$RAG_BACKEND" in
   memory|qdrant) ok "rag backend = $RAG_BACKEND" ;;
   *) err "unexpected rag backend: $RAG_BACKEND" ;;
+esac
+
+# Phase 2: embedding backend (mock | bge-m3) + dim consistency
+EMB_BACKEND=$(echo "$RAG_HEALTH" | python3 -c "import sys,json;print(json.load(sys.stdin)['rag_stats'].get('embedding_backend','?'))")
+EMB_DIM=$(echo "$RAG_HEALTH" | python3 -c "import sys,json;print(json.load(sys.stdin)['rag_stats'].get('embedding_dim','?'))")
+case "$EMB_BACKEND" in
+  mock)    [ "$EMB_DIM" = "384" ]  && ok "embedding = mock/384"  || err "mock embedding wrong dim: $EMB_DIM" ;;
+  bge-m3)  [ "$EMB_DIM" = "1024" ] && ok "embedding = bge-m3/1024" || err "bge-m3 wrong dim: $EMB_DIM" ;;
+  *) err "unexpected embedding backend: $EMB_BACKEND" ;;
 esac
 
 # ----- 2. Login -----

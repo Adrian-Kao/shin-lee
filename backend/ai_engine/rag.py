@@ -143,21 +143,47 @@ def _looks_independent(claim_text: str) -> bool:
     return not re.search(r"\baccording to claim\b|\b依.{0,5}請求項\b|\bdepending on claim\b", claim_text, re.I)
 
 
-# ---------- Embedding (POC: deterministic hash-based) ----------
+# ---------- Embedding ----------
+# Two backends behind one interface (settings.EMBEDDING_BACKEND = mock | bge-m3).
+# - mock:    deterministic SHA-256 → 384 dims (POC reproducibility, mask real RAG quality)
+# - bge-m3:  BAAI/bge-m3 via sentence-transformers, 1024 dims, multilingual
+
+class Embedder:
+    def __init__(self):
+        self.backend = settings.EMBEDDING_BACKEND
+        self._st_model = None
+        if self.backend == "bge-m3":
+            self._load_st()  # eager load: surfaces missing model / dep at boot
+
+    def _load_st(self):
+        from sentence_transformers import SentenceTransformer
+        self._st_model = SentenceTransformer(settings.EMBEDDING_MODEL)
+
+    @property
+    def dim(self) -> int:
+        if self.backend == "bge-m3":
+            return self._st_model.get_sentence_embedding_dimension()
+        return settings.EMBEDDING_DIM
+
+    def embed_one(self, text: str) -> list[float]:
+        if self.backend == "bge-m3":
+            v = self._st_model.encode(text, normalize_embeddings=True, show_progress_bar=False)
+            return v.tolist()
+        # mock: SHA-256 → padded float vec, unit-normalised
+        h = hashlib.sha256(text.encode()).digest()
+        raw = list(h) * (settings.EMBEDDING_DIM // len(h) + 1)
+        vec = np.array(raw[: settings.EMBEDDING_DIM], dtype=np.float32) / 255.0
+        n = np.linalg.norm(vec)
+        if n > 0:
+            vec = vec / n
+        return vec.tolist()
+
+
+_embedder = Embedder()
+
 
 def embed(text: str) -> list[float]:
-    """Deterministic mock embedding from SHA-256 → float vector.
-
-    Q7 contract: production swaps this with real embedding (e.g. text-embedding-3-small).
-    """
-    h = hashlib.sha256(text.encode()).digest()
-    # Pad/repeat to 384 dims, normalise to unit length
-    raw = list(h) * (settings.EMBEDDING_DIM // len(h) + 1)
-    vec = np.array(raw[: settings.EMBEDDING_DIM], dtype=np.float32) / 255.0
-    norm = np.linalg.norm(vec)
-    if norm > 0:
-        vec = vec / norm
-    return vec.tolist()
+    return _embedder.embed_one(text)
 
 
 # ---------- Vector store ----------
@@ -236,6 +262,13 @@ class QdrantVectorStore:
         if name in self._known_tenants:
             return
         existing = {c.name for c in self._client.get_collections().collections}
+        if name in existing:
+            # Drop+recreate if dim drifted (e.g. switched mock 384 ↔ bge-m3 1024)
+            info = self._client.get_collection(collection_name=name)
+            existing_dim = info.config.params.vectors.size
+            if existing_dim != self._dim:
+                self._client.delete_collection(collection_name=name)
+                existing.discard(name)
         if name not in existing:
             self._client.create_collection(
                 collection_name=name,
@@ -326,7 +359,7 @@ class QdrantVectorStore:
 
 def _make_store():
     if settings.VECTOR_BACKEND == "qdrant":
-        return QdrantVectorStore(url=settings.QDRANT_URL, dim=settings.EMBEDDING_DIM)
+        return QdrantVectorStore(url=settings.QDRANT_URL, dim=_embedder.dim)
     return MemoryVectorStore()
 
 
@@ -369,4 +402,7 @@ def retrieve(
 
 
 def stats() -> dict:
-    return _store.stats()
+    s = _store.stats()
+    s["embedding_backend"] = _embedder.backend
+    s["embedding_dim"] = _embedder.dim
+    return s

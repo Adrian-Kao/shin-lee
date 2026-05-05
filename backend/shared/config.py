@@ -51,7 +51,11 @@ class Settings:
     # Vector store (Q7)
     VECTOR_BACKEND: str = os.getenv("VECTOR_BACKEND", "memory")  # memory | qdrant
     QDRANT_URL: str = os.getenv("QDRANT_URL", "http://localhost:6333")
-    EMBEDDING_DIM: int = 384  # POC 用 mini 模型維度
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "384"))  # mock 用 384；bge-m3 自動回報 1024
+
+    # Embedding (Q5/Q7 — POC 預設 mock；切 bge-m3 用 SentenceTransformer)
+    EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "mock")  # mock | bge-m3
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 
     # Holiday calendar (Q17)
     HOLIDAY_CALENDAR_VERSION: str = "2025.1"

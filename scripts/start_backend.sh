@@ -34,14 +34,18 @@ GW_PID=$!
 
 trap "echo '  stopping…'; kill $AI_PID $GW_PID 2>/dev/null; wait 2>/dev/null; exit 0" INT TERM
 
-# 4. Wait for them to come up
-sleep 3
+# 4. Wait for them to come up (bge-m3 model load can take ~30s)
+DEADLINE=$((SECONDS + 90))
 for url in http://127.0.0.1:8010/v1/health http://127.0.0.1:8011/v1/health; do
-  if ! curl -fs $url > /dev/null; then
-    echo "✗ $url not responding. Check logs."
-    kill $AI_PID $GW_PID 2>/dev/null || true
-    exit 1
-  fi
+  while ! curl -fs $url > /dev/null 2>&1; do
+    if [ $SECONDS -ge $DEADLINE ]; then
+      echo "✗ $url not responding within 90s. Check logs."
+      kill $AI_PID $GW_PID 2>/dev/null || true
+      exit 1
+    fi
+    sleep 1
+  done
+  echo "  ✓ $url"
 done
 
 # 5. Seed

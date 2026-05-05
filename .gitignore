@@ -1,0 +1,35 @@
+# Runtime data (regenerated on boot)
+data/audit.db
+data/redaction_mapping.db
+data/patentmind.db
+data/*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+/tmp/patentmind*.log
+
+# verify.sh artifacts (project-relative tmp dir)
+tmp/
+
+# Env
+.env
+.env.local

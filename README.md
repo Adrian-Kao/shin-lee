@@ -25,11 +25,15 @@ PatentMind 把這個流程半自動化，律師仍對最終 draft 負完全責�
 ## 快速開始
 
 ```bash
-# 1. 後端（一個 terminal）
+# 1. 後端（完整 POC）
 bash scripts/start_backend.sh
-# 自動裝 Python deps、起 :8000 (gateway) + :8001 (ai_engine)、seed 4 個 demo patent
+# 會啟動 gateway + ai_engine，並 seed demo patent
 
-# 2. 驗證（另一個 terminal）
+# 1a. 後端（最小 MVP）
+bash scripts/start_minimal.sh
+# 單一 process、單一 /v1/oa/analyze API，適合快速驗證核心流程
+
+# 2. 驗證（完整 POC）
 bash scripts/verify.sh
 # 應該印 "ALL CHECKS PASSED"
 

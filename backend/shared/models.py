@@ -34,9 +34,10 @@ class User(BaseModel):
 
 class RejectionType(str, Enum):
     """USPTO 駁回類型；台灣 TIPO 大致對應。"""
-    NOVELTY_102 = "102_novelty"               # 新穎性
-    OBVIOUSNESS_103 = "103_obviousness"       # 進步性 / 非顯而易見
-    INDEFINITENESS_112 = "112_indefiniteness" # 明確性
+    NOVELTY_102 = "102_novelty"               # 新穎性 (US §102 / TW §22-1)
+    OBVIOUSNESS_103 = "103_obviousness"       # 進步性 / 非顯而易見 (US §103 / TW §22-2)
+    INDEFINITENESS_112 = "112_indefiniteness" # 明確性 (US §112(b) / TW §26-2 之一般情形)
+    ANTECEDENT_BASIS = "antecedent_basis"     # 缺先行詞 (TW §26-2 / US §112(b) 之 antecedent basis 子類)
     SUBJECT_MATTER_101 = "101_subject_matter" # 適格性
     DOUBLE_PATENTING = "double_patenting"
     OTHER = "other"

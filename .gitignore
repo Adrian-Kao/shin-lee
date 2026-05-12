@@ -33,3 +33,7 @@ tmp/
 # Env
 .env
 .env.local
+
+# Local debug / analyze output (one-off curl test results)
+.analyze_*.json
+/.analyze_result.json

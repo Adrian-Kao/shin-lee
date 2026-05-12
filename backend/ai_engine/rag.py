@@ -380,10 +380,38 @@ def retrieve(
     query: str,
     top_k: int = 5,
     jurisdiction: Optional[str] = None,
+    prefer_patent_no: Optional[str] = None,
 ) -> list[RetrievalHit]:
+    """RAG retrieval with optional same-patent boost.
+
+    `prefer_patent_no` (typically the case's target patent) gets a score
+    boost so its chunks float to the top even when the embedding signal is
+    weak — important on mock embeddings where cosine scores cluster within
+    ~0.02 and rankings are near random.
+    """
     qvec = embed(query)
-    md_filter = {"jurisdiction": jurisdiction} if jurisdiction else None
-    hits = _store.search(tenant_id, qvec, top_k=top_k, metadata_filter=md_filter)
+    base_filter: dict = {"jurisdiction": jurisdiction} if jurisdiction else {}
+
+    semantic_hits = _store.search(
+        tenant_id, qvec, top_k=top_k, metadata_filter=base_filter or None
+    )
+
+    if prefer_patent_no:
+        target_filter = {**base_filter, "patent_no": prefer_patent_no}
+        target_hits = _store.search(
+            tenant_id, qvec, top_k=top_k, metadata_filter=target_filter
+        )
+        # OR-merge: boost target chunks so they outrank pure semantic on mock embeddings.
+        boost = 0.20
+        merged: dict[str, tuple] = {}
+        for ch, s in semantic_hits:
+            merged[ch.chunk_id] = (ch, s)
+        for ch, s in target_hits:
+            merged[ch.chunk_id] = (ch, s + boost)
+        hits = sorted(merged.values(), key=lambda x: -x[1])[:top_k]
+    else:
+        hits = semantic_hits
+
     return [
         RetrievalHit(
             patent_no=ch.patent_no,

@@ -37,9 +37,13 @@ class Settings:
     LLM_MODE: str = os.getenv("LLM_MODE", "mock")  # mock | openai | anthropic | local
     LLM_MODEL_REASONING: str = os.getenv("LLM_MODEL_REASONING", "claude-sonnet-mock")
     LLM_MODEL_CHEAP: str = os.getenv("LLM_MODEL_CHEAP", "haiku-mock")
-    LLM_MODEL_LOCAL: str = os.getenv("LLM_MODEL_LOCAL", "llama-mock")
+    LLM_MODEL_LOCAL: str = os.getenv("LLM_MODEL_LOCAL", "llama3.1:8b")
     LLM_MODEL_VERIFIER: str = os.getenv("LLM_MODEL_VERIFIER", "haiku-mock")  # Q14
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
+
+    # Ollama / local LLM (MVP)
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+    OLLAMA_TIMEOUT_SEC: int = int(os.getenv("OLLAMA_TIMEOUT_SEC", "600"))  # 600s 容 CPU 冷啟動
 
     # Cache (Q9)
     CACHE_BACKEND: str = os.getenv("CACHE_BACKEND", "memory")  # memory | redis

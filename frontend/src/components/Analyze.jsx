@@ -142,13 +142,7 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
             </div>
           )}
 
-          {running && (
-            <div className="bg-white border rounded-lg p-12 text-center text-slate-500">
-              <div className="animate-pulse text-2xl">⏳</div>
-              <p>Gateway → AI Engine pipeline 執行中</p>
-              <p className="text-xs mt-2">parse → retrieve → draft → verify → deadline → unmask → audit</p>
-            </div>
-          )}
+          {running && <RunningPanel />}
 
           {result && <ResultView result={result} citationLookup={citationLookup} />}
         </section>
@@ -357,6 +351,84 @@ function RejectionBlock({ rejection, draft, hits, citationLookup }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Approximate stage timings observed on CPU llama3.1:8b for a typical 1-rejection OA.
+// We don't have per-step server events in the MVP, so we estimate stage from elapsed seconds.
+const STAGES = [
+  { name: 'redact',   label: '遮罩 PII / 客戶識別碼 (Q10)',           untilSec: 1 },
+  { name: 'parse',    label: '解析 OA 鑑別 rejection (parse_oa)',      untilSec: 60 },
+  { name: 'retrieve', label: '檢索先前技術 (RAG, Q6+Q7)',              untilSec: 65 },
+  { name: 'draft',    label: '草擬答辯 (draft_response, grounded Q14)', untilSec: 200 },
+  { name: 'verify',   label: '驗證引證 (verify_citations, Q14)',        untilSec: 290 },
+  { name: 'deadline', label: '計算期日 (Q17)',                          untilSec: 295 },
+  { name: 'unmask',   label: '回填 PII，整理回應',                       untilSec: Infinity },
+];
+
+function fmtElapsed(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function RunningPanel() {
+  const [tick, setTick] = useState(0);
+  const startRef = React.useRef(Date.now());
+
+  useEffect(() => {
+    startRef.current = Date.now();
+    const id = setInterval(() => setTick((t) => t + 1), 500);
+    return () => clearInterval(id);
+  }, []);
+
+  const elapsedMs = Date.now() - startRef.current;
+  const elapsedSec = elapsedMs / 1000;
+  const currentIdx = STAGES.findIndex((s) => elapsedSec < s.untilSec);
+  const safeIdx = currentIdx === -1 ? STAGES.length - 1 : currentIdx;
+
+  return (
+    <div className="bg-white border rounded-lg p-8">
+      <div className="flex items-baseline justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span className="animate-pulse text-2xl">⏳</span>
+          <span className="font-semibold text-slate-700">分析中…</span>
+        </div>
+        <div className="font-mono text-2xl text-indigo-700 tabular-nums">
+          {fmtElapsed(elapsedMs)}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {STAGES.map((stage, i) => {
+          const done = i < safeIdx;
+          const active = i === safeIdx;
+          return (
+            <div key={stage.name} className="flex items-center gap-3 text-sm">
+              <span className={`w-5 inline-flex justify-center ${
+                done ? 'text-emerald-600' : active ? 'text-indigo-600' : 'text-slate-300'
+              }`}>
+                {done ? '✓' : active ? '●' : '○'}
+              </span>
+              <span className={
+                done ? 'text-slate-500 line-through decoration-emerald-300/60' :
+                active ? 'text-slate-800 font-medium' :
+                'text-slate-400'
+              }>
+                {stage.label}
+              </span>
+              {active && (
+                <span className="ml-auto text-xs text-indigo-500 animate-pulse">running…</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-xs text-slate-400 mt-5 leading-relaxed">
+        地端 llama3.1:8b 於 CPU 推論，單次分析約 5–7 分鐘。再次送出相同 OA + case 會命中 cache（&lt; 1 秒）。
+      </p>
     </div>
   );
 }

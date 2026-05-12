@@ -1,0 +1,1 @@
+"""Terminal OCR + RAG POC."""

@@ -1,0 +1,32 @@
+UNITED STATES PATENT AND TRADEMARK OFFICE
+Office Action
+
+Application No.: 17/123,456
+Applicant: NCCU Apex Patent Law Firm (file ref: APEX-2025-0314, client: CL-EVCO12)
+Examiner: J. Smith
+Mailing Date: 2025-04-15
+
+============================================================
+NOTICE OF REJECTION
+============================================================
+
+Claims 1-3 are rejected under 35 U.S.C. § 103 as being obvious over US7654321
+in view of US6543210.
+
+Examiner Argument:
+The cited references, when combined, render the claimed microchannel cooling
+system with non-uniform cross-section obvious. US7654321 discloses microchannels
+with width modulation, and US6543210 teaches the use of copper as a thermal
+conductor. The combination yields predictable results.
+
+Claims 4-5 are rejected under 35 U.S.C. § 102 as anticipated by US7654321.
+The reference discloses every limitation of these claims.
+
+Applicant must respond within THREE MONTHS from the mailing date.
+
+Attorney contact:
+- Senior counsel: alice.chen@apex-ip.com  (mobile: 0912-345-678)
+- Paralegal: bob.lin@apex-ip.com
+- Internal contact for client CL-EVCO12: ID R123456789
+
+[End of Office Action]

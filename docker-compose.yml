@@ -1,8 +1,13 @@
-﻿services:
+services:
   qdrant:
     image: qdrant/qdrant:v1.12.4
+    container_name: patentmind-qdrant
     ports:
-      - "6333:6333"
-      - "6334:6334"
+      - "6333:6333"   # REST
+      - "6334:6334"   # gRPC
     volumes:
-      - ./.qdrant:/qdrant/storage
+      - qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:

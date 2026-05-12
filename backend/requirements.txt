@@ -1,0 +1,10 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+httpx==0.27.2
+PyJWT==2.9.0
+numpy==2.1.1
+qdrant-client==1.12.1
+
+# Phase 2: only needed when EMBEDDING_BACKEND=bge-m3 (mock mode is dep-free)
+sentence-transformers==5.1.2

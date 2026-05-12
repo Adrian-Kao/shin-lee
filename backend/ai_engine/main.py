@@ -1,0 +1,161 @@
+"""AI Engine main entrypoint (Dify mock).
+
+Single-step inference endpoints called by the Gateway orchestrator.
+No business state lives here. No multi-step flow control here.
+
+Endpoints:
+    POST /v1/parse_oa             → list[Rejection]
+    POST /v1/retrieve_prior_art   → list[RetrievalHit]
+    POST /v1/draft_response       → DraftResponse
+    POST /v1/verify_citations     → cleaned draft + valid/invalid citations
+    POST /v1/deadline             → DeadlineInfo
+    GET  /v1/health
+"""
+from __future__ import annotations
+
+import time
+from datetime import datetime
+from typing import Any, Optional
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+from backend.ai_engine import deadline as deadline_mod
+from backend.ai_engine import oa_analyzer, rag
+from backend.shared.config import settings
+from backend.shared.models import Rejection, RetrievalHit
+
+
+app = FastAPI(
+    title="PatentMind Dify (mock) — AI Engine",
+    version="0.1.0",
+    description="Single-step AI inference. Called by gateway orchestrator.",
+)
+
+
+# ---------- Schemas ----------
+
+class ParseOARequest(BaseModel):
+    oa_text: str
+    tenant_id: str
+    case_id: str
+    target_patent_no: str
+    security_level: str = "public"
+
+
+class RetrieveRequest(BaseModel):
+    tenant_id: str
+    rejection: dict       # Rejection serialised
+    target_patent_no: str
+    top_k: int = 5
+
+
+class DraftRequest(BaseModel):
+    tenant_id: str
+    user_id: str
+    case_id: str
+    rejection: dict
+    grounded_set: list[dict]
+    user_hint: Optional[str] = None
+    security_level: str = "public"
+
+
+class VerifyRequest(BaseModel):
+    draft: dict
+    grounded_set: list[dict]
+
+
+class DeadlineRequest(BaseModel):
+    received_date_iso: str
+    jurisdiction: str = "TW"
+    calendar_version: str = "2025.1"
+
+
+# ---------- Endpoints ----------
+
+@app.get("/v1/health")
+def health():
+    return {"ok": True, "service": "ai_engine", "rag_stats": rag.stats()}
+
+
+@app.post("/v1/parse_oa")
+def parse_oa(req: ParseOARequest):
+    rejections, meta = oa_analyzer.parse_oa(req.oa_text, req.target_patent_no)
+    oa_doc = oa_analyzer.make_oa_document(
+        tenant_id=req.tenant_id,
+        case_id=req.case_id,
+        target_patent_no=req.target_patent_no,
+        oa_text=req.oa_text,
+        rejections=rejections,
+    )
+    return {"oa": oa_doc.model_dump(mode="json"), **meta}
+
+
+@app.post("/v1/retrieve_prior_art")
+def retrieve_prior_art(req: RetrieveRequest):
+    rej = Rejection(**req.rejection)
+    # Build query from examiner argument + cited art numbers
+    query = rej.examiner_argument + " " + " ".join(rej.cited_prior_art)
+    hits = rag.retrieve(req.tenant_id, query, top_k=req.top_k)
+    return {"hits": [h.model_dump(mode="json") for h in hits],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+
+
+@app.post("/v1/draft_response")
+def draft_response_endpoint(req: DraftRequest):
+    rej = Rejection(**req.rejection)
+    grounded = [RetrievalHit(**g) for g in req.grounded_set]
+    draft, meta = oa_analyzer.draft_response(
+        rej, grounded, req.user_hint, req.security_level
+    )
+    return {"draft": draft.model_dump(mode="json"), **meta}
+
+
+@app.post("/v1/verify_citations")
+def verify_citations_endpoint(req: VerifyRequest):
+    from backend.shared.models import DraftResponse
+    draft = DraftResponse(**req.draft)
+    grounded = [RetrievalHit(**g) for g in req.grounded_set]
+    result, meta = oa_analyzer.verify_citations(draft, grounded)
+    return {**result, **meta}
+
+
+@app.post("/v1/deadline")
+def deadline_endpoint(req: DeadlineRequest):
+    received = datetime.fromisoformat(req.received_date_iso)
+    return deadline_mod.calculate_deadline(received, req.jurisdiction, req.calendar_version)
+
+
+# ---------- Index management (used by seed script) ----------
+
+class IndexPatentRequest(BaseModel):
+    tenant_id: str
+    patent_no: str
+    title: str
+    abstract: str
+    claims: list[str]
+    publication_date: str
+    jurisdiction: str
+    is_local: bool = False
+    spec_text: str = ""
+
+
+@app.post("/v1/index/patent")
+def index_patent(req: IndexPatentRequest):
+    from backend.shared.models import Patent
+    p = Patent(
+        patent_no=req.patent_no,
+        title=req.title,
+        abstract=req.abstract,
+        claims=req.claims,
+        publication_date=datetime.fromisoformat(req.publication_date),
+        jurisdiction=req.jurisdiction,
+        is_local=req.is_local,
+    )
+    n = rag.index_patent(req.tenant_id, p, spec_text=req.spec_text)
+    return {"chunks_indexed": n, "tenant_id": req.tenant_id}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("backend.ai_engine.main:app", host="0.0.0.0", port=settings.AI_ENGINE_PORT, reload=False)

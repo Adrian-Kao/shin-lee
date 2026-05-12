@@ -1,9 +1,39 @@
-﻿.env
-.venv/
+# Runtime data (regenerated on boot)
+data/audit.db
+data/redaction_mapping.db
+data/patentmind.db
+data/*.db
+
+# Python
 __pycache__/
 *.pyc
-.qdrant/
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+/tmp/patentmind*.log
+
+# verify.sh artifacts (project-relative tmp dir)
+tmp/
+
+# Env
+.env
+.env.local
+
+# Local debug / analyze output (one-off curl test results)
+.analyze_*.json
+/.analyze_result.json

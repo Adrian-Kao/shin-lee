@@ -17,13 +17,22 @@ import time
 from datetime import datetime
 from typing import Any, Optional
 
-from fastapi import FastAPI
+import base64
+
+from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 
 from backend.ai_engine import deadline as deadline_mod
-from backend.ai_engine import oa_analyzer, rag
+from backend.ai_engine import oa_analyzer, pdf_parser, rag
 from backend.shared.config import settings
 from backend.shared.models import Rejection, RetrievalHit
+
+
+# Content types we know how to extract. Anything else → 400 from the AI engine
+# (the gateway will have already 415'd at the edge, but we re-check here as a
+# defense-in-depth on the AI Engine boundary).
+_PDF_MIME = "application/pdf"
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 app = FastAPI(
@@ -69,6 +78,16 @@ class DeadlineRequest(BaseModel):
     received_date_iso: str
     jurisdiction: str = "TW"
     calendar_version: str = "2025.1"
+
+
+class ExtractTextRequest(BaseModel):
+    file_bytes_b64: str
+    content_type: str
+    max_pages: int = 100
+    # Defense in depth — gateway already refuses confidential uploads at the
+    # edge, but the AI engine must also refuse so a misconfigured caller can't
+    # leak privileged pages to the cloud OCR endpoint.
+    security_level: str = "public"
 
 
 # ---------- Endpoints ----------
@@ -124,6 +143,66 @@ def verify_citations_endpoint(req: VerifyRequest):
 def deadline_endpoint(req: DeadlineRequest):
     received = datetime.fromisoformat(req.received_date_iso)
     return deadline_mod.calculate_deadline(received, req.jurisdiction, req.calendar_version)
+
+
+@app.post("/v1/ai/extract_text")
+async def extract_text_endpoint(req: ExtractTextRequest):
+    """Day 2: parse a PDF/DOCX in memory, OCR scanned PDF pages via Claude
+    Vision (Haiku). The gateway base64-encodes the multipart upload before
+    POSTing here so we keep the AI engine surface JSON-only (consistent with
+    the other endpoints in this file).
+    """
+    try:
+        file_bytes = base64.b64decode(req.file_bytes_b64)
+    except Exception as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"file_bytes_b64 is not valid base64: {exc}",
+        )
+
+    if req.content_type == _PDF_MIME:
+        try:
+            result = await pdf_parser.extract_pdf_text(
+                file_bytes,
+                max_pages=req.max_pages,
+                security_level=req.security_level,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+        except RuntimeError as exc:
+            # Cloud OCR refused (confidential), or a page failed mid-parse.
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc))
+    elif req.content_type == _DOCX_MIME:
+        try:
+            result = await pdf_parser.extract_docx_text(file_bytes)
+        except ValueError as exc:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+    else:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"unsupported content_type: {req.content_type!r}. "
+            f"Expected {_PDF_MIME!r} or {_DOCX_MIME!r}.",
+        )
+
+    # 413 from the AI engine is unusual (gateway should have caught size first)
+    # but we honour max_pages overflow as a 413 here too for symmetry with the
+    # gateway-level upload limit.
+    if any("truncated" in w for w in result["warnings"]) and req.max_pages <= 0:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"document exceeds max_pages={req.max_pages}",
+        )
+
+    return {
+        "pages": result["pages"],
+        "page_count": result["page_count"],
+        "ocr_pages": result["ocr_pages"],
+        "char_count": result["char_count"],
+        "warnings": result["warnings"],
+        "usage": result["usage"],
+    }
 
 
 # ---------- Index management (used by seed script) ----------

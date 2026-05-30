@@ -126,21 +126,24 @@ def alice_token(gateway_client) -> str:
 def patched_ai_engine(monkeypatch, ai_engine_app):
     import httpx
 
+    from backend.gateway import main as gw_main_mod
     from backend.gateway import orchestrator as orch_mod
 
     original_async_client = httpx.AsyncClient
 
     def _patched_async_client(*args, **kwargs):
-        # Force every AsyncClient instantiated inside the orchestrator module
-        # to talk to the in-process AI Engine via ASGITransport.
+        # Force every AsyncClient instantiated inside the gateway side of the
+        # codebase (orchestrator + main upload endpoint) to talk to the
+        # in-process AI Engine via ASGITransport.
         kwargs["transport"] = httpx.ASGITransport(app=ai_engine_app)
         kwargs.setdefault("base_url", "http://testserver-ai-engine")
-        # setdefault — don't override a timeout the orchestrator deliberately
+        # setdefault — don't override a timeout the caller deliberately
         # chose. We only want to set a sane fallback when it didn't pass one.
         kwargs.setdefault("timeout", 30.0)
         return original_async_client(*args, **kwargs)
 
     monkeypatch.setattr(orch_mod.httpx, "AsyncClient", _patched_async_client)
+    monkeypatch.setattr(gw_main_mod.httpx, "AsyncClient", _patched_async_client)
     yield
 
 

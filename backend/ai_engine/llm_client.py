@@ -17,6 +17,7 @@ Supports four LLM_MODE values:
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -231,6 +232,25 @@ class MockLLM:
             "verifier_confidence": 0.9,
             "cleaned_draft_text": None,  # filler — replaced by oa_analyzer
         })
+
+    async def vision_ocr(
+        self, image_bytes: bytes, mime: str = "image/png"
+    ) -> tuple[str, dict]:
+        """Mock OCR — deterministic placeholder keyed on input size.
+
+        Returns the same shape (text, usage_dict) as AnthropicLLM.vision_ocr
+        so the parser/gateway plumbing is identical in mock mode.
+        """
+        return (
+            f"[MOCK OCR — {len(image_bytes)} bytes input — would extract patent OA text here]",
+            {
+                "input_tokens": 1500,
+                "output_tokens": 200,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+                "estimated_cost_usd": 0.0015,
+            },
+        )
 
 
 _mock = MockLLM()
@@ -501,6 +521,125 @@ class AnthropicLLM:
             cache_creation_input_tokens=cache_create,
         )
 
+    # --------- Vision OCR (Day 2 PDF upload) -------------------------------
+    async def vision_ocr(
+        self,
+        image_bytes: bytes,
+        mime: str = "image/png",
+        *,
+        security_level: str = "public",
+    ) -> tuple[str, dict]:
+        """Run Claude Vision OCR on a single page image.
+
+        Uses the cheap model (Haiku) — OCR is purely transcription, no
+        reasoning needed, so paying Sonnet rates would waste 5x.
+
+        Returns (extracted_text, usage_dict). usage_dict mirrors the keys the
+        cost layer expects: input_tokens, output_tokens, cache_*,
+        estimated_cost_usd. All accounting also folds into the module-level
+        _session_usage counters so the eval/CLI dashboards stay accurate.
+
+        Refuses to fire for confidential security levels — the gateway is
+        supposed to block these before bytes ever reach the AI engine, but
+        defense-in-depth catches a bug in the upstream router.
+        """
+        if security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS:
+            raise RuntimeError(
+                f"AnthropicLLM refusing Vision OCR for security_level="
+                f"{security_level!r}. Confidential cases MUST NOT have their "
+                "pages sent to the cloud OCR endpoint."
+            )
+
+        model = settings.LLM_MODEL_CHEAP
+        base64_data = base64.b64encode(image_bytes).decode("ascii")
+
+        started = time.monotonic()
+        try:
+            msg = await _call_with_retry(
+                self._client,
+                model=model,
+                max_tokens=4096,
+                temperature=0.0,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": mime,
+                                "data": base64_data,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": (
+                                "Extract all text from this image, preserving "
+                                "paragraph and table structure. Use the same script "
+                                "as appears in the image (Traditional Chinese / "
+                                "English / Japanese). Output only the extracted "
+                                "text — no commentary, no markdown."
+                            ),
+                        },
+                    ],
+                }],
+            )
+        except Exception:
+            with _session_usage_lock:
+                _session_usage["errors"] += 1
+                _session_usage["calls"] += 1
+            raise
+
+        latency_ms = int((time.monotonic() - started) * 1000)
+
+        text = "".join(b.text for b in msg.content if hasattr(b, "text"))
+
+        usage = msg.usage
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        cache_create = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+
+        with _session_usage_lock:
+            _session_usage["input_tokens"] += input_tokens
+            _session_usage["output_tokens"] += output_tokens
+            _session_usage["cache_read_input_tokens"] += cache_read
+            _session_usage["cache_creation_input_tokens"] += cache_create
+            _session_usage["calls"] += 1
+
+        try:
+            from backend.gateway.rate_limit import estimate_cost
+            cost = estimate_cost(model, {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_input_tokens": cache_read,
+                "cache_creation_input_tokens": cache_create,
+            })
+        except Exception:  # pragma: no cover — pricing must never break a call
+            cost = 0.0
+
+        logger.info(
+            "anthropic vision_ocr: model=%s input=%d output=%d cache_read=%d "
+            "cache_create=%d cost=$%.4f latency=%dms image_bytes=%d",
+            model,
+            input_tokens,
+            output_tokens,
+            cache_read,
+            cache_create,
+            cost,
+            latency_ms,
+            len(image_bytes),
+        )
+
+        usage_dict = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_read_input_tokens": cache_read,
+            "cache_creation_input_tokens": cache_create,
+            "estimated_cost_usd": cost,
+        }
+        return text, usage_dict
+
 
 # Singleton — instantiated lazily on first use so importing this module never
 # fails just because the operator hasn't exported ANTHROPIC_API_KEY yet.
@@ -692,6 +831,41 @@ def chat(
         )
 
     return _mock.chat(hardened_system, user, intent, model)
+
+
+async def vision_ocr(
+    *,
+    image_bytes: bytes,
+    mime: str = "image/png",
+    security_level: str = "public",
+) -> tuple[str, dict]:
+    """Public router for Vision OCR (Day 2).
+
+    Mirrors `chat()` dispatch: routes to MockLLM in mock mode, AnthropicLLM
+    in anthropic mode, and refuses outright in local mode (Ollama has no
+    vision model wired and we'd rather fail loudly than silently lose OCR).
+    Confidential security level always raises — defense in depth on top of
+    the gateway-level block.
+    """
+    if security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS:
+        raise RuntimeError(
+            f"vision_ocr refused: security_level={security_level!r} cases "
+            "MUST NOT route through cloud OCR. The gateway should have "
+            "rejected the upload at the edge."
+        )
+
+    if settings.LLM_MODE == "anthropic":
+        llm = _get_anthropic_llm()
+        return await llm.vision_ocr(image_bytes, mime, security_level=security_level)
+
+    if settings.LLM_MODE == "local":
+        raise RuntimeError(
+            "vision_ocr is not supported in LLM_MODE=local (no on-prem vision "
+            "model wired). Switch to LLM_MODE=anthropic or LLM_MODE=mock."
+        )
+
+    # mock (default)
+    return await _mock.vision_ocr(image_bytes, mime)
 
 
 def _real_ollama(system: str, user: str, model: str, intent: str) -> LLMResponse:

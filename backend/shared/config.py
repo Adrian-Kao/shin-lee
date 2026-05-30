@@ -84,6 +84,11 @@ class Settings:
     # Security level mapping (Q15 router)
     LOCAL_LLM_FOR_SECURITY_LEVELS: tuple[str, ...] = ("confidential", "top_secret")
 
+    # PDF upload (Day 2)
+    MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "30"))
+    MIN_CHARS_PER_PAGE_FOR_TEXT: int = int(os.getenv("MIN_CHARS_PER_PAGE_FOR_TEXT", "30"))
+    OCR_PARALLELISM: int = int(os.getenv("OCR_PARALLELISM", "4"))
+
 
 settings = Settings()
 

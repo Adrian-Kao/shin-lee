@@ -4,16 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PatentMind AI — POC</title>
-    <!-- Tailwind via CDN keeps the POC dep-light. Production build should compile it. -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', sans-serif; }
-      /* Q16 provenance highlights */
-      .ai-line { background: linear-gradient(180deg, transparent 60%, rgba(99,102,241,0.18) 60%); }
-      .attorney-line { background: linear-gradient(180deg, transparent 60%, rgba(34,197,94,0.22) 60%); }
-    </style>
   </head>
-  <body class="bg-slate-50 text-slate-900">
+  <body>
+    <script>
+      // Pre-React theme application to avoid FOUC on dark-mode reload.
+      // Mirrors logic in src/lib/theme.jsx — keep them in sync.
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'dark') document.documentElement.classList.add('dark');
+      } catch (e) {
+        /* localStorage blocked — ignore */
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

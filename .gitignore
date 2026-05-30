@@ -42,3 +42,6 @@ tmp/
 # Local debug / analyze output (one-off curl test results)
 .analyze_*.json
 /.analyze_result.json
+
+# Eval harness output (timestamped per run, not for commit)
+data/eval_results/

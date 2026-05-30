@@ -187,7 +187,7 @@ def parse_oa(oa_text: str, target_patent_no: str) -> tuple[list[Rejection], dict
             ))
         except Exception:
             continue
-    usage = {"prompt_tokens": resp.prompt_tokens, "completion_tokens": resp.completion_tokens}
+    usage = _usage_dict(resp)
     return rejections, {"usage": usage, "model_used": resp.model}
 
 
@@ -231,7 +231,7 @@ def draft_response(
         requires_attorney_review=True,  # Q16: always
     )
 
-    usage = {"prompt_tokens": resp.prompt_tokens, "completion_tokens": resp.completion_tokens}
+    usage = _usage_dict(resp)
     return draft, {"usage": usage, "model_used": resp.model}
 
 
@@ -325,11 +325,27 @@ def verify_citations(
         "verifier_confidence": float(vdata.get("verifier_confidence", 0.85)),
         "cleaned_draft_text": cleaned,
     }
-    usage = {"prompt_tokens": resp.prompt_tokens, "completion_tokens": resp.completion_tokens}
+    usage = _usage_dict(resp)
     return result, {"usage": usage, "model_used": resp.model}
 
 
 # ---------- helpers ----------
+
+def _usage_dict(resp) -> dict:
+    """Per-call usage shape carried over the AI engine HTTP boundary.
+
+    Includes Anthropic prompt-cache fields when present (zero for mock/Ollama).
+    Gateway orchestrator uses these to compute accurate cost_meta with cache
+    discounts applied.
+    """
+    return {
+        "prompt_tokens": resp.prompt_tokens,
+        "completion_tokens": resp.completion_tokens,
+        "input_tokens": getattr(resp, "prompt_tokens", 0) - getattr(resp, "cache_read_input_tokens", 0) - getattr(resp, "cache_creation_input_tokens", 0),
+        "output_tokens": resp.completion_tokens,
+        "cache_read_input_tokens": getattr(resp, "cache_read_input_tokens", 0),
+        "cache_creation_input_tokens": getattr(resp, "cache_creation_input_tokens", 0),
+    }
 
 def _safe_json(text: str) -> dict:
     """LLMs sometimes wrap JSON in markdown.  Extract largest JSON object.

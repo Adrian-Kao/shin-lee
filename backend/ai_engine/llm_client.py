@@ -5,20 +5,31 @@ Single point of LLM invocation. Routes by:
     - intent           → reasoning vs cheap classification
     - circuit breaker  → if tripped, degrade reasoning model to cheap
 
-POC ships a "mock" backend that returns deterministic JSON for unit-testable
-behavior. Setting LLM_MODE=anthropic|openai swaps to real APIs (you wire
-keys after handoff to Claude Code).
+Supports four LLM_MODE values:
+    - "mock"      → MockLLM, deterministic JSON for unit tests (default).
+    - "anthropic" → real Claude API via the official SDK (AsyncAnthropic),
+                    with prompt caching on system prompts, retry on
+                    RateLimitError / APIConnectionError, and per-session
+                    usage accounting.
+    - "local"     → Ollama OpenAI-compat endpoint.
+    - "openai"    → reserved; not implemented in POC.
 """
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 from backend.shared.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -28,6 +39,10 @@ class LLMResponse:
     prompt_tokens: int
     completion_tokens: int
     latency_ms: int
+    # Extended fields are optional so the dataclass stays backward-compatible
+    # with the mock + Ollama paths that don't surface cache stats.
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
 
 
 # ---------- Tokeniser stub (POC) ----------
@@ -36,12 +51,14 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 3)
 
 
-# ---------- Mock backend ----------
+# ---------- Canary (Q11 layer 5) ----------
 
 # A canary string we plant in system prompt; if it leaks back we know there
 # was a prompt injection (Q11 layer 5).
 CANARY_TOKEN = "PMAI-CANARY-7B3F9C2E"
 
+
+# ---------- Mock backend ----------
 
 class MockLLM:
     """Deterministic mock — returns plausible JSON for each intent.
@@ -219,6 +236,376 @@ class MockLLM:
 _mock = MockLLM()
 
 
+# ---------- Session usage accounting (Q19 lightweight metrics) ----------
+#
+# Process-local counters. Reset between demos with `reset_session_usage()`.
+# Real prod observability should ship per-call metrics to Prometheus; this
+# is a CLI-friendly sum that survives across requests inside one Python
+# process.
+
+_session_usage: dict[str, int] = {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "calls": 0,
+    "errors": 0,
+}
+# uvicorn runs sync FastAPI handlers in a threadpool, so multiple workers can
+# race on `_session_usage[k] += n`. Mirrors the pattern in audit.py / cache.py
+# / masking.py (instance-level locks there; module-level here because the
+# counters themselves are module-level).
+#
+# IMPORTANT: this is the single outermost lock for these counters. Internal
+# helpers MUST NOT call public `get_session_usage` / `reset_session_usage`
+# from inside an already-held `_session_usage_lock` block — that would
+# deadlock (threading.Lock is non-reentrant).
+_session_usage_lock = threading.Lock()
+
+
+def get_session_usage() -> dict[str, int]:
+    """Snapshot of cumulative Anthropic usage since process start / last reset."""
+    with _session_usage_lock:
+        return dict(_session_usage)
+
+
+def reset_session_usage() -> None:
+    """Zero all counters. Useful at the start of an eval batch or demo."""
+    with _session_usage_lock:
+        for k in _session_usage:
+            _session_usage[k] = 0
+
+
+# ---------- Anthropic backend ----------
+
+# Per-intent generation caps. Anthropic Sonnet 4.6 ceiling is 8192; we keep
+# them well below so a runaway call can't burn $1+ per request.
+_MAX_TOKENS = {
+    "parse_oa": 2048,
+    "draft_response": 4096,
+    "verify_citations": 1024,
+    "classify_security": 512,
+}
+_DEFAULT_MAX_TOKENS = 2048
+
+# Temperatures tuned per intent: lower = more deterministic.
+_TEMPERATURE = {
+    "parse_oa": 0.2,        # structured extraction — keep deterministic
+    "draft_response": 0.4,  # some prose variation acceptable
+    "verify_citations": 0.0,  # strict yes/no comparison
+    "classify_security": 0.0,
+}
+_DEFAULT_TEMPERATURE = 0.2
+
+
+class AnthropicLLM:
+    """Production path. Uses the official Anthropic SDK (AsyncAnthropic).
+
+    Construction performs a sanity check on the API key but does NOT touch
+    the network — that way a misconfigured deployment fails loudly at import
+    time rather than producing a confusing 401 from the first request.
+    """
+
+    def __init__(self, *, api_key: Optional[str] = None) -> None:
+        key = api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("LLM_API_KEY")
+        if not key:
+            raise RuntimeError(
+                "AnthropicLLM requires an API key. Set ANTHROPIC_API_KEY (preferred) "
+                "or LLM_API_KEY in the environment. Refusing to construct so we "
+                "fail fast instead of returning 401 from the first request."
+            )
+
+        # Lazy import: the SDK is only required when LLM_MODE=anthropic, so a
+        # mock-only deployment doesn't need to install it.
+        try:
+            import anthropic  # noqa: F401  (used below)
+        except ImportError as exc:
+            raise RuntimeError(
+                "anthropic SDK not installed. Run `pip install anthropic==0.39.0` "
+                "or uncomment the dependency in backend/requirements.txt."
+            ) from exc
+
+        import anthropic
+        self._sdk = anthropic
+        self._client = anthropic.AsyncAnthropic(api_key=key)
+
+    # --------- Public sync entry point (matches MockLLM signature) ----------
+
+    def chat(
+        self,
+        system: str,
+        user: str,
+        intent: str,
+        model_hint: str,
+        *,
+        security_level: str = "public",
+    ) -> LLMResponse:
+        """Synchronous wrapper that runs the async call to completion.
+
+        Called from sync FastAPI routes which themselves run in a starlette
+        threadpool — so spinning up an event loop here is safe and does not
+        block any caller's event loop. If we are *already* inside an event
+        loop (rare for this code path — caller would have to `await` an
+        async wrapper instead), we delegate to the async method to avoid the
+        notorious 'asyncio.run() cannot be called from a running event
+        loop' error.
+        """
+        try:
+            asyncio.get_running_loop()
+            # We are inside an event loop. The right move is for the caller
+            # to await `achat`. Raise instead of trying to nest event loops
+            # — that silently corrupts behaviour with thread-local state.
+            raise RuntimeError(
+                "AnthropicLLM.chat() called from inside a running event loop. "
+                "Use `await llm.achat(...)` instead."
+            )
+        except RuntimeError as e:
+            if "no running event loop" not in str(e).lower():
+                raise
+            # Expected: we are sync. Spin up an event loop and run the call.
+            return asyncio.run(
+                self.achat(
+                    system=system,
+                    user=user,
+                    intent=intent,
+                    model_hint=model_hint,
+                    security_level=security_level,
+                )
+            )
+
+    # --------- Async core --------------------------------------------------
+
+    async def achat(
+        self,
+        *,
+        system: str,
+        user: str,
+        intent: str,
+        model_hint: str,
+        security_level: str = "public",
+    ) -> LLMResponse:
+        # Defense-in-depth (Q15): the router upstream is supposed to send
+        # confidential cases to the local model, never here. Belt + braces.
+        if security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS:
+            raise RuntimeError(
+                f"AnthropicLLM refusing to call cloud API for security_level="
+                f"{security_level!r}. This case MUST route to the local LLM. "
+                "Bug in route_model() or the gateway orchestrator."
+            )
+
+        max_tokens = _MAX_TOKENS.get(intent, _DEFAULT_MAX_TOKENS)
+        temperature = _TEMPERATURE.get(intent, _DEFAULT_TEMPERATURE)
+
+        # Prompt caching: wrap the system prompt as a cached text block.
+        # System prompts in oa_analyzer.py are 2–4 KB each and reused for
+        # every OA in a tenant — the cache discount is the single biggest
+        # cost lever for this workload. `ephemeral` cache TTL is 5 min,
+        # which fits the bursty "attorney works through 5 OAs" pattern.
+        system_blocks = [{
+            "type": "text",
+            "text": system,
+            "cache_control": {"type": "ephemeral"},
+        }]
+
+        started = time.monotonic()
+        try:
+            msg = await _call_with_retry(
+                self._client,
+                model=model_hint,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system_blocks,
+                messages=[{"role": "user", "content": user}],
+            )
+        except self._sdk.BadRequestError as e:
+            with _session_usage_lock:
+                _session_usage["errors"] += 1
+                _session_usage["calls"] += 1
+            # Anthropic returns 400 for several reasons; the common-on-this-
+            # codebase one is "input too long for model context window".
+            # Surface a recovery-oriented message instead of the SDK's
+            # opaque JSON. Detection is by substring (the SDK does not
+            # expose a stable error code for this case).
+            msg_str = str(e)
+            if "context" in msg_str.lower() or "too long" in msg_str.lower():
+                logger.error(
+                    "Anthropic context-too-long: input was likely too large to "
+                    "fit %s context. Original: %s",
+                    model_hint,
+                    msg_str,
+                )
+                raise RuntimeError(
+                    f"LLM context exceeded for model {model_hint}. "
+                    f"Consider truncating the patent spec or splitting the OA "
+                    f"into multiple calls."
+                ) from e
+            raise
+        except Exception:
+            with _session_usage_lock:
+                _session_usage["errors"] += 1
+                _session_usage["calls"] += 1
+            raise
+
+        latency_ms = int((time.monotonic() - started) * 1000)
+
+        text = "".join(b.text for b in msg.content if hasattr(b, "text"))
+        # Q11: scrub any leaked canary just in case (defence in depth).
+        text = text.replace(CANARY_TOKEN, "[CANARY_REDACTED]")
+
+        usage = msg.usage
+        input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+        output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+        cache_read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        cache_create = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+
+        with _session_usage_lock:
+            _session_usage["input_tokens"] += input_tokens
+            _session_usage["output_tokens"] += output_tokens
+            _session_usage["cache_read_input_tokens"] += cache_read
+            _session_usage["cache_creation_input_tokens"] += cache_create
+            _session_usage["calls"] += 1
+
+        # Cost log — uses canonical pricing from rate_limit. Lazy import
+        # avoids ai_engine ↔ gateway import cycles at module load time.
+        try:
+            from backend.gateway.rate_limit import estimate_cost
+            cost = estimate_cost(model_hint, {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_input_tokens": cache_read,
+                "cache_creation_input_tokens": cache_create,
+            })
+        except Exception:  # pragma: no cover — pricing must never break a call
+            cost = 0.0
+
+        logger.info(
+            "anthropic call: model=%s input=%d output=%d cache_read=%d "
+            "cache_create=%d cost=$%.4f latency=%dms intent=%s",
+            model_hint,
+            input_tokens,
+            output_tokens,
+            cache_read,
+            cache_create,
+            cost,
+            latency_ms,
+            intent,
+        )
+
+        return LLMResponse(
+            text=text,
+            model=model_hint,
+            prompt_tokens=input_tokens + cache_read + cache_create,
+            completion_tokens=output_tokens,
+            latency_ms=latency_ms,
+            cache_read_input_tokens=cache_read,
+            cache_creation_input_tokens=cache_create,
+        )
+
+
+# Singleton — instantiated lazily on first use so importing this module never
+# fails just because the operator hasn't exported ANTHROPIC_API_KEY yet.
+_anthropic_singleton: Optional[AnthropicLLM] = None
+
+
+def _get_anthropic_llm() -> AnthropicLLM:
+    global _anthropic_singleton
+    if _anthropic_singleton is None:
+        _anthropic_singleton = AnthropicLLM()
+    return _anthropic_singleton
+
+
+def reset_anthropic_singleton() -> None:
+    """Drop the cached AnthropicLLM so the next call rebuilds it.
+
+    Call this between pytest tests that mutate `LLM_MODE` or
+    `ANTHROPIC_API_KEY` env vars — otherwise the first test's client
+    (bound to its env at construction time) leaks into the next test.
+
+    Not thread-safe; intended for single-threaded test teardown only.
+    """
+    global _anthropic_singleton
+    _anthropic_singleton = None
+
+
+# ---------- Retry helper -----------------------------------------------------
+
+def _parse_retry_after(hdr: str | None, default: float) -> float:
+    """Parse the HTTP Retry-After header per RFC 7231.
+
+    Two valid forms:
+      1. delta-seconds, e.g. "120"
+      2. HTTP-date,     e.g. "Wed, 21 Oct 2026 07:28:00 GMT"
+
+    Returns `default` (NOT zero, NOT exception) for anything unparseable so
+    the retry loop always makes progress instead of silently busy-looping.
+    """
+    if not hdr:
+        return default
+    try:
+        return float(hdr)
+    except ValueError:
+        try:
+            from email.utils import parsedate_to_datetime
+            from datetime import datetime, timezone
+            dt = parsedate_to_datetime(hdr)
+            if dt is None:
+                logger.warning("Could not parse Retry-After header: %r", hdr)
+                return default
+            delta = (dt - datetime.now(timezone.utc)).total_seconds()
+            return max(0.0, delta)
+        except (TypeError, ValueError):
+            logger.warning("Could not parse Retry-After header: %r", hdr)
+            return default
+
+
+async def _call_with_retry(client: Any, *, max_retries: int = 3, **kwargs: Any):
+    """Retry RateLimitError + APIConnectionError with exponential backoff.
+
+    Other anthropic.APIStatusError (4xx/5xx) bubble up unchanged so the
+    gateway audit row records the real failure mode rather than a generic
+    "retries exhausted" wrapper.
+    """
+    import anthropic
+
+    for attempt in range(max_retries + 1):
+        try:
+            return await client.messages.create(**kwargs)
+        except anthropic.RateLimitError as exc:
+            if attempt == max_retries:
+                raise
+            # Anthropic returns retry-after in the response headers (may be
+            # delta-seconds OR an HTTP-date per RFC 7231). Cap at 60s so a
+            # misconfigured upstream can't stall us for hours.
+            hdr = None
+            try:
+                hdr = exc.response.headers.get("retry-after")
+            except Exception:
+                pass
+            wait = _parse_retry_after(hdr, default=float(2 ** attempt))
+            wait = min(wait, 60.0)
+            logger.warning(
+                "anthropic rate limited (attempt %d/%d), sleeping %.2fs",
+                attempt + 1, max_retries + 1, wait,
+            )
+            await asyncio.sleep(wait)
+        except anthropic.APIConnectionError as exc:
+            if attempt == max_retries:
+                raise
+            wait = 2 ** attempt
+            logger.warning(
+                "anthropic connection error (attempt %d/%d), sleeping %ds: %s",
+                attempt + 1, max_retries + 1, wait, exc,
+            )
+            await asyncio.sleep(wait)
+
+    # Defensive: the last iteration always either returns or re-raises, so
+    # this line is theoretically unreachable. But if someone later changes
+    # the loop bound or the `if attempt == max_retries` guard, we want a
+    # loud failure instead of a silent `None` return that crashes deep in
+    # the caller's `.content` access.
+    raise RuntimeError("unreachable: retry loop exhausted without return or raise")
+
+
 # ---------- Public router API ----------
 
 def route_model(*, intent: str, security_level: str, circuit_open: bool) -> str:
@@ -259,8 +646,10 @@ def chat(
 ) -> LLMResponse:
     """Single LLM call entry point.
 
-    POC supports LLM_MODE = mock | anthropic. Anthropic path is wired via SDK
-    if ANTHROPIC_API_KEY is set; falls back to mock otherwise.
+    Dispatches to mock, anthropic, or local-Ollama based on settings.LLM_MODE.
+    Anthropic init failures (missing key, SDK not installed) are raised — we
+    deliberately do NOT silently fall back to mock in anthropic mode because
+    that would hide a misconfiguration on a paid path.
     """
     model = route_model(intent=intent, security_level=security_level, circuit_open=circuit_open)
 
@@ -282,36 +671,27 @@ def chat(
                 f"[llm_client] Ollama call failed, falling back to mock: {e}",
                 file=sys.stderr,
             )
+            return _mock.chat(hardened_system, user, intent, model)
 
-    if settings.LLM_MODE == "anthropic" and os.getenv("ANTHROPIC_API_KEY"):
-        try:
-            return _real_anthropic(hardened_system, user, model, intent)
-        except Exception:
-            pass  # silently fall back to mock so POC always works
+    if settings.LLM_MODE == "anthropic":
+        # Confidential cases must never reach here — route_model would have
+        # returned LLM_MODEL_LOCAL. Guard anyway so we hard-fail rather than
+        # silently sending privileged text to the cloud.
+        if security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS:
+            raise RuntimeError(
+                f"Refusing cloud LLM call for security_level={security_level!r}. "
+                "Confidential cases MUST route to LLM_MODEL_LOCAL (Q15)."
+            )
+        llm = _get_anthropic_llm()
+        return llm.chat(
+            hardened_system,
+            user,
+            intent,
+            model,
+            security_level=security_level,
+        )
 
     return _mock.chat(hardened_system, user, intent, model)
-
-
-def _real_anthropic(system: str, user: str, model: str, intent: str) -> LLMResponse:
-    """Production path. Imported lazily so mock-only deployments don't need the SDK."""
-    import anthropic
-    started = time.monotonic()
-    client = anthropic.Anthropic()
-    msg = client.messages.create(
-        model="claude-sonnet-4-5",
-        max_tokens=2048,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
-    text = "".join(b.text for b in msg.content if hasattr(b, "text"))
-    latency = int((time.monotonic() - started) * 1000)
-    return LLMResponse(
-        text=text,
-        model=model,
-        prompt_tokens=msg.usage.input_tokens,
-        completion_tokens=msg.usage.output_tokens,
-        latency_ms=latency,
-    )
 
 
 def _real_ollama(system: str, user: str, model: str, intent: str) -> LLMResponse:

@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 
 from backend.gateway import cache, masking
+from backend.gateway.rate_limit import estimate_cost
 from backend.shared.config import settings
 from backend.shared.models import (
     AnalysisRequest,
@@ -142,13 +143,28 @@ async def orchestrate_analysis(
         d.strategy = masking.unmask(d.strategy, user.tenant_id)
 
     # ---- Aggregate cost ----
-    total_prompt_tokens = sum(r.get("usage", {}).get("prompt_tokens", 0) for r in (
-        [parsed] + list(retrieval_results) + list(draft_results) + list(verifications)
-    ))
-    total_completion_tokens = sum(r.get("usage", {}).get("completion_tokens", 0) for r in (
-        [parsed] + list(draft_results) + list(verifications)
-    ))
-    estimated_cost = (total_prompt_tokens * 3 + total_completion_tokens * 15) / 1_000_000  # rough
+    # Each AI engine response carries an Anthropic-style usage dict (also
+    # populated for mock/Ollama with zero cache fields). We aggregate by
+    # call, run estimate_cost() per call against its own model_used (parse
+    # and draft are typically the reasoning model; verify is the cheap
+    # verifier), then sum. This keeps cache-discount accuracy intact.
+    all_call_meta = (
+        [parsed]
+        + list(retrieval_results)
+        + list(draft_results)
+        + list(verifications)
+    )
+    total_prompt_tokens = sum(r.get("usage", {}).get("prompt_tokens", 0) for r in all_call_meta)
+    total_completion_tokens = sum(r.get("usage", {}).get("completion_tokens", 0) for r in all_call_meta)
+
+    estimated_cost = 0.0
+    for r in all_call_meta:
+        usage = r.get("usage") or {}
+        model = r.get("model_used", "mock")
+        # Skip pricing for retrieval (no LLM call) — its usage row is all zeros anyway.
+        if not usage:
+            continue
+        estimated_cost += estimate_cost(model, usage)
 
     cost_meta = CostMeta(
         prompt_tokens=total_prompt_tokens,

@@ -44,6 +44,91 @@ _tenant_monthly_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (tenant
 _daily_cost_usd: dict[str, float] = defaultdict(float)  # YYYY-MM-DD -> usd
 
 
+# ---------------------------------------------------------------------------
+# Pricing — Anthropic public list price as of 2026-05.  USD per **1M** tokens.
+# Keys are the canonical model IDs we ship in shared/config.py defaults plus
+# anything else we might let an operator set via LLM_MODEL_* env vars.
+# Update with care: this dict is the single source of truth for cost_meta.
+# ---------------------------------------------------------------------------
+_MODEL_PRICING_USD_PER_M: dict[str, dict[str, float]] = {
+    "claude-sonnet-4-6": {
+        "input": 3.00,
+        "output": 15.00,
+        "cache_creation": 3.75,
+        "cache_read": 0.30,
+    },
+    "claude-haiku-4-5-20251001": {
+        "input": 1.00,
+        "output": 5.00,
+        "cache_creation": 1.25,
+        "cache_read": 0.10,
+    },
+    "claude-opus-4-7": {
+        "input": 15.00,
+        "output": 75.00,
+        "cache_creation": 18.75,
+        "cache_read": 1.50,
+    },
+}
+
+# Fallback used when (a) LLM_MODE=mock so model strings are "claude-sonnet-mock"
+# style synthetic IDs, or (b) LLM_MODE=local (Ollama, on-prem, marginal cost ≈ 0).
+# Values picked to roughly match the OLD `(p*3 + c*15)/1M` rule of thumb so
+# pre-Anthropic dashboards don't suddenly jump to $0.
+_FALLBACK_PRICING: dict[str, float] = {
+    "input": 3.00,
+    "output": 15.00,
+    "cache_creation": 0.0,
+    "cache_read": 0.0,
+}
+
+
+def _pricing_for(model: str) -> dict[str, float]:
+    """Pick the pricing row for `model`.
+
+    Exact match first, then a prefix sweep (so any future tag suffix like
+    -20260101 still resolves), then the conservative fallback.
+
+    Mock model strings (anything ending in '-mock') always fall through to
+    the fallback table so demo runs don't display real-money cost figures.
+    """
+    if model.endswith("-mock") or model.startswith("mock"):
+        return _FALLBACK_PRICING
+    if model in _MODEL_PRICING_USD_PER_M:
+        return _MODEL_PRICING_USD_PER_M[model]
+    for known, prices in _MODEL_PRICING_USD_PER_M.items():
+        if model.startswith(known):
+            return prices
+    return _FALLBACK_PRICING
+
+
+def estimate_cost(model: str, usage: dict[str, int]) -> float:
+    """Compute USD cost for an Anthropic-style usage record.
+
+    `usage` keys we look at (all optional, default 0):
+      - input_tokens               (NB: in Anthropic semantics this *excludes*
+                                    cache_read / cache_creation — see SDK docs)
+      - output_tokens
+      - cache_creation_input_tokens
+      - cache_read_input_tokens
+
+    For legacy callers we also accept `prompt_tokens` as an alias for input.
+    """
+    prices = _pricing_for(model)
+    input_tokens = int(usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0)
+    output_tokens = int(usage.get("output_tokens", usage.get("completion_tokens", 0)) or 0)
+    cache_creation = int(usage.get("cache_creation_input_tokens", 0) or 0)
+    cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
+
+    cost = (
+        input_tokens * prices.get("input", 0.0)
+        + output_tokens * prices.get("output", 0.0)
+        + cache_creation * prices.get("cache_creation", 0.0)
+        + cache_read * prices.get("cache_read", 0.0)
+    ) / 1_000_000.0
+    return cost
+
+
 def _today() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 

@@ -34,11 +34,14 @@ class Settings:
     COST_CIRCUIT_DAILY_USD: float = 100.0   # 日成本斷路器閾值（POC 用低值方便測）
 
     # LLM router (Q15 多模型 + 機密走地端)
+    # Defaults below assume cloud Anthropic SDK (LLM_MODE=anthropic). They are
+    # ignored when LLM_MODE=mock (MockLLM uses its own internal labels) and
+    # when LLM_MODE=local (Ollama uses LLM_MODEL_LOCAL).
     LLM_MODE: str = os.getenv("LLM_MODE", "mock")  # mock | openai | anthropic | local
-    LLM_MODEL_REASONING: str = os.getenv("LLM_MODEL_REASONING", "claude-sonnet-mock")
-    LLM_MODEL_CHEAP: str = os.getenv("LLM_MODEL_CHEAP", "haiku-mock")
+    LLM_MODEL_REASONING: str = os.getenv("LLM_MODEL_REASONING", "claude-sonnet-4-6")
+    LLM_MODEL_CHEAP: str = os.getenv("LLM_MODEL_CHEAP", "claude-haiku-4-5-20251001")
     LLM_MODEL_LOCAL: str = os.getenv("LLM_MODEL_LOCAL", "llama3.1:8b")
-    LLM_MODEL_VERIFIER: str = os.getenv("LLM_MODEL_VERIFIER", "haiku-mock")  # Q14
+    LLM_MODEL_VERIFIER: str = os.getenv("LLM_MODEL_VERIFIER", "claude-haiku-4-5-20251001")  # Q14 — MUST differ from REASONING
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
 
     # Ollama / local LLM (MVP)

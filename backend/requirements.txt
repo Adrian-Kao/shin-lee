@@ -43,3 +43,8 @@ python-docx==1.1.2
 
 # python-multipart is needed for FastAPI's UploadFile/Form parsing.
 python-multipart==0.0.12
+
+# ---------------------------------------------------------------------------
+# observability (Day 5 — no-op when SENTRY_DSN env var is unset)
+# ---------------------------------------------------------------------------
+sentry-sdk[fastapi]==2.18.0

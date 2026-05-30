@@ -26,6 +26,10 @@ from backend.ai_engine import deadline as deadline_mod
 from backend.ai_engine import oa_analyzer, pdf_parser, rag
 from backend.shared.config import settings
 from backend.shared.models import Rejection, RetrievalHit
+from backend.shared.observability import init_sentry
+
+# Day 5: init Sentry before FastAPI() so import-time exceptions are caught.
+_SENTRY_ACTIVE = init_sentry("ai_engine")
 
 
 # Content types we know how to extract. Anything else → 400 from the AI engine

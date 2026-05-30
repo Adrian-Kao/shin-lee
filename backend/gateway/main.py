@@ -24,6 +24,10 @@ from backend.gateway.auth import auth_dependency, issue_token
 from backend.gateway.orchestrator import orchestrate_analysis
 from backend.shared.config import settings
 from backend.shared.models import AnalysisRequest, AnalysisResponse, User
+from backend.shared.observability import init_sentry
+
+# Day 5: init Sentry before FastAPI() so import-time exceptions are caught.
+_SENTRY_ACTIVE = init_sentry("gateway")
 
 
 # Day 2 upload: allowed content types. Anything else → 415.

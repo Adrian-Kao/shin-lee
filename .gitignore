@@ -17,6 +17,9 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+# Claude Code worktrees (locally created, not for commit)
+.claude/
+
 # Editor
 .vscode/
 .idea/
@@ -33,6 +36,8 @@ tmp/
 # Env
 .env
 .env.local
+# but keep the template committed
+!.env.example
 
 # Local debug / analyze output (one-off curl test results)
 .analyze_*.json

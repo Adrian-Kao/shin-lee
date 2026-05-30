@@ -22,7 +22,7 @@ class Settings:
     AI_ENGINE_URL: str = os.getenv("AI_ENGINE_URL", "http://localhost:8011")
 
     # Auth (Q12)
-    JWT_SECRET: str = os.getenv("JWT_SECRET", "poc-secret-do-not-use-in-prod-32bytes!!")
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "changeme-generate-with-openssl-rand-hex-32")
     JWT_ALGO: str = "HS256"
     JWT_EXPIRES_MIN: int = 30
 
@@ -61,6 +61,13 @@ class Settings:
     EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "mock")  # mock | bge-m3
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 
+    # Storage (Q13 archive / Q20 backups)
+    AUDIT_BACKEND: str = os.getenv("AUDIT_BACKEND", "sqlite")  # sqlite | postgres
+    POSTGRES_URL: str = os.getenv(
+        "POSTGRES_URL",
+        "postgresql://patentmind:patentmind@localhost:5432/patentmind",
+    )
+
     # Holiday calendar (Q17)
     HOLIDAY_CALENDAR_VERSION: str = "2025.1"
     SUPPORTED_JURISDICTIONS: tuple[str, ...] = ("TW", "US")  # 其他國家留 stub
@@ -76,3 +83,18 @@ class Settings:
 
 
 settings = Settings()
+
+
+# --- Boot-time guardrail: refuse to run prod with the placeholder JWT_SECRET ---
+# Mock mode (POC default) is allowed because no real secrets cross the wire.
+# Pytest is allowed because the test harness injects its own ephemeral secret.
+_PLACEHOLDER_JWT_SECRET = "changeme-generate-with-openssl-rand-hex-32"
+if (
+    settings.LLM_MODE not in {"mock"}
+    and "PYTEST_CURRENT_TEST" not in os.environ
+    and settings.JWT_SECRET == _PLACEHOLDER_JWT_SECRET
+):
+    raise RuntimeError(
+        "Refusing to start with default JWT_SECRET in non-mock mode. "
+        "Set JWT_SECRET to a 32+ byte random hex via: openssl rand -hex 32"
+    )

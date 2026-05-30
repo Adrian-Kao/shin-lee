@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 
 import Login from './components/Login.jsx';
 import Analyze from './components/Analyze.jsx';
@@ -83,12 +84,47 @@ function AuditRoute({ session, onLogout }) {
  * For slice B we only reserve the route so links don't 404.
  */
 function CasesPlaceholder() {
+  // Hooks are imported via the named imports above; this stays a local function.
+  return <CasesPlaceholderInner />;
+}
+
+function CasesPlaceholderInner() {
+  const navigate = useNavigate();
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const { t } = useTranslation();
   return (
-    <div className="flex min-h-screen items-center justify-center px-6">
-      <div className="max-w-md rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <div className="mb-3 text-4xl">🗂️</div>
-        <h1 className="mb-1 text-lg font-semibold">Cases</h1>
-        <p className="text-sm text-slate-500">Coming soon (Phase 4).</p>
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 py-12">
+      <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm md:p-12">
+        <div className="mb-3 text-5xl" aria-hidden="true">
+          🚧
+        </div>
+        <h1 className="mb-1 text-xl font-semibold text-slate-900">
+          {t('placeholder.cases_title')}
+        </h1>
+        <p className="mb-6 text-sm text-slate-500">{t('placeholder.cases_subtitle')}</p>
+
+        <ul className="mb-6 space-y-2 text-left text-sm text-slate-600">
+          {[
+            t('placeholder.cases_bullet_1'),
+            t('placeholder.cases_bullet_2'),
+            t('placeholder.cases_bullet_3'),
+          ].map((bullet, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span className="mt-0.5 text-indigo-500" aria-hidden="true">
+                •
+              </span>
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+
+        <button
+          type="button"
+          onClick={() => navigate('/analyze')}
+          className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+        >
+          {t('placeholder.back_to_analyze')}
+        </button>
       </div>
     </div>
   );

@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../api/client.js';
+import ErrorBanner from './ErrorBanner.jsx';
+import EmptyState from './EmptyState.jsx';
+import { SkeletonCard } from './Skeleton.jsx';
 
 /**
  * Q13: append-only audit log + tamper-evident hash chain.
@@ -10,6 +14,7 @@ import { api } from '../api/client.js';
  *   - hash-chain verify button (proves no tampering since insert)
  */
 export default function AuditView({ session, onSwitchView, onLogout }) {
+  const { t } = useTranslation();
   const [rows, setRows] = useState([]);
   const [verify, setVerify] = useState(null);
   const [error, setError] = useState(null);
@@ -17,11 +22,12 @@ export default function AuditView({ session, onSwitchView, onLogout }) {
 
   async function refresh() {
     setLoading(true);
+    setError(null);
     try {
       const r = await api.auditRecent(session.token);
       setRows(r);
     } catch (e) {
-      setError(`${e.status} ${e.message}`);
+      setError(e);
     } finally {
       setLoading(false);
     }
@@ -36,7 +42,7 @@ export default function AuditView({ session, onSwitchView, onLogout }) {
       const r = await api.auditVerify(session.token);
       setVerify(r);
     } catch (e) {
-      setError(`${e.status} ${e.message}`);
+      setError(e);
     }
   }
 
@@ -123,98 +129,101 @@ export default function AuditView({ session, onSwitchView, onLogout }) {
             </div>
           )}
           {error && (
-            <div className="mt-3 rounded border border-rose-200 bg-rose-50 p-2 text-sm text-rose-800">
-              {error}
+            <div className="mt-3">
+              <ErrorBanner
+                error={error}
+                onRetry={refresh}
+                onDismiss={() => setError(null)}
+                onLogin={onLogout}
+              />
             </div>
           )}
         </div>
 
-        <div className="overflow-hidden rounded-lg border bg-white">
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-100 uppercase tracking-wider text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 text-left">時間 (UTC)</th>
-                  <th className="px-3 py-2 text-left">User</th>
-                  <th className="px-3 py-2 text-left">Case</th>
-                  <th className="px-3 py-2 text-left">Endpoint</th>
-                  <th className="px-3 py-2 text-left">Model</th>
-                  <th className="px-3 py-2 text-right">Tokens</th>
-                  <th className="px-3 py-2 text-right">ms</th>
-                  <th className="px-3 py-2 text-left">Mask 規則 (Q10)</th>
-                  <th className="px-3 py-2 text-left">Policy (Q12/18)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading && (
+        {loading && <SkeletonCard />}
+
+        {!loading && rows.length === 0 && !error && (
+          <EmptyState
+            icon="📋"
+            title={t('empty.no_audit_title')}
+            description={t('empty.no_audit_desc')}
+          />
+        )}
+
+        {!loading && rows.length > 0 && (
+          <div className="overflow-hidden rounded-lg border bg-white">
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs">
+                <thead className="bg-slate-100 uppercase tracking-wider text-slate-600">
                   <tr>
-                    <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
-                      載入中…
-                    </td>
+                    <th className="px-3 py-2 text-left">時間 (UTC)</th>
+                    <th className="px-3 py-2 text-left">User</th>
+                    <th className="px-3 py-2 text-left">Case</th>
+                    <th className="px-3 py-2 text-left">Endpoint</th>
+                    <th className="px-3 py-2 text-left">Model</th>
+                    <th className="px-3 py-2 text-right">Tokens</th>
+                    <th className="px-3 py-2 text-right">ms</th>
+                    <th className="px-3 py-2 text-left">Mask 規則 (Q10)</th>
+                    <th className="px-3 py-2 text-left">Policy (Q12/18)</th>
                   </tr>
-                )}
-                {!loading && rows.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
-                      沒有資料 — 先去「分析」頁跑一次 OA 分析。
-                    </td>
-                  </tr>
-                )}
-                {rows.map((r) => (
-                  <tr key={r.audit_id} className="border-t hover:bg-slate-50">
-                    <td className="px-3 py-2 font-mono text-slate-500">
-                      {r.timestamp_utc.slice(0, 19)}
-                    </td>
-                    <td className="px-3 py-2">{r.user_id}</td>
-                    <td className="px-3 py-2 font-mono">{r.case_id || '—'}</td>
-                    <td className="px-3 py-2 font-mono">{r.endpoint}</td>
-                    <td className="px-3 py-2 font-mono">{r.model_used || '—'}</td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {(r.prompt_tokens || 0) + (r.completion_tokens || 0)}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">{r.latency_ms}</td>
-                    <td className="px-3 py-2">
-                      {(r.masked_field_rules || []).length === 0 ? (
-                        <span className="text-slate-400">—</span>
-                      ) : (
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.audit_id} className="border-t hover:bg-slate-50">
+                      <td className="px-3 py-2 font-mono text-slate-500">
+                        {r.timestamp_utc.slice(0, 19)}
+                      </td>
+                      <td className="px-3 py-2">{r.user_id}</td>
+                      <td className="px-3 py-2 font-mono">{r.case_id || '—'}</td>
+                      <td className="px-3 py-2 font-mono">{r.endpoint}</td>
+                      <td className="px-3 py-2 font-mono">{r.model_used || '—'}</td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        {(r.prompt_tokens || 0) + (r.completion_tokens || 0)}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">{r.latency_ms}</td>
+                      <td className="px-3 py-2">
+                        {(r.masked_field_rules || []).length === 0 ? (
+                          <span className="text-slate-400">—</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {r.masked_field_rules.map((m, i) => (
+                              <span
+                                key={i}
+                                className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px]"
+                              >
+                                {m}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
-                          {r.masked_field_rules.map((m, i) => (
+                          {Object.entries(r.policy_decisions || {}).map(([k, v]) => (
                             <span
-                              key={i}
-                              className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px]"
+                              key={k}
+                              className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
+                                k === 'cache_hit' || k === 'circuit_open'
+                                  ? v
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-600'
+                                  : v
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-rose-100 text-rose-800'
+                              }`}
                             >
-                              {m}
+                              {k}={v ? '✓' : '✗'}
                             </span>
                           ))}
                         </div>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-1">
-                        {Object.entries(r.policy_decisions || {}).map(([k, v]) => (
-                          <span
-                            key={k}
-                            className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
-                              k === 'cache_hit' || k === 'circuit_open'
-                                ? v
-                                  ? 'bg-amber-100 text-amber-800'
-                                  : 'bg-slate-100 text-slate-600'
-                                : v
-                                  ? 'bg-emerald-100 text-emerald-800'
-                                  : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            {k}={v ? '✓' : '✗'}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        )}
       </main>
     </div>
   );

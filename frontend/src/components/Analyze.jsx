@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../api/client.js';
 import DraftEditor from './DraftEditor.jsx';
 import OAUpload from './OAUpload.jsx';
+import ErrorBanner from './ErrorBanner.jsx';
+import EmptyState from './EmptyState.jsx';
+import { SkeletonText } from './Skeleton.jsx';
+import { toast } from '../lib/toast.jsx';
 
 const SAMPLE_OA = `UNITED STATES PATENT AND TRADEMARK OFFICE
 Office Action
@@ -48,6 +52,7 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
     setOaText(payload.extracted_text || '');
     setLoadedMeta({ fileName: payload.fileName, pages: payload.page_count });
     setUploadWarnings(Array.isArray(payload.warnings) ? payload.warnings : []);
+    toast.success(t('upload.toast_success', { pages: payload.page_count ?? 0 }));
   };
 
   useEffect(() => {
@@ -62,7 +67,7 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
       const r = await api.redactionPreview(session.token, oaText, caseId);
       setRedactPreview(r);
     } catch (e) {
-      setError(e.message);
+      setError(e);
     }
   }
 
@@ -78,7 +83,7 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
       });
       setResult(r);
     } catch (e) {
-      setError(`${e.status || ''} ${e.message}`);
+      setError(e);
     } finally {
       setRunning(false);
     }
@@ -186,8 +191,13 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
               </button>
             </div>
             {error && (
-              <div className="mt-3 rounded border border-rose-200 bg-rose-50 p-2 text-xs text-rose-600">
-                {error}
+              <div className="mt-3">
+                <ErrorBanner
+                  error={error}
+                  onRetry={runAnalyze}
+                  onDismiss={() => setError(null)}
+                  onLogin={onLogout}
+                />
               </div>
             )}
           </div>
@@ -211,6 +221,15 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {!quota && (
+            <div className="rounded-lg border bg-white p-4">
+              <h3 className="mb-2 text-sm font-semibold">
+                配額 <span className="text-xs text-slate-500">(Q18)</span>
+              </h3>
+              <SkeletonText lines={3} />
             </div>
           )}
 
@@ -243,13 +262,12 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
         {/* Right: result */}
         <section className="space-y-4 lg:col-span-2">
           {!result && !running && (
-            <div className="rounded-lg border bg-white p-12 text-center text-slate-500">
-              <div className="mb-2 text-5xl">📄</div>
-              <p>左側輸入 OA 後點「分析 OA」</p>
-              <p className="mt-2 text-xs">
-                Demo 預設使用 CASE-2025-001（Alice 有權限）；若用 Carol 嘗試會被擋（Q12 case ACL）
-              </p>
-            </div>
+            <EmptyState
+              icon="📄"
+              title={t('empty.no_result_title')}
+              description={t('empty.no_result_desc')}
+              hint={t('empty.no_result_hint')}
+            />
           )}
 
           {running && <RunningPanel />}

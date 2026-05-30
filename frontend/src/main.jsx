@@ -6,6 +6,7 @@ import { I18nextProvider } from 'react-i18next';
 import App from './App.jsx';
 import { ThemeProvider } from './lib/theme.jsx';
 import i18n from './lib/i18n.js';
+import { ToastViewport } from './lib/toast.jsx';
 import './index.css';
 
 createRoot(document.getElementById('root')).render(
@@ -14,6 +15,7 @@ createRoot(document.getElementById('root')).render(
       <ThemeProvider>
         <BrowserRouter>
           <App />
+          <ToastViewport />
         </BrowserRouter>
       </ThemeProvider>
     </I18nextProvider>

@@ -341,3 +341,268 @@ M backend/shared/models.py           ← 本 session Phase A 改 RejectionType e
 ## 8. 給接手 Claude 的一句話
 
 > Phase A 已驗證可跑，請從第 5 節的步驟 1 開始：直接動手寫 `data/cases/synthetic_cases.py` 的 CASES list，按第 4 節 taxonomy 表逐案造資料。先不用太完美，30 案造完後再回頭微調。沒問題就接著做 render + extractor + 冒煙測。Mock 模式（`LLM_MODE=mock EMBEDDING_BACKEND=mock VECTOR_BACKEND=memory`）就足夠驗證，不用 Ollama。
+
+---
+
+# 2026-05-30 session — Phase 1 + Day 1-6 wrap-up
+
+> 這 session 把 POC 推進到「下週可上線 internal demo」狀態。
+> 11 commits 落地，pytest 12/12 + vite build 全綠。
+> Section 0-8 是 2026-05-12 的歷史，下面 9-15 是這 session 的全部產出。
+> Section 12 (presenter notes) 是 demo 當天直接念的台本。
+
+## 9. 完成的 commit (11 個，都在 local feature/patentmind-poc — 卡 push auth 見 §11)
+
+```
+0dfdfca Day 6: mock LLM rewrite (53% → 100% rejection_type) + ngrok demo helper
+a343cea Day 5: Sentry observability — backend + frontend (env-gated, no-op without DSN)
+17613af Day 4: one-click local demo launcher + pre-demo smoke validator
+06d2ef6 Day 3: frontend polish — landing page, error/empty/loading UX, toast
+73c1245 Day 2B: drag-drop PDF upload UI + preview pane
+3552e50 Day 2A: PDF/DOCX upload endpoint with Vision OCR fallback
+b93354a Day 1B: eval harness over 30 synthetic cases
+3c1adae Day 1A: wire real Anthropic LLM (LLM_MODE=anthropic)
+7153e89 Phase 1C: pytest + Playwright + GitHub Actions CI + pre-commit
+3e26e35 Phase 1B: real Tailwind build + shadcn foundation + router + i18n + dark mode
+0f7cb74 Phase 1A: docker-compose infra + env template + config knobs
+```
+
+### Per-commit summary
+- **Phase 1A**: docker-compose (PG/Redis/Qdrant 都 loopback-bound + healthchecked), `.env.example` 全改, JWT secret runtime guardrail (非 mock/test 模式若用 placeholder 啟動會 raise)
+- **Phase 1B**: 移除 Tailwind CDN → 正規 Vite+PostCSS, shadcn Button + cn helper + components.json, react-router-dom v6 routes (/login /analyze /audit /cases), ThemeProvider (localStorage-backed, FOUC-proof), react-i18next (zh-TW default + en fallback)
+- **Phase 1C**: `pyproject.toml` (pytest + ruff + mypy), `tests/` (6 pytest passes), Playwright config + 1 smoke spec, `.github/workflows/ci.yml` (3 parallel jobs, main-safe concurrency), `.pre-commit-config.yaml`
+- **Day 1A**: `AnthropicLLM` (AsyncAnthropic, Sonnet 4.6 reasoning + Haiku 4.5 cheap/verifier, prompt caching ephemeral on system, retry-after RFC 7231 HTTP-date parsing, threadsafe `_session_usage`, defense-in-depth confidential routing 3 層), `_MODEL_PRICING_USD_PER_M` 真實 Anthropic 價格表
+- **Day 1B**: `scripts/eval_cases.py` 跑 30 案 → 寫 `data/eval_results/<TS-uuid6>/{CASE-DEMO-NN.json, REPORT.md}` (mode mock | anthropic, asyncio.gather + Semaphore, hermetic in-process orchestrator)
+- **Day 2A**: `POST /v1/oa/upload` multipart (max 30MB, content-type whitelist), AI engine `/v1/ai/extract_text` (base64 JSON), `pdf_parser.extract_pdf_text` (PyMuPDF + bounded-parallel Vision OCR), `python-docx`. Defense-in-depth: gateway refuse confidential cases → AI engine 也 refuse → AnthropicLLM.vision_ocr 也 refuse
+- **Day 2B**: `OAUpload.jsx` (state machine: idle→file-selected→uploading→server-extracting→success/error), XHR upload progress + real cancel, PDF preview via `<embed>`, integrated into `Analyze.jsx` as additive path (toggle 「📋 改貼文字」保留 fallback)
+- **Day 3**: Login 變正規 landing (gradient hero + 4 value bullets + role cards w/ hover lift), `ErrorBanner` (8 status codes — 401 給登入按鈕, 429 給 30s countdown), `Skeleton`/`SkeletonText`/`SkeletonCard`/`EmptyState`/`toast`, /cases 變正式 coming-soon, favicon SVG + meta description + theme-color
+- **Day 4**: `scripts/start_demo.sh` (python deps check → ai_engine + gateway + seed + frontend → auto-open browser → Ctrl+C tear-down), `scripts/smoke_demo.sh` (6-step pre-demo e2e validator)
+- **Day 5**: `backend/shared/observability.py` (init_sentry with FastAPI + Starlette integrations), `frontend/src/lib/sentry.jsx` (initSentry + SentryErrorBoundary with friendly fallback UI), env-gated VITE_SENTRY_DSN / SENTRY_DSN
+- **Day 6**: `_mock_parse_oa` 重寫 — 改正 5 個 weakness (102_novelty TW Chinese, other / 101 catch, multi-rejection emission, parsed affected_claims, antecedent_basis 近鄰判斷)；`scripts/start_ngrok.sh` 單 tunnel 暴露 frontend
+
+## 10. 怎麼跑 — one-click demo
+
+### 最常用 (mock 模式，不用 key)
+```bash
+bash scripts/start_demo.sh
+# Auto: deps → ai_engine:8011 → gateway:8010 → seed → vite:5173 → open browser
+# Ctrl+C cleanup all 3
+
+# 另一 terminal:
+bash scripts/smoke_demo.sh
+# 6 GREEN = demo ready
+```
+
+### Real LLM (週日 key 到手後)
+```bash
+ANTHROPIC_API_KEY=sk-... bash scripts/start_demo.sh
+# 自動切 LLM_MODE=anthropic (start_demo.sh 偵測 env)
+
+# 跑 30 案 real LLM eval (對比 mock baseline):
+ANTHROPIC_API_KEY=sk-... python scripts/eval_cases.py --mode anthropic
+# 預計 token cost ~$2-5 (30 案 × ~50K tokens with cache)
+# 報告: data/eval_results/<ts>/REPORT.md
+```
+
+### Remote demo audience
+```bash
+# Terminal 1:
+bash scripts/start_demo.sh
+# Terminal 2:
+bash scripts/start_ngrok.sh
+# → 印 https://<random>.ngrok.app URL，audience 開這個
+```
+
+## 11. Push status — 卡 GitHub auth (你還沒修)
+
+Remote `https://github.com/Adrian-Kao/shin-lee.git`，password auth 已被 GitHub 停用。**11 commit 卡 local，沒 backup**。
+
+修法（任一即可）：
+1. **PAT (Personal Access Token)** — 最快
+   ```bash
+   # GitHub → Settings → Developer settings → Personal access tokens → Generate (scope: repo)
+   git remote set-url origin https://Adrian-Kao:<TOKEN>@github.com/Adrian-Kao/shin-lee.git
+   git push
+   ```
+2. **SSH key**
+   ```bash
+   ssh-keygen -t ed25519 -C "your@email.com"   # 貼 ~/.ssh/id_ed25519.pub 到 GitHub SSH keys
+   git remote set-url origin git@github.com:Adrian-Kao/shin-lee.git
+   git push
+   ```
+3. **GitHub CLI**
+   ```bash
+   gh auth login
+   gh repo set-default Adrian-Kao/shin-lee
+   git push
+   ```
+
+修好告訴下個 Claude session 「push 修好了」，它會幫推。
+
+## 12. Demo presenter notes — 拿來直接念
+
+### 12.1 Pre-demo checklist (T-30 min)
+
+- [ ] `git pull` 最新（push 修好的話）
+- [ ] 確認 `.env`: `JWT_SECRET` 不是 placeholder + `ANTHROPIC_API_KEY` 有值
+- [ ] `bash scripts/start_demo.sh` — 等「Demo ready」訊息
+- [ ] `bash scripts/smoke_demo.sh` — 6 個 GREEN
+- [ ] 瀏覽器 http://localhost:5173 — 登入 Alice 跑一次確認流暢
+- [ ] `docs/初審審查意見通知函.pdf` 放桌面備用
+- [ ] 若用 ngrok：`bash scripts/start_ngrok.sh`，URL 貼 chat
+
+### 12.2 The pitch (5 分鐘)
+
+1. **問題 (1 min)** — 台灣 TIPO 每年 71,965 件專利申請 (2025 數字), 平均 8 個月才收到第一次 OA, 律師收到 OA 必須 2 個月內答辯, 每件人工平均 4-8 小時; 案件量+人力不足 → 答辯品質下滑風險
+2. **解法 (1 min)** — PatentMind = OA 答辯草擬 AI 助手, 上傳 OA PDF → 自動 (a) 分類核駁理由 (b) RAG 找佐證 (c) 起草申復書 (d) 算法定期日, 律師審核+簽核+送件, AI 是放大器不取代律師
+3. **差異化 (1 min)** — vs 競品 DeepIP / Solve Intelligence / Harvey / Lexis+ Protégé:
+   - **TW 特化**: 中文 OA + 民國日期 + TIPO 公文格式 + 第26條第2項先行詞獨立 enum
+   - **隱私可控**: redaction (Q10) + audit chain (Q13) + 機密案件強制地端 LLM (Q15)
+   - **可驗證**: 每段 citation 必來自 grounded set (Q14), 防 hallucination
+4. **架構 (1 min)** — 厚 Gateway + AI Engine 分層 (Q1+FU), 8 條鐵律 (CLAUDE.md §4)
+5. **狀態 (1 min)** — POC 已 30 案 corpus + 真 Anthropic 接通 + PDF upload 含 Vision OCR + 一鍵 demo
+
+### 12.3 The demo (5-10 分鐘) — 照順序操作
+
+**段 1: Landing + login (30s)**
+- 開 http://localhost:5173 — 看 gradient hero + value bullets
+- 點 Alice (Attorney, tenant_a)
+- 講: 「Bob paralegal 同租戶但案件 ACL 不同; Carol IT admin 無 case 權限; Dave auditor 只能讀 audit」
+
+**段 2: 上傳 OA + 分析 (3-5 min)** — 核心 demo
+- 拖 `docs/初審審查意見通知函.pdf` 到 drop zone
+- 看 PDF preview (左) + status pane (右) 出現
+- 點「上傳」— 進度條
+- 講: 「PyMuPDF 萃取, 掃描頁 fallback 到 Claude Vision OCR」
+- 出 success: 「已抽出 2 頁 / 1234 字」
+- 點「使用此文字」— textarea 自動填
+- 點「預覽 redaction」— 看 PII + 客戶識別碼被 redact (Q10)
+- 點「分析 OA」— RunningPanel 動畫 (mock 即時; real LLM 約 30-60 秒)
+- 出結果:
+  - **Deadline card**: 2025-07-28 (從民國 114 年 5 月 29 日算出 +60 天)
+  - **Rejection block**: antecedent_basis, claim=[9], confidence 0.93
+  - **Examiner argument**: 中文原文
+  - **RAG**: TW202617461#claim_2 (我們種的 patent, retrieval 命中)
+  - **Draft**: 完整 TIPO 申復書格式, DraftEditor 可逐句簽核 (Q16)
+
+**段 3: Audit + chain verify (1-2 min)** — 合規賣點
+- 登出，登入 Dave (Auditor)
+- 進 /audit → 看剛才兩筆 (upload + analyze) 都記錄
+- 注意 `mask 規則` 欄 — 證明 redaction 真的觸發
+- 注意 `policy` 欄 — 證明 authz/quota/RPM 都 pass
+- 點「驗證 hash chain」— 綠燈 + 「N 列全部通過 hash 驗證」
+- 講: 「Production 加 S3 Object Lock 每小時封存」
+
+**段 4: 案件 ACL (30s)** — 隱私賣點
+- 登出，登入 Carol (IT Admin, tenant_b)
+- 嘗試輸入 CASE-2025-001 (tenant_a 的) + 分析
+- 看 ErrorBanner 「您沒有此案件的存取權限」
+- 講: 「防線在 gateway middleware (Q12), AI Engine 永遠收不到請求」
+
+### 12.4 邊角值得提
+
+- **Citation 必須 grounded**: verifier 砍編造引用 (Q14)
+- **機密案件強制地端 LLM**: case_id 以 `-CONF` 結尾自動 route Ollama (Q15)
+- **30 案 eval**: `python scripts/eval_cases.py --mode mock` 0.2s 出 markdown 報告
+- **Sentry 接好 no-op**: 設 `SENTRY_DSN` 即啟用
+
+### 12.5 Backup plan
+
+| 故障 | 備案 |
+|------|------|
+| Anthropic API 掛 | mock mode 仍 work — 「切回 mock 證明架構解耦」 |
+| Vite 卡 | refresh, 不行就 Ctrl+C + 重啟 start_demo.sh |
+| PDF upload 失敗 | 改貼文字 toggle, 貼 `data/oa_samples/sample_oa_tw.txt` 內容 |
+| Backend 死 | 看 `tmp/gateway.log` / `tmp/ai_engine.log`, 通常重啟 |
+| Backend 起不來 | 確認 `.env` JWT_SECRET 不是 placeholder (Day 1A guardrail) |
+| ngrok 限速 | free tier 同時 1 條 tunnel, 多人連會慢 — 用螢幕分享代替 |
+
+## 13. External research (2026-05-30 web search snapshots)
+
+### 13.1 Taiwan TIPO market 2025
+- 71,965 patent applications (-1% YoY), 97,411 trademark (+8% YoY)
+- First OA average: 8 months (improved from 2024)
+- Total pendency: 13.8 months
+- Foreign filings +0.6%, domestic -2.7% — foreign 比重持續增加
+- **Implication**: 外國申請 → 英/日文 OA 需 TW 律師翻譯, i18n + 多語言 LLM 很重要
+
+### 13.2 Competitive landscape
+
+| 工具 | 形式 | 價格 | 強項 | 弱項 |
+|------|------|------|------|------|
+| **Harvey** | Web | $1000+/user/mo | broad legal, Assistant+Vault+Workflow, AmLaw 採用 | 不是 patent-specific, $$$ |
+| **Westlaw/CoCounsel** | Web+Word | $200-500/user/mo | source-grounded, patent 模組 | US-focused, 無 TW |
+| **Lexis+ Protégé** (rebranded Feb 2026) | Web | $200-400/user/mo | source-grounding | US-focused |
+| **DeepIP** | Word add-in | n/a | full-lifecycle patent, drafting→prosecution | 無 on-prem |
+| **Solve Intelligence** | Web | n/a | browser-based, claim charts + figures | 無 TW 中文, 無 on-prem |
+| **PatentPal** | Web | <$1000/mo | terminology + flow diagrams | paralegal 為主, 非 OA |
+| **PatentMind (us)** | Vite SPA | TBD | **TW-specific + on-prem + redaction + audit chain + grounded citations** | POC, 未實戰 |
+
+**Pitch 差異化**:
+- vs Harvey/Westlaw/Lexis: 「他們是 general legal, patent 不是核心」
+- vs DeepIP/Solve: 「美式 prosecution 為主, 沒 TW §22/§26/§32 分類, 沒民國日期, 沒 TIPO 公文」
+- 我們: 「TW 事務所專用 + 合規 + 機密不上雲 + 開放 30 案 baseline」
+
+### 13.3 Anthropic 最佳實務 (對我們 demo / prod 直接相關)
+
+**Prompt caching (Day 1A 已接好)**
+- TTL: 預設 5 分鐘 (2026 初從 60 分鐘改的; 某些 workload cost +30-60%)
+- 1 小時 cache 額外付費可用 (API/Bedrock/Vertex/Foundry)
+- 我們把 patent-specific system prompt (2-4 KB) 標 ephemeral cache_control → 重複 case 第二次省 ~25% cost
+- Workspace-level isolation (Feb 5, 2026): demo+prod 同 key 可控
+
+**1M context window (Sonnet 4.6, GA March 2026)**
+- 我們 oa_analyzer 一次只塞 OA + top-3 RAG hits (~10K tokens) — headroom 大
+- 未來可一次塞整本 spec (~46 頁約 30K tokens) 給 draft step → 引用更準
+
+**Batch API (50% cost savings, 300K output tokens beta)**
+- 適合 eval pipeline: 30 案 batch → 一次 submit、隔天拿結果
+- 適合定期 audit: 律師事務所每月把過去所有案件 re-analyze 看新 prior art
+
+**Pricing (week 1 launch budget)**
+- Sonnet 4.6: $3/M input + $15/M output, cache 90% off + batch 50% off
+- Haiku 4.5: $1/M input + $5/M output (我們的 verifier + Vision OCR)
+- 30 案 eval (real, no batch, no cache): ~$2-5
+- 100 案/天 prod (with caching + batch): ~$5-10/day
+
+**Sources** (research done 2026-05-30):
+- [Union Patent TIPO 2025 stats](https://en.unionpatent.com.tw/overview-of-2025-taiwan-patent-and-trademark-filing-statistics)
+- [DeepIP vs Solve Intelligence comparison](https://www.lexology.com/library/detail.aspx?g=a945581a-89b2-45ca-9a37-894711af9cdc)
+- [Best AI Patent Drafting Tools 2026](https://blog.patentext.com/blog-posts/best-ai-patent-drafting-tools)
+- [Claude prompt caching docs](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
+- [Claude Sonnet 4.6 1M context guide](https://www.aiforanything.io/blog/claude-sonnet-4-6-1m-context-window-guide)
+- [Anthropic 1M context GA announcement](https://dev.to/onsen/claudes-1m-context-window-is-now-generally-available-95f)
+
+## 14. Next steps (週日 → 上線)
+
+### 週日 (2026-05-31): real LLM smoke
+1. 拿 ANTHROPIC_API_KEY → 加 `.env`
+2. `bash scripts/start_demo.sh` → 看 「LLM_MODE=anthropic」 訊息
+3. 上傳 `docs/初審審查意見通知函.pdf` → 看 real LLM output 品質
+4. `python scripts/eval_cases.py --mode anthropic` → 跑 30 案 (~$2-5)
+5. 比對 mock vs anthropic REPORT.md
+6. 若 anthropic > 90% rejection_type + > 80% affected_claims → demo ready
+
+### 週一 (2026-06-01): demo rehearsal
+1. 跑 §12.3 demo flow (5-10 min)
+2. 念 §12.2 talking points
+3. 找朋友 mock 觀眾, 問會問什麼問題
+4. 預備 §12.5 backup answers
+
+### 週二-週六: buffer + soft launch
+- T-3: 確認 internal 觀眾名單
+- T-1: 重 smoke 一遍
+- T-0: demo
+
+### Phase 2 (上線後): production hardening
+1. **Postgres audit** (current SQLite OK for pilot, swap > 1K rows/day)
+2. **Redis cache** (Phase 2A 已開始 — 看 backend/gateway/redis_cache.py)
+3. **Qdrant vector** (current numpy OK for < 1000 patents)
+4. **OIDC** (Keycloak in docker-compose)
+5. **Real PDF figure analysis** (Claude Vision 已接, 可擴大用途)
+6. **Quality eval pipeline** (週/月律師抽樣評分)
+7. **Prometheus + Grafana** (Sentry 是 error 層, 這是 metric 層)
+
+## 15. 給接手 Claude 的一句話 (2026-05-30 版)
+
+> POC 已推進到「下週可上線 internal demo」, 11 commit 落地但 push auth 卡 (§11). real LLM 路徑已接通但 demo 時還沒實機驗 (key 預定週日到手). 下個 session 優先序: (1) 確認 push 修好否 → push; (2) 真 LLM smoke (§14 週日 checklist); (3) demo rehearsal (§12 直接念); (4) 若還有時間 → Phase 2 chunks (從 backend/gateway/redis_cache.py 開始). §12 presenter notes 可以直接念給觀眾。

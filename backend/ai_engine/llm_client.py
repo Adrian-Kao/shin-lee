@@ -100,83 +100,213 @@ class MockLLM:
         return json.dumps({"echo": "intent not implemented in mock"})
 
     @staticmethod
+    def _parse_claim_numbers(text: str) -> list[int]:
+        """Extract claim numbers from common OA phrasings (TW + US).
+
+        Handles: '請求項 1', '請求項 1~3', '請求項 1、3、5', 'Claims 1-3', 'Claim 1'.
+        Returns sorted unique list. Empty list if nothing parsed.
+        """
+        claims: set[int] = set()
+        # TW ranges: 請求項 N~M / N-M / N至M / N到M / N－M
+        for m in re.finditer(r"請求項\s*(\d+)\s*[~\-至到－]\s*(\d+)", text):
+            a, b = int(m.group(1)), int(m.group(2))
+            if 0 < a <= b <= 100:
+                claims.update(range(a, b + 1))
+        # TW lists: 請求項 1、3、5 (also handles single 請求項 N)
+        for m in re.finditer(r"請求項\s*(\d+(?:[、,，\s]+\d+)*)", text):
+            for n in re.split(r"[、,，\s]+", m.group(1)):
+                if n.isdigit() and 0 < int(n) <= 100:
+                    claims.add(int(n))
+        # US ranges + lists
+        for m in re.finditer(r"[Cc]laims?\s+(\d+)\s*-\s*(\d+)", text):
+            a, b = int(m.group(1)), int(m.group(2))
+            if 0 < a <= b <= 100:
+                claims.update(range(a, b + 1))
+        for m in re.finditer(r"[Cc]laims?\s+(\d+(?:\s*,\s*\d+)*)", text):
+            for n in re.split(r"\s*,\s*", m.group(1)):
+                if n.isdigit() and 0 < int(n) <= 100:
+                    claims.add(int(n))
+        return sorted(claims)
+
+    @staticmethod
     def _mock_parse_oa(user: str) -> str:
-        """Look at the user msg; produce 1-3 plausible rejections.
+        """Look at the user msg; emit ALL plausible rejections found.
 
         Heuristics intentionally check for TW (中文) cues first because a real
         TW OA may also incidentally contain digits like '102' (e.g. 條號) that
         would otherwise mis-trigger the US §102 branch.
-        """
-        rejections = []
-        cited = re.findall(r"\bUS\d{6,8}[A-Z]?\d?\b|\bTW\d{6,9}[A-Z]?\b|\bEP\d{6,8}\b", user)
 
-        # ----- TW §26(2) antecedent basis ------------------------------------
-        # The hallmark TIPO phrasing: 「並未見...先行詞」/「『該』...」
-        if "先行詞" in user or "antecedent basis" in user.lower():
-            m_claim = re.search(r"請求項\s*(\d+)", user)
-            affected = [int(m_claim.group(1))] if m_claim else [9]
+        Day 5+: rewritten to (a) emit MULTIPLE rejections per OA when several
+        statute violations are present (was: single-then-return), (b) parse
+        affected claim numbers from the OA text (was: hardcoded [1,2,3]),
+        (c) cover §22-1 novelty, §26-1 揭露不充分, §26-4 支持要件, §24 法定
+        不予, §32 一案兩請 (was: silently fell into generic 103). Real
+        Anthropic via LLM_MODE=anthropic always preferred; this is the
+        fallback for demos without an API key.
+        """
+        rejections: list[dict] = []
+        cited = re.findall(r"\bUS\d{6,8}[A-Z]?\d?\b|\bTW\d{6,9}[A-Z]?\b|\bEP\d{6,8}\b", user)
+        user_l = user.lower()
+        claims = MockLLM._parse_claim_numbers(user)
+
+        def _next_id() -> str:
+            return f"rej-{len(rejections) + 1}"
+
+        def _claims_or(default: list[int]) -> list[int]:
+            return claims if claims else default
+
+        # ----- TW §26-2 antecedent basis -------------------------------------
+        if "先行詞" in user or "antecedent basis" in user_l:
+            # Prefer the claim mentioned NEAREST to '先行詞' (within ~120 chars).
+            m_near = None
+            for m in re.finditer(r"先行詞", user):
+                window = user[max(0, m.start() - 120) : m.start()]
+                nearby = list(re.finditer(r"請求項\s*(\d+)", window))
+                if nearby:
+                    m_near = nearby[-1]  # nearest preceding 請求項
+                    break
+            if m_near:
+                affected = [int(m_near.group(1))]
+            else:
+                m_claim = re.search(r"請求項\s*(\d+)", user)
+                affected = [int(m_claim.group(1))] if m_claim else [9]
             rejections.append({
-                "rejection_id": "rej-1",
+                "rejection_id": _next_id(),
                 "rejection_type": "antecedent_basis",
                 "affected_claims": affected,
                 "cited_prior_art": [],
                 "examiner_argument": (
-                    "審查官指出請求項" + str(affected[0]) +
-                    "之「該第一電動車」於所依附之請求項及本項之技術內容中"
-                    "並未見有「第一電動車」之先行詞，致申請專利範圍不明確，不符專利法第26條第2項之規定。"
+                    f"審查官指出請求項{affected[0]}之用語於所依附之請求項及本項之"
+                    "技術內容中並未見其先行詞，致申請專利範圍不明確，"
+                    "不符專利法第26條第2項之規定。"
                 ),
                 "confidence": 0.93,
             })
-            return json.dumps({"rejections": rejections})
 
-        # ----- TW 進步性 / 新穎性 --------------------------------------------
+        # ----- TW §22-2 進步性 ----------------------------------------------
         if "進步性" in user or "第22條第2項" in user:
             rejections.append({
-                "rejection_id": "rej-1",
+                "rejection_id": _next_id(),
                 "rejection_type": "103_obviousness",
-                "affected_claims": [1, 2, 3],
+                "affected_claims": _claims_or([1, 2, 3]),
                 "cited_prior_art": cited[:2] or ["TW202131234"],
-                "examiner_argument": "審查官認為請求項1~3不具進步性，依專利法第22條第2項規定核駁。",
+                "examiner_argument": (
+                    "審查官認為所列請求項不具進步性，"
+                    "依專利法第22條第2項規定核駁。"
+                ),
                 "confidence": 0.88,
             })
-            return json.dumps({"rejections": rejections})
 
-        # ----- US §103 / §102 ------------------------------------------------
-        if not cited:
-            cited = ["US7654321"]
-        if "obvious" in user.lower() or "103" in user:
+        # ----- TW §22-1 新穎性 ----------------------------------------------
+        if "新穎性" in user or "喪失新穎性" in user or "第22條第1項" in user:
             rejections.append({
-                "rejection_id": "rej-1",
-                "rejection_type": "103_obviousness",
-                "affected_claims": [1, 2, 3],
-                "cited_prior_art": cited[:2],
-                "examiner_argument": (
-                    "Examiner alleges claim 1 is obvious in view of the cited references. "
-                    "Specifically, the combination of features X and Y is asserted to be a "
-                    "predictable result of routine engineering."
-                ),
-                "confidence": 0.88,
-            })
-        if "novel" in user.lower() or "102" in user:
-            rejections.append({
-                "rejection_id": "rej-2",
+                "rejection_id": _next_id(),
                 "rejection_type": "102_novelty",
-                "affected_claims": [4, 5],
-                "cited_prior_art": cited[:1],
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": cited[:1] or ["TW202131234"],
                 "examiner_argument": (
-                    "Examiner alleges claims 4-5 lack novelty over the primary reference, "
-                    "asserting that all elements are disclosed therein."
+                    "審查官認為所列請求項相對於引證案不具新穎性，"
+                    "依專利法第22條第1項規定核駁。"
                 ),
-                "confidence": 0.91,
+                "confidence": 0.90,
             })
+
+        # ----- TW §26-1 揭露不充分 ------------------------------------------
+        if "未充分揭露" in user or "揭露不充分" in user or "第26條第1項" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "other",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "審查官指出說明書未充分揭露所請技術內容，"
+                    "致該技術領域者無法據以實現，不符專利法第26條第1項。"
+                ),
+                "confidence": 0.85,
+            })
+
+        # ----- TW §26-4 支持要件 --------------------------------------------
+        if "支持" in user and ("第26條第4項" in user or "支持要件" in user):
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "other",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "審查官指出申請專利範圍未為說明書所支持，"
+                    "不符專利法第26條第4項規定。"
+                ),
+                "confidence": 0.84,
+            })
+
+        # ----- TW §24 法定不予 ----------------------------------------------
+        if "第24條" in user or "法定不予" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "101_subject_matter",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "審查官認為所請發明屬專利法第24條所列法定不予專利之事項，"
+                    "不得給予專利保護。"
+                ),
+                "confidence": 0.86,
+            })
+
+        # ----- TW §32 一案兩請 ----------------------------------------------
+        if "第32條" in user or "一案兩請" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "other",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "審查官指出本案與同申請人之新型專利屬一案兩請，"
+                    "依專利法第32條應擇一聲明。"
+                ),
+                "confidence": 0.83,
+            })
+
+        # ----- US §103 / §102 (only when no TW rejection has matched) -------
+        # 數字 102/103 在 TW OA 很容易誤觸；用 §-prefix 或英文 keywords 區分。
+        if not rejections:
+            if not cited:
+                cited = ["US7654321"]
+            is_us = bool(re.search(r"\b35\s*U\.?S\.?C\.?", user))
+            if "obvious" in user_l or (is_us and re.search(r"§\s*103", user)):
+                rejections.append({
+                    "rejection_id": _next_id(),
+                    "rejection_type": "103_obviousness",
+                    "affected_claims": _claims_or([1, 2, 3]),
+                    "cited_prior_art": cited[:2],
+                    "examiner_argument": (
+                        "Examiner alleges the claims are obvious in view of the cited "
+                        "references. The combination of features is asserted to be a "
+                        "predictable result of routine engineering."
+                    ),
+                    "confidence": 0.88,
+                })
+            if "anticipat" in user_l or "lack novelty" in user_l or (is_us and re.search(r"§\s*102", user)):
+                rejections.append({
+                    "rejection_id": _next_id(),
+                    "rejection_type": "102_novelty",
+                    "affected_claims": _claims_or([4, 5]),
+                    "cited_prior_art": cited[:1],
+                    "examiner_argument": (
+                        "Examiner alleges the claims lack novelty over the primary "
+                        "reference, asserting that all elements are disclosed therein."
+                    ),
+                    "confidence": 0.91,
+                })
+
         if not rejections:
             rejections.append({
                 "rejection_id": "rej-1",
                 "rejection_type": "103_obviousness",
-                "affected_claims": [1],
-                "cited_prior_art": cited,
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": cited or ["US7654321"],
                 "examiner_argument": "Generic rejection synthesised from OA text.",
-                "confidence": 0.7,
+                "confidence": 0.70,
             })
         return json.dumps({"rejections": rejections})
 

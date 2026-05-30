@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../api/client.js';
 import DraftEditor from './DraftEditor.jsx';
+import OAUpload from './OAUpload.jsx';
 
 const SAMPLE_OA = `UNITED STATES PATENT AND TRADEMARK OFFICE
 Office Action
@@ -28,6 +30,7 @@ const SECURITY_BADGE = {
 };
 
 export default function Analyze({ session, onLogout, onSwitchView }) {
+  const { t } = useTranslation();
   const [oaText, setOaText] = useState(SAMPLE_OA);
   const [caseId, setCaseId] = useState('CASE-2025-001');
   const [targetPatent, setTargetPatent] = useState('US17123456');
@@ -36,6 +39,16 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
   const [error, setError] = useState(null);
   const [redactPreview, setRedactPreview] = useState(null);
   const [quota, setQuota] = useState(null);
+  // Day 2 upload UI state (additive — does not change the analyze POST contract)
+  const [showUpload, setShowUpload] = useState(true);
+  const [loadedMeta, setLoadedMeta] = useState(null); // {fileName, page_count} after extraction
+  const [uploadWarnings, setUploadWarnings] = useState([]);
+
+  const handleExtractSuccess = (payload) => {
+    setOaText(payload.extracted_text || '');
+    setLoadedMeta({ fileName: payload.fileName, pages: payload.page_count });
+    setUploadWarnings(Array.isArray(payload.warnings) ? payload.warnings : []);
+  };
 
   useEffect(() => {
     api
@@ -102,6 +115,54 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
               onChange={(e) => setTargetPatent(e.target.value)}
               className="mb-3 w-full rounded border px-2 py-1.5 text-sm"
             />
+            {showUpload && (
+              <div className="mb-3">
+                <OAUpload
+                  caseId={caseId}
+                  token={session.token}
+                  onExtractSuccess={handleExtractSuccess}
+                  onError={(err) => setError(err?.message || String(err))}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowUpload(false)}
+                  className="mt-2 text-xs text-indigo-600 hover:underline"
+                >
+                  {t('upload.switch_to_paste')}
+                </button>
+              </div>
+            )}
+            {!showUpload && (
+              <button
+                type="button"
+                onClick={() => setShowUpload(true)}
+                className="mb-2 text-xs text-indigo-600 hover:underline"
+              >
+                {t('upload.switch_to_upload')}
+              </button>
+            )}
+
+            {loadedMeta && (
+              <div className="mb-2 inline-block rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+                {t('upload.loaded_chip', {
+                  filename: loadedMeta.fileName,
+                  pages: loadedMeta.pages ?? 0,
+                })}
+              </div>
+            )}
+            {uploadWarnings.length > 0 && (
+              <div className="mb-2 space-y-1">
+                {uploadWarnings.map((w, i) => (
+                  <div
+                    key={i}
+                    className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800"
+                  >
+                    ⚠ {w}
+                  </div>
+                ))}
+              </div>
+            )}
+
             <label className="mb-1 block text-xs text-slate-500">OA 全文</label>
             <textarea
               value={oaText}

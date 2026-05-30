@@ -59,4 +59,42 @@ export const api = {
       token,
       headers: { 'X-Case-Id': case_id || 'CASE-2025-001' },
     }),
+
+  // Day 2: PDF/DOCX OA upload via XHR (real progress + cancel).
+  // Returns { promise, abort } — the OAUpload component wires the cancel button to abort().
+  uploadOA: (caseId, token, file, onProgress) => {
+    const xhr = new XMLHttpRequest();
+    const promise = new Promise((resolve, reject) => {
+      xhr.open('POST', BASE + '/v1/oa/upload');
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.setRequestHeader('X-Case-Id', caseId);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch (e) {
+            reject(new Error('Invalid JSON response: ' + e.message));
+          }
+        } else {
+          let msg = `Upload failed: HTTP ${xhr.status}`;
+          try {
+            const body = JSON.parse(xhr.responseText);
+            if (body.detail) msg = body.detail;
+          } catch {
+            /* response wasn't JSON — keep the HTTP status message */
+          }
+          reject(new Error(msg));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.onabort = () => reject(new Error('Upload cancelled'));
+      const fd = new FormData();
+      fd.append('file', file);
+      xhr.send(fd);
+    });
+    return { promise, abort: () => xhr.abort() };
+  },
 };

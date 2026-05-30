@@ -103,29 +103,48 @@ class MockLLM:
     def _parse_claim_numbers(text: str) -> list[int]:
         """Extract claim numbers from common OA phrasings (TW + US).
 
-        Handles: '請求項 1', '請求項 1~3', '請求項 1、3、5', 'Claims 1-3', 'Claim 1'.
-        Returns sorted unique list. Empty list if nothing parsed.
+        Handles: '請求項 1', '請求項 1~3', '請求項 1、3、5', '請求項 1~3, 5、7',
+        full-width tildes '請求項 1～3' / '請求項 1〜3', '請求項 1至5',
+        'Claims 1-3', 'Claim 1', 'Claims 1-3, 6'.
+
+        Day 7B: walks forward from each '請求項' / 'Claim(s)' prefix and
+        consumes numbers / ranges / list separators in one pass, fixing
+        the prior regex's failure on mixed range+list (eg '1~3, 5、7'
+        would lose 5 and 7) and missing full-width tilde / wave-dash.
         """
         claims: set[int] = set()
-        # TW ranges: 請求項 N~M / N-M / N至M / N到M / N－M
-        for m in re.finditer(r"請求項\s*(\d+)\s*[~\-至到－]\s*(\d+)", text):
-            a, b = int(m.group(1)), int(m.group(2))
-            if 0 < a <= b <= 100:
-                claims.update(range(a, b + 1))
-        # TW lists: 請求項 1、3、5 (also handles single 請求項 N)
-        for m in re.finditer(r"請求項\s*(\d+(?:[、,，\s]+\d+)*)", text):
-            for n in re.split(r"[、,，\s]+", m.group(1)):
-                if n.isdigit() and 0 < int(n) <= 100:
-                    claims.add(int(n))
-        # US ranges + lists
-        for m in re.finditer(r"[Cc]laims?\s+(\d+)\s*-\s*(\d+)", text):
-            a, b = int(m.group(1)), int(m.group(2))
-            if 0 < a <= b <= 100:
-                claims.update(range(a, b + 1))
-        for m in re.finditer(r"[Cc]laims?\s+(\d+(?:\s*,\s*\d+)*)", text):
-            for n in re.split(r"\s*,\s*", m.group(1)):
-                if n.isdigit() and 0 < int(n) <= 100:
-                    claims.add(int(n))
+        # Range separators we recognise (mixes ASCII + full-width / CJK).
+        _range_re = re.compile(r"\s*[~\-〜～–—至到－]\s*(\d+)")
+        # List separators between numbers (Chinese comma, ASCII comma, etc.).
+        _list_re = re.compile(r"\s*[、,，]\s*")
+        _num_re = re.compile(r"\s*(\d+)")
+
+        def _consume(start: int) -> None:
+            i = start
+            while i < len(text):
+                num_m = _num_re.match(text, i)
+                if not num_m:
+                    return
+                first = int(num_m.group(1))
+                i = num_m.end()
+                rng_m = _range_re.match(text, i)
+                if rng_m:
+                    last = int(rng_m.group(1))
+                    if 0 < first <= last <= 100:
+                        claims.update(range(first, last + 1))
+                    i = rng_m.end()
+                else:
+                    if 0 < first <= 100:
+                        claims.add(first)
+                sep_m = _list_re.match(text, i)
+                if not sep_m:
+                    return
+                i = sep_m.end()
+
+        for m in re.finditer(r"請求項", text):
+            _consume(m.end())
+        for m in re.finditer(r"[Cc]laims?\s+", text):
+            _consume(m.end())
         return sorted(claims)
 
     @staticmethod

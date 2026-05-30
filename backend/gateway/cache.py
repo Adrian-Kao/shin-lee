@@ -51,7 +51,25 @@ class _MemoryCache:
             return {"size": len(self._data)}
 
 
-_cache = _MemoryCache()
+def get_cache_backend():
+    """Return the cache backend chosen by CACHE_BACKEND env var.
+
+    Phase 2A: ``redis`` selects ``RedisCacheBackend`` (lazy-connect, JSON
+    serialised, gracefully degrades on connection failure). Default
+    ``memory`` keeps the in-process ``_MemoryCache`` used by tests and
+    the POC happy path.
+    """
+    if settings.CACHE_BACKEND == "redis":
+        # Local import so ``redis-py`` is only a runtime dep when actually
+        # selected — keeps the in-memory path importable even if the
+        # ``redis`` package is missing (e.g. minimal POC deploys).
+        from backend.gateway.redis_cache import RedisCacheBackend
+
+        return RedisCacheBackend(settings.REDIS_URL)
+    return _MemoryCache()
+
+
+_cache = get_cache_backend()
 
 
 def _hash_key(parts: list[str]) -> str:

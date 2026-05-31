@@ -15,15 +15,15 @@ import time
 from typing import Optional
 
 import httpx
-from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.gateway import audit, cache, masking, rate_limit
-from backend.gateway.auth import auth_dependency, issue_token
+from backend.gateway.auth import auth_dependency, authorize_case_access, issue_token
 from backend.gateway.orchestrator import orchestrate_analysis
 from backend.shared.config import settings
-from backend.shared.models import AnalysisRequest, AnalysisResponse, User
+from backend.shared.models import AnalysisRequest, AnalysisResponse, User, UserRole
 from backend.shared.observability import init_sentry
 
 # Day 5: init Sentry before FastAPI() so import-time exceptions are caught.
@@ -399,20 +399,183 @@ def audit_verify(user: User = Depends(auth_dependency)):
     return audit.writer.verify_chain(user.tenant_id)
 
 
-# ---------- Redaction inspection (debug only) ----------
+# ---------- Redaction (first-class for digiRunner pre-LLM transform plugins) ----------
 
 class RedactionPreviewRequest(BaseModel):
     text: str
 
 
-@app.post("/v1/debug/redaction_preview")
-def redaction_preview(
+def _do_redact(req: RedactionPreviewRequest, user: User, request: Request, endpoint: str) -> dict:
+    """Shared implementation for /v1/redact and its deprecated alias.
+
+    Writes exactly one audit row per call (invariant #4) — the input text is
+    NEVER stored, only its hash + the rule ids that fired.
+    """
+    started = time.monotonic()
+    case_id = request.headers.get("X-Case-Id") or request.query_params.get("case_id")
+    if not case_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "X-Case-Id header required for redaction (tenant routing)",
+        )
+    # auth_dependency already enforced ACL when case_id was on the header.
+
+    redacted, rules = masking.redact(req.text, user.tenant_id)
+
+    audit.writer.write(
+        user=user,
+        case_id=case_id,
+        endpoint=endpoint,
+        # Never store raw text in audit — only its length + content hash via the
+        # writer's _hash_payload mechanism.
+        request_payload={"text_chars": len(req.text)},
+        response_payload={"rules_triggered": rules, "redacted_chars": len(redacted)},
+        masked_rules=rules,
+        model_used=None,
+        prompt_tokens=0,
+        completion_tokens=0,
+        latency_ms=int((time.monotonic() - started) * 1000),
+        policy_decisions={"authn_passed": True, "authz_passed": True},
+    )
+    return {"redacted": redacted, "rules_triggered": rules}
+
+
+@app.post("/v1/redact")
+def redact(
     req: RedactionPreviewRequest,
+    request: Request,
     user: User = Depends(auth_dependency),
 ):
-    """Useful for showing the attorney exactly what gets redacted before send."""
-    redacted, rules = masking.redact(req.text, user.tenant_id)
-    return {"redacted": redacted, "rules_triggered": rules}
+    """First-class redaction endpoint.
+
+    Intended for digiRunner pre-LLM transform plugins that need to scrub user
+    input before forwarding to the LLM gateway. Same shape as the legacy
+    /v1/debug/redaction_preview alias (which now delegates here).
+
+    Requires:
+      - Authorization: Bearer <token>
+      - X-Case-Id: <case_id>  (for tenant routing inside masking + ACL check)
+    """
+    return _do_redact(req, user, request, endpoint="/v1/redact")
+
+
+@app.post("/v1/debug/redaction_preview", deprecated=True)
+def redaction_preview(
+    req: RedactionPreviewRequest,
+    request: Request,
+    response: Response,
+    user: User = Depends(auth_dependency),
+):
+    """DEPRECATED alias for /v1/redact — kept so the existing frontend and
+    smoke-test paths don't break. New callers should use /v1/redact.
+    """
+    # RFC 9745 (Sept 2024 final): Deprecation MUST be a Structured-Field
+    # Date — bare "true" was the obsolete RFC 8594 draft style. We use the
+    # deprecation moment (2026-06-01 00:00 UTC, the day this alias was
+    # introduced) and pair it with a Sunset header (RFC 8594) at +12 months.
+    response.headers["Deprecation"] = "@1748736000"  # 2026-06-01T00:00:00Z
+    response.headers["Sunset"] = "Mon, 01 Jun 2026 00:00:00 GMT"  # +12mo target
+    response.headers["Link"] = '</v1/redact>; rel="successor-version"'
+    return _do_redact(req, user, request, endpoint="/v1/debug/redaction_preview")
+
+
+# ---------- Audit append (for digiRunner post-LLM hooks) ----------
+
+class AuditAppendRequest(BaseModel):
+    """Body schema for POST /v1/audit/append.
+
+    SECURITY INVARIANT: this schema deliberately omits `user_id` and
+    `tenant_id`. Those are tagged from the gateway-trusted auth context so an
+    upstream caller cannot forge audit rows on behalf of another user.
+
+    `extra="forbid"` makes that invariant load-bearing: a body containing
+    `user_id`/`tenant_id` (or any other unexpected key) is rejected with 422
+    rather than silently dropped, so a future copy-paste error setting
+    `extra="allow"` can't quietly turn this into audit forgery.
+    """
+    # `model_used` happens to start with "model_", which Pydantic v2 reserves
+    # by default; explicitly disable the protected-namespace check so the
+    # import doesn't emit a warning. `extra="forbid"` enforces the documented
+    # security invariant — see class docstring.
+    model_config = {"protected_namespaces": (), "extra": "forbid"}
+
+    # Caps prevent unbounded strings from ballooning the hash-chained log.
+    case_id: str = Field(..., max_length=256)
+    endpoint: str = Field(..., max_length=256)
+    model_used: Optional[str] = Field(default=None, max_length=128)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    latency_ms: int = 0
+    masked_field_rules: list[str] = Field(default_factory=list)
+    policy_decisions: dict[str, bool] = Field(default_factory=dict)
+    error: Optional[str] = Field(default=None, max_length=2048)
+
+
+# Roles permitted to call /v1/audit/append. PARALEGAL is excluded — the audit
+# chain is auditor / it_admin territory; attorneys may need to record analysis
+# events for cases they handle. Phase 2.4 should add a dedicated SERVICE_ACCOUNT
+# role and tighten this further.
+_AUDIT_APPEND_ROLES: frozenset[UserRole] = frozenset({
+    UserRole.ATTORNEY,
+    UserRole.IT_ADMIN,
+    UserRole.AUDITOR,
+})
+
+
+@app.post("/v1/audit/append")
+def audit_append(
+    req: AuditAppendRequest,
+    user: User = Depends(auth_dependency),
+):
+    """Append one row to the tenant's audit hash-chain.
+
+    Used by digiRunner post-LLM hooks to record the LLM result + cost +
+    policy decisions after a transform plugin invoked /v1/redact and the
+    request was forwarded to an external LLM gateway outside our orchestrator.
+
+    Caller-supplied fields (case_id, endpoint, model_used, token counts,
+    latency, masked rules, policy decisions, error) are recorded verbatim.
+    `user_id` and `tenant_id` come from the AUTH CONTEXT — NOT from the
+    request body — so an upstream cannot impersonate another user.
+
+    Permission model:
+      - Role gate: only ATTORNEY / IT_ADMIN / AUDITOR (paralegal blocked —
+        they shouldn't be filing audit-chain entries directly).
+      - Case ACL: enforced via authorize_case_access — even an attorney can
+        only append rows for cases they have ACL on. This blocks a logged-in
+        user from polluting the hash-chained log with rows referencing
+        case_ids they don't own (caught by Day 8B review — see commit msg).
+    """
+    if user.role not in _AUDIT_APPEND_ROLES:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Role '{user.role.value}' is not permitted to append audit rows.",
+        )
+    # Re-check ACL: auth_dependency only validates X-Case-Id (header). The
+    # case_id here is in the body, which auth_dependency never saw.
+    authorize_case_access(user, req.case_id)
+
+    # `policy_decisions` is typed `dict[str, bool]` on the writer, so we keep
+    # a boolean flag for "did an error happen" and preserve the raw error
+    # string in `response_payload` (which IS stored verbatim, not just hashed).
+    policy_decisions = dict(req.policy_decisions)
+    if req.error:
+        policy_decisions["error"] = True
+
+    audit.writer.write(
+        user=user,                       # gateway-trusted; supplies user_id + tenant_id
+        case_id=req.case_id,
+        endpoint=req.endpoint,
+        request_payload={"source": "audit_append"},
+        response_payload={"error": req.error} if req.error else None,
+        masked_rules=req.masked_field_rules,
+        model_used=req.model_used,
+        prompt_tokens=req.prompt_tokens,
+        completion_tokens=req.completion_tokens,
+        latency_ms=req.latency_ms,
+        policy_decisions=policy_decisions,
+    )
+    return {"appended": True}
 
 
 if __name__ == "__main__":

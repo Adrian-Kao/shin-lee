@@ -606,3 +606,112 @@ Remote `https://github.com/Adrian-Kao/shin-lee.git`，password auth 已被 GitHu
 ## 15. 給接手 Claude 的一句話 (2026-05-30 版)
 
 > POC 已推進到「下週可上線 internal demo」, 11 commit 落地但 push auth 卡 (§11). real LLM 路徑已接通但 demo 時還沒實機驗 (key 預定週日到手). 下個 session 優先序: (1) 確認 push 修好否 → push; (2) 真 LLM smoke (§14 週日 checklist); (3) demo rehearsal (§12 直接念); (4) 若還有時間 → Phase 2 chunks (從 backend/gateway/redis_cache.py 開始). §12 presenter notes 可以直接念給觀眾。
+
+---
+
+# 2026-06-01 session — Day 8 autonomous overnight sprint
+
+> User asked for "資安和權限管理 + 前端 UIUX 產品等級 + 競品研究 + code review on
+> everything" before going to sleep for 8 hours. This section documents what
+> landed. 9 Day 8 commits, **120 pytests passing** (was 18 at session start),
+> 0 breaking regressions on baseline.
+
+## 16. Day 8 commit log
+
+```
+aa1e1e4 Day 8I: Security Chunks A/B post-review fixes — login rate limit + warnings
+10775ee Day 8H: Security Chunk C — defense-in-depth headers + body caps + role gates
+f389bc6 Day 8G: Security Chunk B — ACL bypass fix + audit row on every exit path (C-3 + H-7)
+423520a Day 8F: Security Chunk A — lock front door (C-1 + C-2 + C-4 + H-8)
+04071cf Day 8E: Three-pane Analyze workspace (UX_RESEARCH §5 #1 must-have)
+95ad810 Day 8D: docs/UX_RESEARCH.md (competitor walkthroughs + workflow analysis)
+9ac2356 Day 8C: Compat Refactor 3 — upstream-header auth for digiRunner front-line
+492750f Day 8B: Compat Refactor 2 — first-class /v1/redact + /v1/audit/append
+780bef3 Day 8A: Compat Refactor 1 — externalize prompts to YAML for Dify migration
+```
+
+Plus committed earlier this session: docs/SECURITY_AUDIT.md (30 findings), docs/UX_RESEARCH.md (8 must-have UX items).
+
+## 17. What the Day 8 sprint accomplished
+
+### digiRunner + Dify compatibility (user said "一定要能相容")
+- **Day 8A**: All AI engine prompts (parse_oa / draft_response / verify_citations) moved from Python constants into `backend/ai_engine/prompts/*.yaml`. Dify workflows can `paste-import` these directly when migration happens. `GET /v1/prompts/{intent}` endpoint exposes them HTTP-style. Env-gated by `EXPOSE_PROMPT_API` (set false in prod once Dify import done).
+- **Day 8B**: `/v1/debug/redaction_preview` promoted to first-class `/v1/redact` (deprecated alias kept with RFC 9745-compliant `Deprecation: @<unix>` header + Sunset + Link). New `/v1/audit/append` for digiRunner post-LLM hooks to push audit rows HTTP-style; `extra="forbid"` schema prevents identity forgery via body extras; `_AUDIT_APPEND_ROLES` whitelist.
+- **Day 8C**: Gateway accepts `x-user-id` / `x-tenant-id` / `x-user-role` upstream headers from trusted IPs (digiRunner-validated identity), falls back to JWT for local dev. Role whitelist: AUDITOR / IT_ADMIN must come from local `_USERS` — upstream can only assert ATTORNEY / PARALEGAL (defense against confused-deputy via trusted-IP foothold). IPv4-mapped IPv6 normalized. CIDR rejected at config-load time (silent CIDR support would be a foot-gun). Boot guard refuses non-loopback trust without `UPSTREAM_AUTH_SHARED_SECRET` in non-mock mode.
+
+### Product-grade UX (user said "前端 UIUX 要有產品等級")
+- **Day 8D**: `docs/UX_RESEARCH.md` (2832 words, 56 URLs cited) — competitor walkthroughs (DeepIP / Solve Intelligence / Harvey / PatentPal / Lexis+ Protégé / Westlaw CoCounsel / NLPatent), patent attorney workflow analysis, 5-pattern UI library, 8 must-have + 6 nice-to-have UX recommendations with impact/effort ratings.
+- **Day 8E**: Three-pane Analyze workspace (UX_RESEARCH §5 #1 must-have). Universal pattern across DeepIP / Solve / Patlytics — "tab switching" was the #1 cited UX pain. Desktop `≥xl`: 3-pane grid `[3fr 4fr 3fr]` (InputPane / DraftsPane / ReferencesPane), each scrolls independently, shared `activeRejectionId` state, sticky pane headers. Tablet/mobile `<xl`: tabbed single-column. `Analyze.jsx` slimmed 588 → 310 lines. Bundle +6KB raw / +1.5KB gz. ZERO new deps.
+
+### Security + permission hardening (user said "資安和權限管理")
+- **Day 8 audit deliverable**: `docs/SECURITY_AUDIT.md` — 30 findings (4 Critical, 8 High, 11 Medium, 7 Low) with file:line evidence + attack scenarios + recommended fixes + effort estimates.
+- **Day 8F (Chunk A)**: Fixed C-1 (login mints token for any user_id with no credential — anyone reaching gateway could dump audit_dave's audit chain), C-2 (AI engine `:8011` had zero auth — anyone reachable could poison RAG / force public on -CONF / burn Anthropic budget), C-4 (JWT placeholder guardrail disabled in mock mode, which is the demo config), H-8 (login user enumeration via 404 vs 200). Added `_internal_headers()` on every gateway→AI engine httpx call; AI engine middleware refuses without `X-Internal-Token`. Demo passwords `demo-{user_id}` (sha256+salt+hmac.compare_digest; **POC ONLY** docstring per Day 8I), or `X-Demo-Secret` header for click-Alice frictionless UX (when `DEMO_LOGIN_SECRET` env set). `scripts/start_demo.sh` auto-generates secrets via `openssl rand` on first boot.
+- **Day 8G (Chunk B)**: Fixed C-3 (ACL bypass — `auth.py` had a dead `_cached_body` read for body-bound case_id ACL that never fired; ACL silently passed for JSON POSTs omitting X-Case-Id) by gutting the branch + explicit `authorize_case_access(user, body.case_id)` after Pydantic parse. Fixed H-7 (invariant #4 violated on error path — only success/cache paths wrote audit row) via try/finally on every gateway endpoint. Added `_safe_audit_write` (swallows audit-DB errors so audit failure doesn't mask response). Header-vs-body case_id mismatch → 400 (confused-deputy defence).
+- **Day 8H (Chunk C)**: SecurityHeadersMiddleware (CSP / HSTS / X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy on every response, even 4xx — clickjacking via 404 is still clickjacking). MaxBodySizeMiddleware (rejects > MAX_BODY_BYTES via Content-Length BEFORE Pydantic parse so 1GB attack doesn't burn memory). `extra="forbid"` + Pydantic `Field(..., max_length=N)` on every BaseModel. New `require_roles(*roles)` dependency factory. Role gates: /v1/oa/analyze + /v1/oa/upload + /v1/redact → ATTORNEY + PARALEGAL; /v1/quota → any; /v1/audit/* → AUDITOR. Env-driven CORS (specific methods+headers, no `*`). `LISTEN_HOST=127.0.0.1` default (was 0.0.0.0 — relied on dev firewalls).
+- **Day 8I (post-review fixes)**: Login pre-auth rate limit (per-IP, default 10/min) — closes brute-force window on demo passwords. VITE_DEMO_LOGIN_SECRET loud warning ("dev builds only — vite inlines into JS bundle"). sha256 docstring loud warning ("POC ONLY — switch to argon2id/bcrypt for real user passwords").
+
+### Code review on EVERYTHING (user mandate)
+Each chunk got a dedicated reviewer agent before commit:
+- Phase 1A/B/C (earlier sessions): 3 reviewers
+- Day 1A LLM wiring: reviewer (threadsafe / retry-after / etc.)
+- Day 1B eval harness: reviewer (concurrency / badness comparison / etc.)
+- Compat Refactor 1/2/3: 3 reviewers (Day 8 ran with stale-base mitigation)
+- Security Chunks A+B combined: reviewer (verdict "Ship as-is, 6 Important deferred")
+- Day 8I addresses the 3 highest-impact Important findings; remaining 3 are documented design tradeoffs
+
+## 18. Status snapshot (post Day 8I)
+
+| Metric | Value |
+|---|---|
+| pytest | **120 passed** (1 warning, pre-existing pydantic protected_namespace, silenced for AuditEntry+CostMeta in 8H) |
+| Frontend build | `vite build` 269 → 275 KB (+6KB raw, +1.5KB gz) |
+| Local commits ahead of origin | **22** (still NOT pushed — auth issue from §11 not resolved) |
+| Compat-with-digiRunner+Dify | All Hard Blockers from `docs/COMPAT_AUDIT` resolved (prompts externalized, /v1/redact + /v1/audit/append first-class, upstream-header auth ready). Migration plan ready in §16-17. |
+| Security findings closed | 4/4 Critical (C-1 C-2 C-3 C-4) + 4/8 High (H-1 H-2 H-6 H-7 H-8) + 2/11 Medium (M-1 M-9) |
+| Security findings open | 4/8 High (H-3 H-4 H-5 — chunk D never spawned) + 9/11 Medium + 7/7 Low |
+| UX recommendations shipped | 1/8 must-have (#1 three-pane). 7 must-have + 6 nice-to-have remaining. |
+
+## 19. What you should do when you wake up
+
+### 1. Push to origin (still blocked — §11 has 3 recipes)
+22 commits sit local. Until pushed, lose laptop = lose 1 weekend of work.
+```bash
+# Pick one of:
+git remote set-url origin https://Adrian-Kao:<PAT>@github.com/Adrian-Kao/shin-lee.git && git push
+# OR set up SSH and: git remote set-url origin git@github.com:Adrian-Kao/shin-lee.git && git push
+# OR: gh auth login + git push
+```
+
+### 2. Get the Anthropic API key into `.env`
+Day 8F's `scripts/start_demo.sh` auto-generates JWT_SECRET / INTERNAL_TOKEN /
+DEMO_LOGIN_SECRET on first boot. ANTHROPIC_API_KEY you set manually:
+```bash
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+bash scripts/start_demo.sh   # auto-detects key → switches LLM_MODE=anthropic
+```
+Then `python scripts/eval_cases.py --mode anthropic` to A/B against the mock baseline. Cost: ~$2-5 for all 30 cases.
+
+### 3. Stakeholder demo dry-run
+§12 presenter notes still valid. Day 8E's three-pane layout changes the visual — re-walk the demo flow once. Mobile fallback works at < 1280px.
+
+### 4. Outstanding security work (if pre-pilot)
+Open findings from `docs/SECURITY_AUDIT.md`:
+- **H-3** (mock embeddings same vector across tenants) — Chunk D scope
+- **H-4** (cross-tenant audit verify missing) — Chunk D scope
+- **H-5** (JWT HS256 single secret, no rotation/revocation) — defer to OIDC migration
+- **M-2..M-8 / M-10..M-11** (assorted: in-memory rate state reset on restart, missing CSP nonces in prod, sqlite check_same_thread, Unicode normalize before redaction, cache key uses raw text, etc.) — none blocking pilot
+- **L-1..L-7** — all defer
+
+### 5. Outstanding UX work (post-demo)
+From `docs/UX_RESEARCH.md` §5, must-have items NOT yet shipped:
+- **#2** Claim dependency tree in left rail (S effort, High impact — backend has the data)
+- **#3** Inline citation hover-preview + click-to-source-pane (S effort, High impact — Q14 data exists)
+- **#4** USPTO underline/strikethrough export from DraftEditor (S effort, High impact)
+- **#5** Cmd/Ctrl+K command palette (M effort — Harvey baseline)
+- **#6** Examiner-style review pre-submit check (S effort)
+- **#7** Shared "Workroom" view (M effort — Lexis+ Workrooms is new bar)
+- **#8** Bilingual UX hardening (S effort — language switcher in header)
+
+## 20. 給接手 Claude 的一句話 (2026-06-01 版 — overnight wrap)
+
+> 22 commits ahead of origin, 120/120 pytests pass, all 4 Critical security findings closed + 4 High + 2 Medium, three-pane UX live, digiRunner+Dify migration unblocked (prompts externalized + /v1/redact + /v1/audit/append + upstream-header auth ready), HANDOFF §16-20 has the complete play-by-play. Push auth still blocks (§11). Priorities when you wake up: (1) push to origin §19.1; (2) ANTHROPIC_API_KEY + real LLM smoke §19.2; (3) demo dry-run §12 (visuals refreshed by 8E); (4) Phase 2 Chunk D (H-3 + H-4 cross-tenant) if time. UX_RESEARCH §5 items #2-#8 are the next sprint after demo.

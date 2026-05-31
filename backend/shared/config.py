@@ -4,14 +4,61 @@
 """
 from __future__ import annotations
 
+import ipaddress
 import os
 from pathlib import Path
+from typing import FrozenSet, Iterable, Union
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
 PATENT_DB_PATH = DATA_DIR / "patentmind.db"
 AUDIT_DB_PATH = DATA_DIR / "audit.db"
 MAPPING_DB_PATH = DATA_DIR / "redaction_mapping.db"  # Q10: 不上雲的 mapping table
+
+
+# ---------------------------------------------------------------------------
+# Trusted-upstream IP parsing.
+#
+# Exposed at module level (NOT inside Settings) because the auth module needs
+# to call it without owning an import cycle back to Settings, and because the
+# boot-time guard below also calls it before `settings = Settings()` returns.
+# ---------------------------------------------------------------------------
+_IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
+
+
+def _parse_trusted_ips(
+    raw: Union[str, Iterable[str]],
+) -> FrozenSet[_IPAddress]:
+    """Parse TRUSTED_UPSTREAM_IPS into a set of ``ipaddress.IPv*Address``
+    objects.
+
+    Returns an empty frozenset when ``raw`` is empty (= upstream-trust
+    kill switch).
+
+    Plain IPs are accepted; CIDR ranges (e.g. ``'10.0.0.0/24'``) are NOT
+    supported and raise :class:`ValueError` at config-load time. Operators
+    who expect CIDR support should be told loudly rather than have it
+    silently fail closed (which would force every legitimate upstream
+    request down the JWT path with no log signal).
+
+    Returning ``IPv*Address`` objects (not strings) lets the auth layer
+    normalise the peer address through ``ipaddress.ip_address`` and compare
+    on equality, which transparently handles IPv4-mapped-IPv6 (``::ffff:``)
+    peers that uvicorn surfaces on dual-stack sockets.
+    """
+    if isinstance(raw, str):
+        items = [s.strip() for s in raw.split(",") if s.strip()]
+    else:
+        items = [s.strip() for s in raw if s and s.strip()]
+    out: set[_IPAddress] = set()
+    for item in items:
+        if "/" in item:
+            raise ValueError(
+                f"TRUSTED_UPSTREAM_IPS does not support CIDR ranges; got "
+                f"{item!r}. List each IP individually."
+            )
+        out.add(ipaddress.ip_address(item))
+    return frozenset(out)
 
 
 class Settings:
@@ -84,6 +131,25 @@ class Settings:
     # Security level mapping (Q15 router)
     LOCAL_LLM_FOR_SECURITY_LEVELS: tuple[str, ...] = ("confidential", "top_secret")
 
+    # Upstream auth trust (Compat Refactor 3 — digiRunner migration prep).
+    # Trusted upstream IPs that may set x-user-id / x-tenant-id / x-user-role
+    # headers (= digiRunner-validated identity). Anyone NOT from these IPs
+    # falls back to JWT auth. Comma-separated; empty = upstream-header auth
+    # disabled. Localhost-only by default — DO NOT add 0.0.0.0 / wildcards.
+    TRUSTED_UPSTREAM_IPS: tuple[str, ...] = tuple(
+        ip.strip()
+        for ip in os.getenv("TRUSTED_UPSTREAM_IPS", "127.0.0.1,::1").split(",")
+        if ip.strip()
+    )
+
+    # Optional defence-in-depth shared secret. When set, requests claiming
+    # upstream identity must also present a matching `x-upstream-auth-token`
+    # header or the upstream-trust path declines. Empty = secret check
+    # disabled (relies on IP trust alone — acceptable for loopback-only
+    # deployments). REQUIRED when TRUSTED_UPSTREAM_IPS contains any
+    # non-loopback entry in non-mock mode (enforced at boot below).
+    UPSTREAM_AUTH_SHARED_SECRET: str = os.getenv("UPSTREAM_AUTH_SHARED_SECRET", "")
+
     # PDF upload (Day 2)
     MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "30"))
     MIN_CHARS_PER_PAGE_FOR_TEXT: int = int(os.getenv("MIN_CHARS_PER_PAGE_FOR_TEXT", "30"))
@@ -99,6 +165,17 @@ class Settings:
 settings = Settings()
 
 
+# --- Parse trusted-upstream IPs once at module load -----------------------
+# Exposing the parsed frozenset here (rather than re-parsing per request in
+# auth.py) means a malformed `TRUSTED_UPSTREAM_IPS` (e.g. CIDR notation) is
+# caught at import-time — uvicorn fails to start with a clear ValueError,
+# instead of running fine until the first request that triggers parsing.
+# Tests that mutate `settings.TRUSTED_UPSTREAM_IPS` should re-derive the
+# parsed set via `_parse_trusted_ips(settings.TRUSTED_UPSTREAM_IPS)` (the
+# auth module does this lazily so monkeypatching keeps working).
+_TRUSTED_IPS_PARSED: frozenset = _parse_trusted_ips(settings.TRUSTED_UPSTREAM_IPS)
+
+
 # --- Boot-time guardrail: refuse to run prod with the placeholder JWT_SECRET ---
 # Mock mode (POC default) is allowed because no real secrets cross the wire.
 # Pytest is allowed because the test harness injects its own ephemeral secret.
@@ -112,3 +189,42 @@ if (
         "Refusing to start with default JWT_SECRET in non-mock mode. "
         "Set JWT_SECRET to a 32+ byte random hex via: openssl rand -hex 32"
     )
+
+
+# --- Boot-time guardrail: non-loopback upstream trust requires a secret ---
+# Rationale: deployments often add a sidecar / mesh proxy between digiRunner
+# and us. The moment ops adds that proxy's IP to the trust list without
+# configuring a shared secret, every pod in the mesh can forge identities
+# (the upstream-trust path will honour their x-user-id headers). Fail loud
+# at boot, not silent in prod.
+#
+# Loopback (127.0.0.1, ::1, and the IPv4-mapped-IPv6 form ::ffff:127.0.0.1)
+# is exempt: only processes on the same host can talk to it, so an attacker
+# already needs local code execution to abuse the trust.
+def _validate_upstream_trust_config() -> None:
+    """Refuse to boot if TRUSTED_UPSTREAM_IPS includes a non-loopback IP
+    without a shared secret AND we're not in mock/test mode."""
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return  # test fixtures handle their own trust config
+    if settings.LLM_MODE == "mock":
+        return  # POC / demo mode — trust is local-only by convention
+    loopback_ips = {
+        ipaddress.ip_address("127.0.0.1"),
+        ipaddress.ip_address("::1"),
+        # IPv4-mapped-IPv6 of loopback. We compare on normalised
+        # ip_address so an entry of ``::ffff:127.0.0.1`` in the trust list
+        # is treated as loopback too.
+        ipaddress.ip_address("::ffff:127.0.0.1").ipv4_mapped
+        or ipaddress.ip_address("::ffff:127.0.0.1"),
+    }
+    non_loopback = {str(ip) for ip in _TRUSTED_IPS_PARSED if ip not in loopback_ips}
+    if non_loopback and not settings.UPSTREAM_AUTH_SHARED_SECRET:
+        raise RuntimeError(
+            f"TRUSTED_UPSTREAM_IPS contains non-loopback IPs {sorted(non_loopback)} "
+            f"but UPSTREAM_AUTH_SHARED_SECRET is empty. Set the secret OR remove "
+            f"the non-loopback entries OR set LLM_MODE=mock. "
+            f"See backend/gateway/auth.py for the trust model."
+        )
+
+
+_validate_upstream_trust_config()

@@ -82,9 +82,11 @@ machinery.
 """
 from __future__ import annotations
 
+import hashlib
 import hmac
 import ipaddress
 import logging
+import secrets
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -113,7 +115,54 @@ _UPSTREAM_ASSERTABLE_ROLES: frozenset[UserRole] = frozenset({
 # Single source of truth for the least-privilege fallback role.
 _UPSTREAM_DEFAULT_ROLE: UserRole = UserRole.PARALEGAL
 
+
+# ---------------------------------------------------------------------------
+# Password hashing (Security Chunk A — C-1, H-8).
+#
+# Design choice: sha256 + 16-byte hex salt with `hmac.compare_digest` for the
+# constant-time check. We deliberately avoided pulling in passlib/bcrypt to
+# keep the POC dep set tight — the hashes here only protect demo accounts
+# whose passwords are documented in .env.example, so KDF strength is moot.
+# When the demo accounts are replaced with real IdP-backed users (CLAUDE.md
+# §5 P0 "OIDC integration"), the hash storage moves to the IdP and these
+# helpers can be deleted.
+# ---------------------------------------------------------------------------
+def _hash_password(password: str, salt: Optional[str] = None) -> str:
+    """Return ``'salt:hash'`` for storage.
+
+    ``salt`` is 16-byte hex by default. Hex (not raw bytes) so the stored
+    value is always pure-ASCII and round-trips through any text channel.
+    """
+    if salt is None:
+        salt = secrets.token_hex(16)
+    h = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
+    return f"{salt}:{h}"
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    """Constant-time compare via ``hmac.compare_digest``.
+
+    Returns ``False`` (not an exception) for malformed/empty stored strings
+    so the caller always gets a single uniform "wrong creds" path and there
+    is no shape oracle the attacker can probe.
+    """
+    if not stored or ":" not in stored:
+        return False
+    salt, expected = stored.split(":", 1)
+    candidate = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
+    return hmac.compare_digest(candidate, expected)
+
+
+# ---------------------------------------------------------------------------
 # POC: in-memory user store. Production: replace with IdP middleware.
+#
+# Each entry pairs a `User` (the runtime context object that auth_dependency
+# returns and that every downstream module type-hints against) with a
+# `password_hash` for credentialed login. Default demo passwords are
+# `demo-{user_id}` and are documented in `.env.example` — for stakeholder
+# demos the operator usually sets `DEMO_LOGIN_SECRET` instead so the SPA can
+# "click Alice" without typing.
+# ---------------------------------------------------------------------------
 _USERS: dict[str, User] = {
     "alice": User(
         user_id="alice",
@@ -144,6 +193,51 @@ _USERS: dict[str, User] = {
         daily_token_quota=5_000,
     ),
 }
+
+# Password hashes for the demo users above. Kept as a sidecar map so the
+# `User` Pydantic model (shared with the AI Engine, frontend, etc.) does
+# NOT grow a `password_hash` field — that would leak the hash into every
+# `User.model_dump()` call and into the JWT payload echo.
+#
+# Each hash is computed at import time so the docs ("default password is
+# `demo-{uid}`") stay the single source of truth — change the password
+# convention in one place and every hash regenerates.
+_PASSWORD_HASHES: dict[str, str] = {
+    uid: _hash_password(f"demo-{uid}") for uid in _USERS
+}
+
+
+def _get_user(user_id: str) -> Optional[User]:
+    """Lookup helper — returns the demo user or None.
+
+    Exists as a named function (rather than callers reaching into `_USERS`
+    directly) so the login path has a single chokepoint to instrument /
+    rate-limit / audit when this becomes a real user store.
+    """
+    return _USERS.get(user_id)
+
+
+def _get_password_hash(user_id: str) -> Optional[str]:
+    """Return the stored password hash, or ``None`` for unknown users."""
+    return _PASSWORD_HASHES.get(user_id)
+
+
+def _internal_headers() -> dict[str, str]:
+    """Headers the gateway adds to every outbound httpx call to the AI Engine.
+
+    Security Chunk A — C-2. AI Engine refuses any non-`/v1/health` request
+    that lacks `X-Internal-Token`. The token is server-side only — never
+    forwarded from a client header — so an attacker who reaches :8011
+    directly cannot replay one captured from the SPA.
+
+    Returns an empty dict when `INTERNAL_TOKEN` is unset, which matches the
+    AI Engine middleware's "empty + mock = permit" rule for local pytest /
+    in-process ASGITransport.
+    """
+    token = settings.INTERNAL_TOKEN
+    if not token:
+        return {}
+    return {"X-Internal-Token": token}
 
 # POC: which case_ids each user has access to.
 # Production: query from case-management system per request.

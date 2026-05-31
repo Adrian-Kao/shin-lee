@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 
 from backend.gateway import cache, masking
+from backend.gateway.auth import _internal_headers
 from backend.gateway.rate_limit import estimate_cost
 from backend.shared.config import settings
 from backend.shared.models import (
@@ -46,7 +47,10 @@ class AIEngineClient:
     async def call(self, path: str, payload: dict) -> dict:
         url = f"{self.base_url}{path}"
         async with httpx.AsyncClient(timeout=60.0) as client:
-            r = await client.post(url, json=payload)
+            # Security Chunk A — C-2. AI Engine's middleware refuses any
+            # non-`/v1/health` request that lacks X-Internal-Token. The
+            # token is server-side only; the SPA never sees it.
+            r = await client.post(url, json=payload, headers=_internal_headers())
             r.raise_for_status()
             return r.json()
 

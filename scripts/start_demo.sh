@@ -26,16 +26,62 @@ ROOT=$(pwd)
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-# Load .env if present so the same vars reach backend + scripts.
-if [ -f .env ]; then
-  set -a; . ./.env; set +a
-fi
-
 # ----- Colors -----
 GREEN='\033[0;32m'; YEL='\033[1;33m'; RED='\033[0;31m'; NC='\033[0m'
 ok()  { echo -e "${GREEN}✓${NC} $*"; }
 inf() { echo -e "${YEL}▶${NC} $*"; }
 err() { echo -e "${RED}✗${NC} $*"; }
+
+# --- Auto-generate secrets on first boot (Security Chunk A) -----------------
+# A fresh clone has no .env. The backend now refuses to boot with the
+# published placeholder JWT_SECRET (C-4), so we generate one on first run
+# and persist to .env. INTERNAL_TOKEN (C-2) and DEMO_LOGIN_SECRET (C-1) get
+# the same treatment so the operator never has to read the security audit
+# to run the demo.
+ensure_secret() {
+  local var_name="$1"
+  local hex_bytes="$2"   # number of bytes for openssl rand -hex
+  # If .env is missing or doesn't contain a non-empty value for var_name,
+  # generate one and append (or replace placeholder).
+  local current_value=""
+  if [ -f .env ]; then
+    current_value=$(grep -E "^${var_name}=" .env | tail -1 | cut -d= -f2- || true)
+    # Strip the placeholder string too so old .env files get upgraded.
+    if [ "$current_value" = "changeme-generate-with-openssl-rand-hex-32" ]; then
+      current_value=""
+    fi
+  fi
+  if [ -z "$current_value" ]; then
+    if ! command -v openssl >/dev/null 2>&1; then
+      err "openssl not found — install it or set $var_name manually in .env"
+      exit 1
+    fi
+    local new_value
+    new_value=$(openssl rand -hex "$hex_bytes")
+    if [ -f .env ] && grep -qE "^${var_name}=" .env; then
+      # Replace the placeholder/empty line in-place. Use awk + tmpfile so
+      # we don't depend on sed -i flavour (BSD vs GNU differ on -i).
+      local tmp
+      tmp=$(mktemp)
+      awk -v v="$var_name" -v r="${var_name}=${new_value}" \
+        'BEGIN{FS=OFS="="} $1==v{print r; next} {print}' .env > "$tmp"
+      mv "$tmp" .env
+    else
+      # Append (creates .env if missing).
+      echo "${var_name}=${new_value}" >> .env
+    fi
+    ok "Generated ${var_name} (${hex_bytes} bytes) → .env"
+  fi
+}
+
+ensure_secret JWT_SECRET 32
+ensure_secret INTERNAL_TOKEN 32
+ensure_secret DEMO_LOGIN_SECRET 16
+
+# Load .env if present so the same vars reach backend + scripts.
+if [ -f .env ]; then
+  set -a; . ./.env; set +a
+fi
 
 # ----- LLM mode auto-detect -----
 if [ -z "${LLM_MODE:-}" ]; then

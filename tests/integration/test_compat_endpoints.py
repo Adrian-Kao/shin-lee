@@ -111,7 +111,8 @@ def test_audit_append_writes_row(gateway_client, alice_token):
 
     # 2. Read it back as the auditor (audit_dave is in tenant_a, same as alice).
     auditor_token = gateway_client.post(
-        "/v1/auth/login", json={"user_id": "audit_dave"}
+        "/v1/auth/login",
+        json={"user_id": "audit_dave", "password": "demo-audit_dave"},
     ).json()["token"]
     recent = gateway_client.get(
         "/v1/audit/recent",
@@ -183,7 +184,8 @@ def test_audit_append_paralegal_role_gated(gateway_client):
     Bob is the demo paralegal — his token authenticates but the endpoint
     must refuse with 403 before any audit row is written."""
     bob_token = gateway_client.post(
-        "/v1/auth/login", json={"user_id": "bob"}
+        "/v1/auth/login",
+        json={"user_id": "bob", "password": "demo-bob"},
     ).json()["token"]
     resp = gateway_client.post(
         "/v1/audit/append",

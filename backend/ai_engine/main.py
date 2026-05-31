@@ -13,13 +13,15 @@ Endpoints:
 """
 from __future__ import annotations
 
+import hmac
 import time
 from datetime import datetime
 from typing import Any, Optional
 
 import base64
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.ai_engine import deadline as deadline_mod
@@ -45,6 +47,55 @@ app = FastAPI(
     version="0.1.0",
     description="Single-step AI inference. Called by gateway orchestrator.",
 )
+
+
+# ---------------------------------------------------------------------------
+# Security Chunk A — C-2. Internal-token middleware.
+#
+# AI Engine has historically had ZERO per-endpoint auth on the assumption
+# that it's only reachable via the gateway inside our VPC. That assumption
+# breaks the moment the operator binds :8011 to 0.0.0.0, runs in
+# docker-compose without an internal network, or exposes a debugging port.
+# The blast radius (RAG poisoning, confidential-routing bypass, Anthropic
+# cost abuse) is severe enough that we now require an explicit shared
+# secret on every non-health request.
+#
+# Token-source rules:
+#   - `/v1/health`  is always allowed without a token so liveness probes
+#     work from anywhere.
+#   - When `INTERNAL_TOKEN` is set, every other request must carry a
+#     matching `X-Internal-Token` header. Mismatch + missing header both
+#     return 401 with an identical body (no oracle on which one failed).
+#   - When `INTERNAL_TOKEN` is empty AND `LLM_MODE=mock`, the middleware
+#     permits all requests. This is the local-dev / pytest case where
+#     TestClient mounts the app in-process via ASGITransport and there is
+#     no realistic attacker.
+#   - When `INTERNAL_TOKEN` is empty AND `LLM_MODE != mock`, the middleware
+#     refuses every non-health request. This is intentional: we will NOT
+#     fall back to "permit" silently in production mode — the operator must
+#     either generate a token (`openssl rand -hex 32`) or explicitly stay
+#     on mock.
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def _internal_token_middleware(request: Request, call_next):
+    if request.url.path == "/v1/health":
+        return await call_next(request)
+    expected = settings.INTERNAL_TOKEN
+    if not expected and settings.LLM_MODE == "mock":
+        # Local-dev / pytest with no token configured — permit. Anyone
+        # running mock mode in production is already in the "demo, not
+        # prod" world C-4 closes off, so the blast radius is bounded.
+        return await call_next(request)
+    supplied = request.headers.get("x-internal-token", "")
+    # `hmac.compare_digest` requires both operands to be non-empty strings
+    # of the same type — guarded by the `expected and` short-circuit so an
+    # empty `expected` in non-mock mode falls through to the 401 below.
+    if not (expected and hmac.compare_digest(supplied, expected)):
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Unauthorized"},
+        )
+    return await call_next(request)
 
 
 # ---------- Schemas ----------

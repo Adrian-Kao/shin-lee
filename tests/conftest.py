@@ -41,6 +41,16 @@ _TEST_ENV_DEFAULTS = {
     "GATEWAY_URL": "http://testserver-gateway",
     "AI_ENGINE_URL": "http://testserver-ai-engine",
     "JWT_SECRET": "test-secret-do-not-use-elsewhere-32bytes!!",
+    # Security Chunk A — empty INTERNAL_TOKEN + LLM_MODE=mock = permit. The
+    # patched_ai_engine fixture mounts the AI Engine in-process via
+    # ASGITransport, so there's no realistic way to inject a header through
+    # the gateway's httpx layer without a much larger refactor; the "empty
+    # + mock" permit rule keeps the test suite hermetic while production
+    # still requires a real token.
+    "INTERNAL_TOKEN": "",
+    # Security Chunk A — keep the demo-secret bypass disabled by default in
+    # tests. Individual tests that exercise the bypass monkeypatch this on.
+    "DEMO_LOGIN_SECRET": "",
 }
 # Per-session scratch dir for audit + masking SQLite DBs so the test run does
 # not write into the developer's data/ tree (which would persist and grow
@@ -108,7 +118,12 @@ def gateway_client(gateway_app):
 # ---------------------------------------------------------------------------
 @pytest.fixture()
 def alice_token(gateway_client) -> str:
-    resp = gateway_client.post("/v1/auth/login", json={"user_id": "alice"})
+    # Security Chunk A — /v1/auth/login now requires a credential. Default
+    # demo password is `demo-{user_id}` (documented in .env.example).
+    resp = gateway_client.post(
+        "/v1/auth/login",
+        json={"user_id": "alice", "password": "demo-alice"},
+    )
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "token" in body, body

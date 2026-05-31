@@ -11,16 +11,25 @@ Boots a FastAPI service on :8000. Layers, in request order:
 from __future__ import annotations
 
 import base64
+import hmac
 import time
 from typing import Optional
 
 import httpx
-from fastapi import Depends, FastAPI, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.gateway import audit, cache, masking, rate_limit
-from backend.gateway.auth import auth_dependency, authorize_case_access, issue_token
+from backend.gateway.auth import (
+    _get_password_hash,
+    _get_user,
+    _internal_headers,
+    _verify_password,
+    auth_dependency,
+    authorize_case_access,
+    issue_token,
+)
 from backend.gateway.orchestrator import orchestrate_analysis
 from backend.shared.config import settings
 from backend.shared.models import AnalysisRequest, AnalysisResponse, User, UserRole
@@ -60,6 +69,10 @@ app.add_middleware(
 
 class LoginRequest(BaseModel):
     user_id: str  # POC: pass user_id directly. Production: IdP redirect.
+    # Required unless an X-Demo-Secret header is supplied AND matches
+    # settings.DEMO_LOGIN_SECRET. Default demo password is `demo-{user_id}`
+    # (documented in .env.example).
+    password: Optional[str] = None
 
 
 class LoginResponse(BaseModel):
@@ -71,8 +84,31 @@ class LoginResponse(BaseModel):
 
 
 @app.post("/v1/auth/login", response_model=LoginResponse)
-def login(req: LoginRequest):
-    """Issue a JWT for one of the demo users.
+def login(
+    req: LoginRequest,
+    x_demo_secret: Optional[str] = Header(default=None, alias="X-Demo-Secret"),
+):
+    """Issue a JWT after validating credentials (Security Chunk A — C-1, H-8).
+
+    Two accepted paths (POC):
+
+    1. **Username + password.** Default demo passwords are ``demo-{user_id}``
+       (see ``.env.example``). Compared in constant time via
+       ``hmac.compare_digest`` so byte-level timing cannot oracle which
+       prefix matched.
+
+    2. **X-Demo-Secret header.** Used by the SPA's "click Alice" landing
+       page so stakeholder demos don't require typing. Only honoured when
+       the ``DEMO_LOGIN_SECRET`` env var is set on the backend (otherwise
+       any value the attacker supplies is useless). When set, a matching
+       header authenticates the named user without a password — equivalent
+       to a global service-side bypass that the operator opts into per
+       deployment.
+
+    Both unknown user and wrong password collapse to the **same** 401
+    response (no body shape difference, no status difference) — closes
+    H-8 user enumeration. Per-IP rate limiting on this endpoint is tracked
+    as a follow-up (it's the only currently-unauthenticated endpoint).
 
     POC IdP modes (Q12) all converge here:
       - built-in:    POST /v1/auth/login (this endpoint)
@@ -80,10 +116,37 @@ def login(req: LoginRequest):
       - SAML:        /v1/auth/saml/acs (TODO)
       - magic link:  /v1/auth/magic/{token} (TODO)
     """
-    from backend.gateway.auth import _USERS
-    if req.user_id not in _USERS:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, f"user {req.user_id} not found")
-    user = _USERS[req.user_id]
+    user = _get_user(req.user_id)
+    stored_hash = _get_password_hash(req.user_id)
+
+    # Path 1: demo-secret header. Only relevant when an operator has set
+    # DEMO_LOGIN_SECRET on the backend — otherwise the comparison is
+    # short-circuited so an attacker supplying any header value learns
+    # nothing about whether the feature exists.
+    demo_secret_ok = bool(
+        settings.DEMO_LOGIN_SECRET
+        and x_demo_secret
+        and hmac.compare_digest(x_demo_secret, settings.DEMO_LOGIN_SECRET)
+    )
+
+    # Path 2: username + password. We always run _verify_password regardless
+    # of whether `user` is None, so the work-factor is identical for the
+    # known-user-wrong-password and unknown-user paths (closes H-8 timing
+    # oracle). We pass a dummy hash for the unknown-user case so the sha256
+    # round still happens.
+    candidate_hash = stored_hash or _DUMMY_HASH_FOR_TIMING
+    password_ok = bool(
+        req.password and _verify_password(req.password, candidate_hash)
+    )
+
+    # `user is not None` is required for BOTH paths: the demo-secret header
+    # is a credential, not an identity selector, so it cannot conjure a
+    # `user_id` that isn't in the table.
+    authenticated = bool(user) and (demo_secret_ok or password_ok)
+    if not authenticated:
+        # Same status + message for unknown user AND bad password (H-8).
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+
     return LoginResponse(
         token=issue_token(req.user_id),
         user_id=user.user_id,
@@ -91,6 +154,18 @@ def login(req: LoginRequest):
         role=user.role.value,
         display_name=user.display_name,
     )
+
+
+# A fixed dummy hash used when the requested user_id is unknown. Picked so
+# the sha256 round in `_verify_password` runs for the unknown-user case too
+# — without it the unknown-user path returns hundreds of nanoseconds faster
+# than the known-user-wrong-password path and an attacker can enumerate.
+# The salt is fixed (not random per request) because the only goal is to
+# make the work factor identical, not to actually authenticate anyone.
+_DUMMY_HASH_FOR_TIMING = (
+    "00000000000000000000000000000000:"
+    "0000000000000000000000000000000000000000000000000000000000000000"
+)
 
 
 # ---------- Health / Quota dashboard (Q19) ----------
@@ -303,7 +378,9 @@ async def upload_oa(
         # OCR over a 100-page scan can take ~60s through Haiku, so the
         # timeout intentionally exceeds the orchestrator's 60s.
         try:
-            ai_resp = await client.post(ai_url, json=payload)
+            # Security Chunk A — C-2. AI Engine refuses requests lacking
+            # X-Internal-Token. Gateway is the only legitimate caller.
+            ai_resp = await client.post(ai_url, json=payload, headers=_internal_headers())
         except httpx.HTTPError as exc:
             raise HTTPException(
                 status.HTTP_502_BAD_GATEWAY,

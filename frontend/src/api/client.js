@@ -30,9 +30,22 @@ async function call(path, { method = 'GET', body, token, headers = {} } = {}) {
   return data;
 }
 
+// Security Chunk A — the backend's /v1/auth/login now requires either a
+// password or a matching X-Demo-Secret header. The SPA's "click Alice" UX
+// uses the header path so attendees never type. The operator sets
+// `VITE_DEMO_LOGIN_SECRET` at build time to the same string they set as
+// `DEMO_LOGIN_SECRET` on the gateway. Leave both unset for the password
+// path (frontend would need a password field — out of scope for this chunk).
+const DEMO_LOGIN_SECRET = import.meta.env?.VITE_DEMO_LOGIN_SECRET || '';
+
 export const api = {
   health: () => call('/v1/health'),
-  login: (user_id) => call('/v1/auth/login', { method: 'POST', body: { user_id } }),
+  login: (user_id) =>
+    call('/v1/auth/login', {
+      method: 'POST',
+      body: { user_id },
+      headers: DEMO_LOGIN_SECRET ? { 'X-Demo-Secret': DEMO_LOGIN_SECRET } : {},
+    }),
   quota: (token, case_id) =>
     call(`/v1/quota?case_id=${encodeURIComponent(case_id || '')}`, { token }),
   analyze: (token, payload) =>

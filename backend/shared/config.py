@@ -161,6 +161,22 @@ class Settings:
     # surface. Default is true to keep Dify import + dev sanity flows working.
     EXPOSE_PROMPT_API: bool = os.getenv("EXPOSE_PROMPT_API", "true").lower() in ("1", "true", "yes")
 
+    # ------------------------------------------------------------------
+    # Security Chunk A — C-1 / C-2 / H-8
+    # ------------------------------------------------------------------
+    # Frictionless demo login. When set, /v1/auth/login accepts an
+    # `X-Demo-Secret` header instead of a password for any known user, so
+    # the SPA's "click Alice" flow keeps working without typing. Leave
+    # UNSET in production — the password path remains available unconditionally.
+    DEMO_LOGIN_SECRET: str = os.getenv("DEMO_LOGIN_SECRET", "")
+
+    # Shared secret on outbound gateway -> AI Engine calls. AI Engine's
+    # middleware refuses any non-`/v1/health` request that lacks a matching
+    # `X-Internal-Token`. Empty + mock mode = permit (so pytest's in-process
+    # ASGITransport works). Empty + non-mock mode = refuse everything except
+    # health (loud failure, see notes below).
+    INTERNAL_TOKEN: str = os.getenv("INTERNAL_TOKEN", "")
+
 
 settings = Settings()
 
@@ -176,18 +192,30 @@ settings = Settings()
 _TRUSTED_IPS_PARSED: frozenset = _parse_trusted_ips(settings.TRUSTED_UPSTREAM_IPS)
 
 
-# --- Boot-time guardrail: refuse to run prod with the placeholder JWT_SECRET ---
-# Mock mode (POC default) is allowed because no real secrets cross the wire.
-# Pytest is allowed because the test harness injects its own ephemeral secret.
+# --- Boot-time guardrail: refuse to run with the placeholder JWT_SECRET ----
+# Security Chunk A (C-4): previously this only fired in non-mock mode, but
+# the demo IS mock mode — so the placeholder was effectively allowed in the
+# config every visitor would see. .env.example publishes the placeholder
+# string, which means anyone with read access to the repo could sign their
+# own tokens and bypass C-1 entirely.
+#
+# Now: refuse in ALL modes. The single exception is pytest, which sets its
+# own ephemeral secret (`test-secret-do-not-use-elsewhere-32bytes!!`) in
+# tests/conftest.py — that string is distinct from the placeholder, so the
+# guard never fires under the test harness even though PYTEST_CURRENT_TEST
+# is exported per-test by pytest.
 _PLACEHOLDER_JWT_SECRET = "changeme-generate-with-openssl-rand-hex-32"
 if (
-    settings.LLM_MODE not in {"mock"}
-    and "PYTEST_CURRENT_TEST" not in os.environ
+    "PYTEST_CURRENT_TEST" not in os.environ
     and settings.JWT_SECRET == _PLACEHOLDER_JWT_SECRET
 ):
     raise RuntimeError(
-        "Refusing to start with default JWT_SECRET in non-mock mode. "
-        "Set JWT_SECRET to a 32+ byte random hex via: openssl rand -hex 32"
+        "JWT_SECRET is the published placeholder string. Refusing to boot "
+        "in ANY mode (mock included — that's the demo config and the "
+        "string is public). Generate a real secret via:\n"
+        "    openssl rand -hex 32\n"
+        "then set JWT_SECRET in your .env. See scripts/start_demo.sh for "
+        "the auto-generation path."
     )
 
 

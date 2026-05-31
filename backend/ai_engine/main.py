@@ -326,4 +326,8 @@ def index_patent(req: IndexPatentRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.ai_engine.main:app", host="0.0.0.0", port=settings.AI_ENGINE_PORT, reload=False)
+    # M-9: bind 127.0.0.1 by default (was 0.0.0.0 — i.e. exposed on every
+    # LAN interface). Set `LISTEN_HOST=0.0.0.0` only when this process is
+    # intentionally the public edge; production should run behind a
+    # reverse proxy bound to loopback.
+    uvicorn.run("backend.ai_engine.main:app", host=settings.LISTEN_HOST, port=settings.AI_ENGINE_PORT, reload=False)

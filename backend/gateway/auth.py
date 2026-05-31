@@ -513,3 +513,64 @@ async def auth_dependency(request: Request) -> User:
     request.state.user = user
     request.state.case_id = case_id
     return user
+
+
+# ---------------------------------------------------------------------------
+# Role-gate dependency factory (Security Chunk C — H-6)
+# ---------------------------------------------------------------------------
+def require_roles(*allowed_roles: UserRole):
+    """Build a FastAPI dependency that 403s when the caller's role is not
+    in ``allowed_roles``.
+
+    Usage::
+
+        @app.post("/v1/oa/analyze")
+        async def analyze_oa(
+            body: AnalysisRequest,
+            user: User = Depends(require_roles(UserRole.ATTORNEY, UserRole.PARALEGAL)),
+        ):
+            ...
+
+    The returned dependency wraps ``auth_dependency`` so authentication and
+    authorisation happen as a single concern from the endpoint's
+    perspective — there is no risk of forgetting to wire auth alongside the
+    role check, which would leave the endpoint open.
+
+    Design choices:
+
+    1. **Wraps auth_dependency** — the returned dependency depends on
+       ``auth_dependency`` via FastAPI's ``Depends`` mechanism, so role
+       checks always run AFTER authentication has succeeded. FastAPI
+       caches dependency results per-request, so if an endpoint also wires
+       ``Depends(auth_dependency)`` directly the inner call is reused (no
+       double JWT decode, no double ACL check).
+
+    2. **403 (not 401)** on role mismatch — the user is authenticated,
+       they just lack permission. Status code consistency with the rest
+       of the gateway's role gates (e.g. `_AUDIT_APPEND_ROLES` returns 403,
+       /v1/audit/recent returns 403, etc.).
+
+    3. **Error message names the user's role + lists allowed roles** —
+       gives the operator a clear "who has access" signal without leaking
+       case data. The role enum values are public information (they appear
+       in the JWT payload).
+    """
+    from fastapi import Depends as _Depends
+
+    allowed = frozenset(allowed_roles)
+
+    async def _role_dependency(user: User = _Depends(auth_dependency)) -> User:
+        if user.role not in allowed:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"Role '{user.role.value}' is not permitted on this endpoint. "
+                f"Required: one of {sorted(r.value for r in allowed)}.",
+            )
+        return user
+
+    # Set a function name so FastAPI's docs / debug surface the role list
+    # rather than the generic "_role_dependency" closure name.
+    _role_dependency.__name__ = (
+        f"require_roles_{'_'.join(sorted(r.value for r in allowed))}"
+    )
+    return _role_dependency

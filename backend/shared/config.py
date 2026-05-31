@@ -177,6 +177,37 @@ class Settings:
     # health (loud failure, see notes below).
     INTERNAL_TOKEN: str = os.getenv("INTERNAL_TOKEN", "")
 
+    # ------------------------------------------------------------------
+    # Security Chunk C — H-1 / H-2 / M-1 / M-9
+    # ------------------------------------------------------------------
+    # CORS allow-list. Comma-separated origin tuple, default localhost dev
+    # SPA. Production deployments MUST set this to their actual SPA origin
+    # (e.g. "https://patentmind.example.com"). Wildcards (`*`) are honoured
+    # by Starlette's CORSMiddleware as-is but disabled here by convention —
+    # the explicit list closes H-1 in the audit (CORS allowing `*`
+    # methods + headers from any origin).
+    CORS_ALLOWED_ORIGINS: tuple[str, ...] = tuple(
+        s.strip()
+        for s in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",")
+        if s.strip()
+    )
+
+    # Request-body bytes cap (H-2). FastAPI's body parsing is unbounded by
+    # default — a 1 GB JSON POST would buffer 1 GB in memory before Pydantic
+    # rejects it on `max_length`. The MaxBodySizeMiddleware rejects oversized
+    # bodies with 413 BEFORE any parse using the `Content-Length` header,
+    # falling back to a streaming check when the header is absent.
+    # Default 100MB is generous for multipart PDF uploads (cap = MAX_UPLOAD_MB
+    # which is 30MB by default) while still bounding memory blowup.
+    MAX_BODY_BYTES: int = int(os.getenv("MAX_BODY_BYTES", str(100 * 1024 * 1024)))
+
+    # uvicorn bind host (M-9). The `python -m backend.gateway.main` /
+    # `__main__` blocks used to default to 0.0.0.0 — i.e. exposed on every
+    # network interface. Production binds 127.0.0.1 and exposes via a
+    # reverse proxy (digiRunner / nginx) on the actual public port. Override
+    # to 0.0.0.0 only when the host is intentionally a public edge.
+    LISTEN_HOST: str = os.getenv("LISTEN_HOST", "127.0.0.1")
+
 
 settings = Settings()
 

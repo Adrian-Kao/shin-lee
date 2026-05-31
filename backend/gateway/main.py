@@ -19,6 +19,7 @@ from typing import Any, Optional
 import httpx
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.gateway import audit, cache, masking, rate_limit
@@ -30,6 +31,7 @@ from backend.gateway.auth import (
     auth_dependency,
     authorize_case_access,
     issue_token,
+    require_roles,
 )
 from backend.gateway.orchestrator import orchestrate_analysis
 from backend.shared.config import settings
@@ -99,22 +101,158 @@ app = FastAPI(
     description="厚 Gateway: auth + quota + redaction + audit + orchestration.",
 )
 
+
+# ---------------------------------------------------------------------------
+# Security Chunk C — H-2. Max-body-size middleware.
+#
+# FastAPI / starlette accept request bodies as large as the ASGI server
+# allows — uvicorn has no built-in limit. A 1GB JSON POST is buffered into
+# memory and only rejected later when Pydantic walks the parsed dict and
+# trips a `max_length` constraint. By then we've already paid the memory +
+# CPU + latency cost.
+#
+# This middleware rejects on Content-Length BEFORE any body bytes are read.
+# Multipart uploads (Content-Length typically present and accurate) and
+# chunked bodies (Content-Length absent → fall through to per-handler
+# limits like /v1/oa/upload's MAX_UPLOAD_MB) are both handled correctly.
+# The default cap is 100MB which is generous enough for 30MB PDF uploads
+# (cap = MAX_UPLOAD_MB) while bounding worst-case memory at one big request.
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def max_body_size_middleware(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            length = int(content_length)
+        except ValueError:
+            # Malformed Content-Length — let the inner stack handle it (it'll
+            # likely 400). We don't want this middleware to be the source of
+            # weird 413s on legitimate-but-corrupt headers.
+            return await call_next(request)
+        if length > settings.MAX_BODY_BYTES:
+            # Identical 413 shape whether triggered here or by the upload
+            # endpoint's per-file MAX_UPLOAD_MB cap, so the frontend's
+            # generic "too large" handling fires.
+            return JSONResponse(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                content={
+                    "detail": (
+                        f"request body exceeds limit: {length} bytes > "
+                        f"{settings.MAX_BODY_BYTES} bytes."
+                    )
+                },
+            )
+    return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Security Chunk C — M-1. Security headers middleware.
+#
+# Adds the six baseline response headers every browser-facing service should
+# ship with. Applied via `@app.middleware("http")` so they fire on EVERY
+# response — including 4xx error responses (clickjacking via a 404 page is
+# still clickjacking) and CORS preflight OPTIONS responses.
+#
+# CSP rationale:
+#   * `default-src 'self'`   — refuses arbitrary third-party loads.
+#   * `script-src 'self' 'unsafe-inline'` — vite injects inline scripts in
+#     dev for HMR + chunk preloads. Production builds extract everything to
+#     hashed files, at which point the operator can tighten this to remove
+#     'unsafe-inline'. Tracked in CLAUDE.md §P2 polish.
+#   * `style-src 'self' 'unsafe-inline'` — same reasoning; Tailwind via CDN
+#     ships inline `<style>`. Production PostCSS extraction lets this tighten.
+#   * `img-src 'self' data:` — admits inline data: URIs (favicon, file
+#     previews).
+#   * `connect-src 'self'`   — the SPA talks to the same origin. If a
+#     deployment fronts the API on a different host, this list must
+#     widen — but for the demo single-origin (vite proxy → backend)
+#     'self' is sufficient.
+#   * `font-src 'self' data:` — Tailwind / Inter fonts via data:.
+#   * `object-src 'none'`    — refuses Flash / Java embeds (legacy attack
+#     surface; we have no use case).
+#   * `frame-ancestors 'none'` — clickjacking-proof, paired with the
+#     X-Frame-Options: DENY header for older browsers.
+#   * `base-uri 'self'`      — refuses an injected `<base>` tag from
+#     redirecting relative URLs to a hostile origin.
+#   * `form-action 'self'`   — refuses an injected `<form action="...">`
+#     posting to a hostile origin (we have no cross-origin forms).
+#
+# Permissions-Policy zeroes out geolocation / camera / mic / payment — none
+# of which the patent-prosecution UX needs. If a future feature legitimately
+# wants one of these, narrow the deny list (and document why).
+#
+# HSTS: 1-year max-age + includeSubDomains. We omit `preload` because that
+# is an irrevocable browser-list commitment; opt in only when the
+# deployment is unquestionably stable on https.
+# ---------------------------------------------------------------------------
+_CSP_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "font-src 'self' data:; "
+    "object-src 'none'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'"
+)
+_SECURITY_HEADERS = {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "Content-Security-Policy": _CSP_POLICY,
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": (
+        "geolocation=(), camera=(), microphone=(), payment=()"
+    ),
+}
+
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in _SECURITY_HEADERS.items():
+        # Only set if not already present — lets a handler override a
+        # specific header for a one-off (e.g. an iframe-friendly preview
+        # page in the future). Today no handler overrides any of these.
+        response.headers.setdefault(header, value)
+    return response
+
+
+# H-1: env-driven CORS with specific methods + headers (was `*` wildcards).
+# `allow_credentials=True` matches the frontend's bearer-token + same-origin
+# fetch pattern. Methods + headers explicitly whitelisted — no future request
+# of an unexpected method (e.g. PATCH) sneaks through without a code change.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=list(settings.CORS_ALLOWED_ORIGINS),
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-Case-Id",
+        "X-Demo-Secret",
+    ],
+    allow_credentials=True,
+    max_age=600,
 )
 
 
 # ---------- Login (POC simplified) ----------
 
 class LoginRequest(BaseModel):
-    user_id: str  # POC: pass user_id directly. Production: IdP redirect.
+    # H-2: forbid unknown fields and cap each string at a sensible upper
+    # bound. user_id is in _USERS (max ~10 chars in the demo set); password
+    # is bounded to 256 chars which covers any IdP-issued token-style
+    # credential without admitting a multi-MB body.
+    model_config = {"extra": "forbid"}
+
+    user_id: str = Field(..., max_length=64)  # POC: pass user_id directly. Production: IdP redirect.
     # Required unless an X-Demo-Secret header is supplied AND matches
     # settings.DEMO_LOGIN_SECRET. Default demo password is `demo-{user_id}`
     # (documented in .env.example).
-    password: Optional[str] = None
+    password: Optional[str] = Field(default=None, max_length=256)
 
 
 class LoginResponse(BaseModel):
@@ -233,7 +371,12 @@ def quota(user: User = Depends(auth_dependency)):
 async def analyze_oa(
     body: AnalysisRequest,
     request: Request,
-    user: User = Depends(auth_dependency),
+    # H-6: role gate. ATTORNEY + PARALEGAL (paralegals assist attorneys —
+    # core POC demo workflow). IT_ADMIN + AUDITOR are NOT permitted; they
+    # have different concerns (connectors / dashboards / audit chain).
+    # `require_roles` wraps `auth_dependency` so authentication still
+    # happens first — no risk of unauth being accepted.
+    user: User = Depends(require_roles(UserRole.ATTORNEY, UserRole.PARALEGAL)),
 ):
     """Q1 厚 Gateway core endpoint.
 
@@ -386,7 +529,10 @@ async def analyze_oa(
 async def upload_oa(
     request: Request,
     file: UploadFile = File(...),
-    user: User = Depends(auth_dependency),
+    # H-6: same role gate as /v1/oa/analyze — paralegals assist attorneys
+    # by uploading OAs that the attorney then analyses. IT_ADMIN + AUDITOR
+    # are refused with 403 before any upload bytes are read.
+    user: User = Depends(require_roles(UserRole.ATTORNEY, UserRole.PARALEGAL)),
 ):
     """Day 2: accept a PDF/DOCX, return extracted text for use by /v1/oa/analyze.
 
@@ -616,7 +762,14 @@ def audit_verify(user: User = Depends(auth_dependency)):
 # ---------- Redaction (first-class for digiRunner pre-LLM transform plugins) ----------
 
 class RedactionPreviewRequest(BaseModel):
-    text: str
+    # H-2: same cap as AnalysisRequest.oa_text — redaction preview is what
+    # the SPA shows BEFORE submitting the OA for analysis, so the upper
+    # bound has to match. extra=forbid prevents a future client from
+    # smuggling tenant_id / user_id (which would be ignored anyway since
+    # those come from auth context, but better to fail loudly).
+    model_config = {"extra": "forbid"}
+
+    text: str = Field(..., max_length=5 * 1024 * 1024)
 
 
 def _do_redact(req: RedactionPreviewRequest, user: User, request: Request, endpoint: str) -> dict:
@@ -684,7 +837,12 @@ def _do_redact(req: RedactionPreviewRequest, user: User, request: Request, endpo
 def redact(
     req: RedactionPreviewRequest,
     request: Request,
-    user: User = Depends(auth_dependency),
+    # H-6: ATTORNEY + PARALEGAL — preview-before-submit lives in the OA
+    # analysis workflow which both roles use. IT_ADMIN + AUDITOR have no
+    # legitimate reason to call this (and AUDITOR doing so would smear
+    # their tenant's audit chain with redaction rows under the auditor's
+    # identity).
+    user: User = Depends(require_roles(UserRole.ATTORNEY, UserRole.PARALEGAL)),
 ):
     """First-class redaction endpoint.
 
@@ -695,6 +853,7 @@ def redact(
     Requires:
       - Authorization: Bearer <token>
       - X-Case-Id: <case_id>  (for tenant routing inside masking + ACL check)
+      - Role: ATTORNEY or PARALEGAL.
     """
     return _do_redact(req, user, request, endpoint="/v1/redact")
 
@@ -704,7 +863,10 @@ def redaction_preview(
     req: RedactionPreviewRequest,
     request: Request,
     response: Response,
-    user: User = Depends(auth_dependency),
+    # H-6: same role gate as /v1/redact — the deprecated alias must enforce
+    # the same authorisation as the first-class endpoint, otherwise it'd be
+    # a permission backdoor.
+    user: User = Depends(require_roles(UserRole.ATTORNEY, UserRole.PARALEGAL)),
 ):
     """DEPRECATED alias for /v1/redact — kept so the existing frontend and
     smoke-test paths don't break. New callers should use /v1/redact.
@@ -851,4 +1013,8 @@ def audit_append(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.gateway.main:app", host="0.0.0.0", port=settings.GATEWAY_PORT, reload=False)
+    # M-9: bind 127.0.0.1 by default (was 0.0.0.0 — exposed on every LAN
+    # interface). Production runs behind digiRunner / nginx; the
+    # reverse-proxy IS the public edge, not this process. Override via
+    # `LISTEN_HOST=0.0.0.0` for a deployment where this binary IS the edge.
+    uvicorn.run("backend.gateway.main:app", host=settings.LISTEN_HOST, port=settings.GATEWAY_PORT, reload=False)

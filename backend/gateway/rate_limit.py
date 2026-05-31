@@ -43,6 +43,12 @@ _user_daily_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (user_id, Y
 _tenant_monthly_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (tenant_id, YYYY-MM) -> tokens
 _daily_cost_usd: dict[str, float] = defaultdict(float)  # YYYY-MM-DD -> usd
 
+# Day 8 post-review (Important #1 from Chunk A/B review): per-IP RPM bucket
+# for /v1/auth/login. Login is pre-auth so we can't key on user_id; key on
+# client IP instead. Stricter than DEFAULT_RPM (10/min vs 30/min) because the
+# attack model is "spray demo-{user_id} guesses until one lands".
+_login_ip_rpm: dict[str, _TokenBucket] = {}
+
 
 # ---------------------------------------------------------------------------
 # Pricing — Anthropic public list price as of 2026-05.  USD per **1M** tokens.
@@ -150,6 +156,40 @@ def check_rpm(user: User) -> None:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"rate limit exceeded ({settings.DEFAULT_RPM} RPM). retry in ~1s.",
+        )
+
+
+def check_login_rpm(client_ip: str) -> None:
+    """Pre-auth RPM check for /v1/auth/login (keyed on client IP, not user_id).
+
+    Day 8 post-review fix: previously the login endpoint had no rate limit
+    at all, so an attacker reaching the gateway could brute-force any user's
+    demo password (sha256 hash; rainbow-tablable for short passwords). This
+    bounds the brute-force rate to LOGIN_RPM per minute per IP. Default 10
+    is stricter than DEFAULT_RPM=30 because login is the front door and the
+    threat model is harsher.
+
+    `client_ip` should come from `request.client.host`. If the request
+    routed through a trusted reverse proxy (digiRunner), upstream IP is
+    fine — we still get distinct buckets per real client because digiRunner
+    spreads connections across worker pool.
+    """
+    if not client_ip:
+        # Defensive fallback — if we can't identify the caller, share a
+        # single bucket so a misconfigured peer can't bypass the limit by
+        # leaving client_ip empty.
+        client_ip = "_unknown_"
+    bucket = _login_ip_rpm.get(client_ip)
+    if bucket is None:
+        bucket = _TokenBucket(
+            capacity=settings.LOGIN_RPM,
+            refill_per_sec=settings.LOGIN_RPM / 60.0,
+        )
+        _login_ip_rpm[client_ip] = bucket
+    if not bucket.consume():
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"too many login attempts ({settings.LOGIN_RPM}/min/IP). retry in ~1s.",
         )
 
 

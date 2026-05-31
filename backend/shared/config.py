@@ -75,6 +75,11 @@ class Settings:
 
     # Rate limit / Quota (Q18 全套)
     DEFAULT_RPM: int = 30                   # per-user request/minute
+    # Day 8 post-review (Chunk A/B Important #1): login is pre-auth so
+    # /v1/auth/login can't use DEFAULT_RPM (no user_id yet). Key on client
+    # IP, stricter cap — brute-forcing demo-{user_id} passwords needs to
+    # be very expensive even when the attacker reaches the gateway.
+    LOGIN_RPM: int = int(os.getenv("LOGIN_RPM", "10"))
     DEFAULT_DAILY_TOKENS: int = 100_000     # per-user daily token quota
     TENANT_MONTHLY_TOKENS: int = 50_000_000 # per-tenant monthly cap
     REQUEST_HARD_LIMIT_TOKENS: int = 32_000 # single prompt hard cap

@@ -119,13 +119,22 @@ _UPSTREAM_DEFAULT_ROLE: UserRole = UserRole.PARALEGAL
 # ---------------------------------------------------------------------------
 # Password hashing (Security Chunk A — C-1, H-8).
 #
-# Design choice: sha256 + 16-byte hex salt with `hmac.compare_digest` for the
-# constant-time check. We deliberately avoided pulling in passlib/bcrypt to
-# keep the POC dep set tight — the hashes here only protect demo accounts
-# whose passwords are documented in .env.example, so KDF strength is moot.
-# When the demo accounts are replaced with real IdP-backed users (CLAUDE.md
-# §5 P0 "OIDC integration"), the hash storage moves to the IdP and these
-# helpers can be deleted.
+# ⚠ POC ONLY — NOT PRODUCTION-SAFE FOR REAL USER PASSWORDS ⚠
+#
+# We use sha256 + 16-byte hex salt + hmac.compare_digest. This is FINE for
+# the demo accounts (passwords `demo-{user_id}` are published in
+# .env.example, so brute-force cost is moot). For real user passwords you
+# MUST switch to a proper KDF — argon2id (preferred), bcrypt, or scrypt —
+# because sha256 is rainbow-table-vulnerable for short passwords.
+#
+# When the demo accounts are replaced with real IdP-backed users
+# (CLAUDE.md §5 P0 "OIDC integration"), the hash storage moves to the IdP
+# and these helpers can be DELETED. Do NOT reuse this helper for new
+# user-supplied passwords — the docstring is its only safety guard.
+#
+# Day 8 post-review (Important #3): warning made loud per Chunk A/B
+# reviewer feedback so a future contributor can't quietly extend this
+# to a real auth path.
 # ---------------------------------------------------------------------------
 def _hash_password(password: str, salt: Optional[str] = None) -> str:
     """Return ``'salt:hash'`` for storage.

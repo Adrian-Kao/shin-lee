@@ -184,6 +184,11 @@ def _reset_module_state():
         _rl._user_daily_tokens.clear()
         _rl._tenant_monthly_tokens.clear()
         _rl._daily_cost_usd.clear()
+        # Day 8 post-review: per-IP login bucket added (LOGIN_RPM, default
+        # 10/min). Tests issue dozens of logins per session — must clear or
+        # they trip the bucket and start returning 429s instead of 401s.
+        if hasattr(_rl, "_login_ip_rpm"):
+            _rl._login_ip_rpm.clear()
     except (ImportError, AttributeError):
         pass
     try:

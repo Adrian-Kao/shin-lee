@@ -266,6 +266,7 @@ class LoginResponse(BaseModel):
 @app.post("/v1/auth/login", response_model=LoginResponse)
 def login(
     req: LoginRequest,
+    request: Request,
     x_demo_secret: Optional[str] = Header(default=None, alias="X-Demo-Secret"),
 ):
     """Issue a JWT after validating credentials (Security Chunk A — C-1, H-8).
@@ -287,8 +288,9 @@ def login(
 
     Both unknown user and wrong password collapse to the **same** 401
     response (no body shape difference, no status difference) — closes
-    H-8 user enumeration. Per-IP rate limiting on this endpoint is tracked
-    as a follow-up (it's the only currently-unauthenticated endpoint).
+    H-8 user enumeration. Per-IP rate limit (LOGIN_RPM, default 10/min)
+    closes the brute-force window — Day 8 post-review fix for the
+    sole pre-auth endpoint.
 
     POC IdP modes (Q12) all converge here:
       - built-in:    POST /v1/auth/login (this endpoint)
@@ -296,6 +298,12 @@ def login(
       - SAML:        /v1/auth/saml/acs (TODO)
       - magic link:  /v1/auth/magic/{token} (TODO)
     """
+    # Pre-auth brute-force defence (Day 8 post-review Important #1):
+    # bucket by client IP, default 10 attempts/min. Runs BEFORE the dummy
+    # hash + sha256 round so a flood doesn't burn CPU on hash computation.
+    client_ip = request.client.host if request.client else ""
+    rate_limit.check_login_rpm(client_ip)
+
     user = _get_user(req.user_id)
     stored_hash = _get_password_hash(req.user_id)
 

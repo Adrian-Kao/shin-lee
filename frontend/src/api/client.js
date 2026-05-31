@@ -36,6 +36,15 @@ async function call(path, { method = 'GET', body, token, headers = {} } = {}) {
 // `VITE_DEMO_LOGIN_SECRET` at build time to the same string they set as
 // `DEMO_LOGIN_SECRET` on the gateway. Leave both unset for the password
 // path (frontend would need a password field — out of scope for this chunk).
+//
+// ⚠ WARNING — DEV BUILDS ONLY ⚠
+// Vite STATICALLY INLINES `import.meta.env.VITE_*` values into every
+// build artefact, including `npm run build` for production. Never set
+// `VITE_DEMO_LOGIN_SECRET` for a build whose JS will be served to
+// untrusted browsers — the secret would be visible in DevTools to any
+// visitor. For a real prod deployment, ship a password input form and
+// drop both DEMO_LOGIN_SECRET / VITE_DEMO_LOGIN_SECRET entirely.
+// (Day 8 post-review Important #2.)
 const DEMO_LOGIN_SECRET = import.meta.env?.VITE_DEMO_LOGIN_SECRET || '';
 
 export const api = {

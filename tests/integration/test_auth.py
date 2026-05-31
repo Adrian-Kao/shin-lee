@@ -36,6 +36,66 @@ from backend.shared.config import settings
 # C-1 / H-8 — /v1/auth/login credential checks
 # ---------------------------------------------------------------------------
 
+
+def test_login_rate_limited_per_ip(gateway_client, monkeypatch):
+    """Day 8 post-review Important #1: login must be rate-limited per IP.
+
+    Without this, sha256 + 16-byte salt is fast enough that an attacker
+    reaching the gateway can brute-force `demo-{user_id}` passwords at
+    hundreds of attempts/sec. The check_login_rpm() bucket caps this.
+
+    We pin LOGIN_RPM=2 so the test runs in milliseconds, then issue 3
+    login attempts back-to-back. The 3rd must 429 BEFORE password check
+    (we send a wrong password to prove the gate fires regardless of
+    credential correctness).
+    """
+    from backend.gateway import rate_limit as rl
+
+    monkeypatch.setattr(settings, "LOGIN_RPM", 2)
+    # Clear any leaked state from earlier tests in the same session.
+    rl._login_ip_rpm.clear()
+
+    body = {"user_id": "alice", "password": "wrong"}
+    r1 = gateway_client.post("/v1/auth/login", json=body)
+    r2 = gateway_client.post("/v1/auth/login", json=body)
+    r3 = gateway_client.post("/v1/auth/login", json=body)
+
+    # First two consume the bucket; both 401 (wrong password).
+    assert r1.status_code == 401, r1.text
+    assert r2.status_code == 401, r2.text
+    # Third must 429 — rate-limited before the password check.
+    assert r3.status_code == 429, r3.text
+    assert "login attempts" in r3.text.lower(), r3.text
+
+
+def test_login_rate_limit_fires_before_password_check(gateway_client, monkeypatch):
+    """The 429 must arrive without any signal about whether the credential
+    was correct or not. Otherwise the attacker can use the timing /
+    response-shape difference as an oracle."""
+    from backend.gateway import rate_limit as rl
+
+    monkeypatch.setattr(settings, "LOGIN_RPM", 1)
+    rl._login_ip_rpm.clear()
+
+    # Exhaust the bucket with a wrong-password attempt.
+    r1 = gateway_client.post(
+        "/v1/auth/login",
+        json={"user_id": "alice", "password": "wrong"},
+    )
+    assert r1.status_code == 401, r1.text
+
+    # Now try with the CORRECT password — must still 429, not 200.
+    r2 = gateway_client.post(
+        "/v1/auth/login",
+        json={"user_id": "alice", "password": "demo-alice"},
+    )
+    assert r2.status_code == 429, r2.text
+
+
+# ---------------------------------------------------------------------------
+# C-1 / H-8 — /v1/auth/login credential checks (original tests below)
+# ---------------------------------------------------------------------------
+
 def test_login_without_password_or_demo_secret_returns_401(gateway_client):
     """Body with only `user_id` (the old pre-Chunk-A shape) must now 401.
 

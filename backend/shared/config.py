@@ -89,6 +89,12 @@ class Settings:
     MIN_CHARS_PER_PAGE_FOR_TEXT: int = int(os.getenv("MIN_CHARS_PER_PAGE_FOR_TEXT", "30"))
     OCR_PARALLELISM: int = int(os.getenv("OCR_PARALLELISM", "4"))
 
+    # AI Engine prompt introspection (Compat Refactor 1)
+    # When false, GET /v1/prompts and GET /v1/prompts/{intent} return 404 so
+    # the system-prompt text never leaves the box, even via the intra-VPC
+    # surface. Default is true to keep Dify import + dev sanity flows working.
+    EXPOSE_PROMPT_API: bool = os.getenv("EXPOSE_PROMPT_API", "true").lower() in ("1", "true", "yes")
+
 
 settings = Settings()
 

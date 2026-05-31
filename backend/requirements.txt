@@ -48,3 +48,8 @@ python-multipart==0.0.12
 # observability (Day 5 — no-op when SENTRY_DSN env var is unset)
 # ---------------------------------------------------------------------------
 sentry-sdk[fastapi]==2.18.0
+
+# ---------------------------------------------------------------------------
+# externalized prompts (Compat Refactor 1 — backend/ai_engine/prompts/*.yaml)
+# ---------------------------------------------------------------------------
+PyYAML==6.0.2

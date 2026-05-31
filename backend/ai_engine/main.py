@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from backend.ai_engine import deadline as deadline_mod
 from backend.ai_engine import oa_analyzer, pdf_parser, rag
+from backend.ai_engine.prompt_loader import list_intents, load_prompt
 from backend.shared.config import settings
 from backend.shared.models import Rejection, RetrievalHit
 from backend.shared.observability import init_sentry
@@ -99,6 +100,39 @@ class ExtractTextRequest(BaseModel):
 @app.get("/v1/health")
 def health():
     return {"ok": True, "service": "ai_engine", "rag_stats": rag.stats()}
+
+
+# ---------------------------------------------------------------------------
+# Prompt introspection (intra-VPC ONLY — see CLAUDE.md §1 / §6).
+#
+# AI Engine has no per-endpoint auth because it's reachable ONLY via the
+# Gateway HTTP proxy inside our VPC. NEVER expose port 8001 to the public
+# internet without an auth layer in front (digiRunner / nginx /
+# Cloudflare Access). Prompts reveal our system-prompt strategy which is
+# competitive information.
+#
+# Operators who want belt-and-braces — e.g. prod environments where even
+# the intra-VPC blast radius is too big — can set EXPOSE_PROMPT_API=false
+# to make both endpoints return 404 unconditionally.
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/prompts")
+def list_prompts():
+    """List all externalized prompt intents. Used by Dify import + sanity."""
+    if not settings.EXPOSE_PROMPT_API:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return {"intents": list_intents()}
+
+
+@app.get("/v1/prompts/{intent}")
+def get_prompt(intent: str):
+    """Return one prompt YAML as JSON. Dify workflows can fetch + inline."""
+    if not settings.EXPOSE_PROMPT_API:
+        raise HTTPException(status_code=404, detail="Not Found")
+    try:
+        return load_prompt(intent)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown intent: {intent}")
 
 
 @app.post("/v1/parse_oa")

@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import base64
 import hmac
+import logging
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
@@ -34,6 +35,47 @@ from backend.gateway.orchestrator import orchestrate_analysis
 from backend.shared.config import settings
 from backend.shared.models import AnalysisRequest, AnalysisResponse, User, UserRole
 from backend.shared.observability import init_sentry
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_audit_write(**kwargs: Any) -> None:
+    """Write one audit row, swallowing any exception from the audit writer.
+
+    Invariant #4 (CLAUDE.md §4) says every gateway request writes exactly one
+    audit row — even errors. We enforce that with a ``try/finally`` in each
+    handler; this wrapper is the second half of the guarantee: if the audit
+    DB itself is broken (disk full / file locked / SQLite trigger refusal),
+    we must NOT let that failure mask the real response or original
+    exception the user is about to see.
+
+    The failure is logged at error level (Sentry / log scraper will surface
+    it) but never re-raised.
+    """
+    try:
+        audit.writer.write(**kwargs)
+    except Exception:  # noqa: BLE001 — deliberately broad: see docstring
+        logger.exception(
+            "audit write failed for endpoint=%s user=%s case=%s — "
+            "response/error returned to caller anyway",
+            kwargs.get("endpoint"),
+            getattr(kwargs.get("user"), "user_id", None),
+            kwargs.get("case_id"),
+        )
+
+
+def _error_response_payload(error: BaseException) -> dict:
+    """Render an exception into the audit-row response_payload shape.
+
+    Keeps `str(error)` capped at 512 chars so a verbose exception (Pydantic
+    validation errors can run thousands of characters) cannot bloat the
+    hash-chained log.
+    """
+    return {
+        "error": str(error)[:512],
+        "exc_type": type(error).__name__,
+        "status_code": getattr(error, "status_code", 500),
+    }
 
 # Day 5: init Sentry before FastAPI() so import-time exceptions are caught.
 _SENTRY_ACTIVE = init_sentry("gateway")
@@ -196,6 +238,8 @@ async def analyze_oa(
     """Q1 厚 Gateway core endpoint.
 
     Steps (with policy gates):
+      0. Explicit case-ACL re-check on body.case_id (C-3 fix — see auth.py
+         docstring; the dependency-level check only looks at headers).
       1. RPM check
       2. Request size hard cap
       3. Estimate token need; quota check
@@ -203,84 +247,137 @@ async def analyze_oa(
       5. Orchestrate via AI Engine
       6. Record usage + circuit breaker check
       7. Audit log
+
+    The whole flow runs inside a try/finally so an audit row is written even
+    when an exception fires partway through (H-7 fix — invariant #4 in
+    CLAUDE.md §4 requires "every gateway request writes exactly one audit
+    row. Even cache hits. Even errors").
     """
     started = time.monotonic()
-    policy_decisions = {
+    policy_decisions: dict[str, bool] = {
         "authn_passed": True,
-        "authz_passed": True,  # auth_dependency already validated case_id
+        # authz starts False — we have NOT yet validated the body.case_id
+        # against the user's ACL. The dependency only checked X-Case-Id /
+        # query param; a request that omits both lands here with the
+        # dependency thinking case_id was missing (and passing). The
+        # explicit re-check below is what actually closes the bypass.
+        "authz_passed": False,
         "rate_limit_passed": False,
         "quota_passed": False,
         "circuit_open": False,
     }
+    response: Optional[AnalysisResponse] = None
+    cached_payload: Optional[dict] = None
+    obs: dict = {}
+    error: Optional[BaseException] = None
+    try:
+        # 0a. Confused-deputy guard: if BOTH the X-Case-Id header AND the
+        # body.case_id are present, they MUST agree. Otherwise an attacker
+        # could trick a header-based ACL into thinking the request is for
+        # case A while the actual orchestration runs against case B. We
+        # only check when both are present — handlers that previously sent
+        # only one or the other (the frontend always sends both with the
+        # same value; smoke tests sometimes send only body) keep working.
+        header_case_id = (
+            request.headers.get("X-Case-Id") or request.query_params.get("case_id")
+        )
+        if header_case_id and header_case_id != body.case_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"case_id mismatch: header={header_case_id!r} body={body.case_id!r}. "
+                "X-Case-Id and body case_id must agree when both are supplied.",
+            )
 
-    # 1. RPM
-    rate_limit.check_rpm(user)
-    policy_decisions["rate_limit_passed"] = True
+        # 0b. C-3: explicit ACL on the body-supplied case_id. Runs BEFORE any
+        # rate-limit / quota work so a 403 doesn't burn the user's RPM token
+        # for an attack we're already rejecting.
+        authorize_case_access(user, body.case_id)
+        policy_decisions["authz_passed"] = True
 
-    # 2. Hard cap
-    estimated_tokens = max(1, len(body.oa_text) // 3)
-    rate_limit.check_request_size(estimated_tokens)
+        # 1. RPM
+        rate_limit.check_rpm(user)
+        policy_decisions["rate_limit_passed"] = True
 
-    # 3. Quota
-    rate_limit.check_quotas(user, estimated_tokens)
-    policy_decisions["quota_passed"] = True
+        # 2. Hard cap
+        estimated_tokens = max(1, len(body.oa_text) // 3)
+        rate_limit.check_request_size(estimated_tokens)
 
-    # 4. Cache (Q9)
-    prompt_hash = cache.hash_prompt(body.oa_text + body.target_patent_no, "orchestrator-v1")
-    cached = cache.get_response(user.tenant_id, user.user_id, body.case_id, prompt_hash)
-    if cached:
-        # POC: still write audit row even on cache hit
-        audit.writer.write(
+        # 3. Quota
+        rate_limit.check_quotas(user, estimated_tokens)
+        policy_decisions["quota_passed"] = True
+
+        # 4. Cache (Q9)
+        prompt_hash = cache.hash_prompt(body.oa_text + body.target_patent_no, "orchestrator-v1")
+        cached = cache.get_response(user.tenant_id, user.user_id, body.case_id, prompt_hash)
+        if cached:
+            cached_payload = cached
+            response = AnalysisResponse(**cached)
+            return response
+
+        # 5. Circuit breaker
+        if rate_limit.cost_circuit_state()["tripped"]:
+            policy_decisions["circuit_open"] = True
+            # POC behavior: still serve, but the LLM router will degrade to cheap model.
+            # In production: optionally 503 here for graceful shedding.
+
+        # 6. Orchestrate
+        response, obs = await orchestrate_analysis(user, body)
+
+        # 7. Record usage
+        rate_limit.record_usage(
+            user,
+            prompt_tokens=obs["prompt_tokens"],
+            completion_tokens=obs["completion_tokens"],
+            cost_usd=obs["estimated_cost_usd"],
+        )
+
+        # 8. Cache write
+        cache.set_response(user.tenant_id, user.user_id, body.case_id, prompt_hash, response.model_dump(mode="json"))
+
+        return response
+    except BaseException as exc:  # noqa: BLE001 — must reach the finally
+        error = exc
+        policy_decisions["error"] = True
+        raise
+    finally:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        # Pick the right audit shape based on which path the request took.
+        if error is not None:
+            response_payload = _error_response_payload(error)
+            model_used = None
+            prompt_tokens = 0
+            completion_tokens = 0
+            masked_rules: list[str] = []
+            pd = {**policy_decisions, "cache_hit": False}
+        elif cached_payload is not None:
+            response_payload = cached_payload
+            model_used = "cache"
+            prompt_tokens = 0
+            completion_tokens = 0
+            masked_rules = []
+            pd = {**policy_decisions, "cache_hit": True}
+        else:
+            # response is non-None on the success path because orchestrate ran.
+            assert response is not None, "internal: success path produced no response"
+            response_payload = response.model_dump(mode="json")
+            model_used = obs.get("model_used")
+            prompt_tokens = obs.get("prompt_tokens", 0)
+            completion_tokens = obs.get("completion_tokens", 0)
+            masked_rules = obs.get("mask_rules", [])
+            pd = {**policy_decisions, "cache_hit": False}
+        _safe_audit_write(
             user=user,
             case_id=body.case_id,
             endpoint="/v1/oa/analyze",
             request_payload=body.model_dump(),
-            response_payload=cached,
-            masked_rules=[],
-            model_used="cache",
-            prompt_tokens=0,
-            completion_tokens=0,
-            latency_ms=int((time.monotonic() - started) * 1000),
-            policy_decisions={**policy_decisions, "cache_hit": True},
+            response_payload=response_payload,
+            masked_rules=masked_rules,
+            model_used=model_used,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
+            policy_decisions=pd,
         )
-        return AnalysisResponse(**cached)
-
-    # 5. Circuit breaker
-    if rate_limit.cost_circuit_state()["tripped"]:
-        policy_decisions["circuit_open"] = True
-        # POC behavior: still serve, but the LLM router will degrade to cheap model.
-        # In production: optionally 503 here for graceful shedding.
-
-    # 6. Orchestrate
-    response, obs = await orchestrate_analysis(user, body)
-
-    # 7. Record usage
-    rate_limit.record_usage(
-        user,
-        prompt_tokens=obs["prompt_tokens"],
-        completion_tokens=obs["completion_tokens"],
-        cost_usd=obs["estimated_cost_usd"],
-    )
-
-    # 8. Cache write
-    cache.set_response(user.tenant_id, user.user_id, body.case_id, prompt_hash, response.model_dump(mode="json"))
-
-    # 9. Audit
-    audit.writer.write(
-        user=user,
-        case_id=body.case_id,
-        endpoint="/v1/oa/analyze",
-        request_payload=body.model_dump(),
-        response_payload=response.model_dump(mode="json"),
-        masked_rules=obs["mask_rules"],
-        model_used=obs["model_used"],
-        prompt_tokens=obs["prompt_tokens"],
-        completion_tokens=obs["completion_tokens"],
-        latency_ms=obs["duration_ms"],
-        policy_decisions={**policy_decisions, "cache_hit": False},
-    )
-
-    return response
 
 
 # ---------- Day 2 upload endpoint ----------
@@ -294,7 +391,10 @@ async def upload_oa(
     """Day 2: accept a PDF/DOCX, return extracted text for use by /v1/oa/analyze.
 
     Layering rules respected:
-      - Auth + case ACL: handled by `auth_dependency` via X-Case-Id header.
+      - Auth + case ACL: re-checked here on the X-Case-Id header. The auth
+        dependency already checked it; we re-call ``authorize_case_access``
+        anyway for C-3 belt-and-braces (and to populate ``authz_passed``
+        explicitly so the audit row reflects the gate).
       - Confidential routing: this endpoint REFUSES confidential cases. They
         must use manual text paste — uploading would push pages through cloud
         Vision OCR which is forbidden by security policy (Q15).
@@ -303,13 +403,15 @@ async def upload_oa(
       - Redaction: NOT applied here. The extracted text is returned to the
         attorney; redaction happens at /v1/oa/analyze time as before.
       - Audit: writes a row recording file size + page count + ocr count +
-        cost — NEVER the extracted text itself.
+        cost — NEVER the extracted text itself. Per invariant #4 (H-7 fix)
+        the audit row is written even on error paths via the try/finally
+        below.
       - Rate limit + cost circuit: 1 request, cost = vision OCR usage.
     """
     started = time.monotonic()
     policy_decisions = {
         "authn_passed": True,
-        "authz_passed": True,
+        "authz_passed": False,
         "rate_limit_passed": False,
         "upload_size_passed": False,
         "upload_type_passed": False,
@@ -317,146 +419,181 @@ async def upload_oa(
     }
 
     # Pull case_id explicitly: multipart bodies are streams so auth_dependency
-    # can't autodetect it from body the way it does for JSON POSTs.
+    # can't autodetect it from body the way it does for JSON POSTs. (And per
+    # C-3 fix, the dependency never peeks at the body at all now.)
     case_id = request.headers.get("X-Case-Id") or request.query_params.get("case_id")
-    if not case_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "X-Case-Id header required for upload",
-        )
-    # auth_dependency already enforced ACL when case_id was on the header.
 
-    # Block confidential cases at the EDGE. Defense in depth: pdf_parser will
-    # also refuse, but we want to reject before reading the upload body so
-    # large privileged scans never even enter our process memory.
-    if case_id.upper().endswith("-CONF"):
-        policy_decisions["confidential_blocked"] = True
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            "Confidential cases must use manual text entry; upload routes "
-            "through cloud OCR which is forbidden by security policy.",
-        )
+    # Pre-set audit shape so the finally block always has something coherent
+    # to write — even if we error out before reading the file body.
+    response_payload: Any = None
+    model_used: Optional[str] = None
+    prompt_tokens = 0
+    completion_tokens = 0
+    file_size = 0
+    error: Optional[BaseException] = None
+    file_content_type = getattr(file, "content_type", None)
+    file_name = getattr(file, "filename", None)
 
-    # Validate content type FIRST so we don't slurp a 30MB binary just to
-    # discover it's the wrong format.
-    if file.content_type not in _ALLOWED_UPLOAD_MIMES:
-        raise HTTPException(
-            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            f"unsupported content type: {file.content_type!r}. "
-            f"Allowed: {sorted(_ALLOWED_UPLOAD_MIMES)}.",
-        )
-    policy_decisions["upload_type_passed"] = True
-
-    # RPM check before any heavy work.
-    rate_limit.check_rpm(user)
-    policy_decisions["rate_limit_passed"] = True
-
-    # Read the file into memory and enforce the byte cap. Reading in one shot
-    # is fine because the cap is single-digit MB by default; we explicitly
-    # avoid streaming-to-disk per the "bytes never touch disk" requirement.
-    file_bytes = await file.read()
-    file_size = len(file_bytes)
-    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
-    if file_size > max_bytes:
-        raise HTTPException(
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            f"upload exceeds limit: {file_size} bytes > "
-            f"{max_bytes} bytes ({settings.MAX_UPLOAD_MB} MB).",
-        )
-    policy_decisions["upload_size_passed"] = True
-
-    # Forward to AI engine. Base64 keeps the AI engine surface JSON-only
-    # and matches the orchestrator's existing httpx.AsyncClient pattern.
-    payload = {
-        "file_bytes_b64": base64.b64encode(file_bytes).decode("ascii"),
-        "content_type": file.content_type,
-        "max_pages": 100,
-        "security_level": "public",  # we already blocked -CONF above
-    }
-    ai_url = f"{settings.AI_ENGINE_URL.rstrip('/')}/v1/ai/extract_text"
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        # OCR over a 100-page scan can take ~60s through Haiku, so the
-        # timeout intentionally exceeds the orchestrator's 60s.
-        try:
-            # Security Chunk A — C-2. AI Engine refuses requests lacking
-            # X-Internal-Token. Gateway is the only legitimate caller.
-            ai_resp = await client.post(ai_url, json=payload, headers=_internal_headers())
-        except httpx.HTTPError as exc:
+    try:
+        if not case_id:
             raise HTTPException(
-                status.HTTP_502_BAD_GATEWAY,
-                f"AI engine unreachable: {exc}",
+                status.HTTP_400_BAD_REQUEST,
+                "X-Case-Id header required for upload",
+            )
+        # C-3 belt-and-braces: explicit ACL re-check. Already enforced by
+        # auth_dependency for header case_id, but we want ``authz_passed``
+        # to reflect a real check on this endpoint.
+        authorize_case_access(user, case_id)
+        policy_decisions["authz_passed"] = True
+
+        # Block confidential cases at the EDGE. Defense in depth: pdf_parser
+        # will also refuse, but we want to reject before reading the upload
+        # body so large privileged scans never even enter our process memory.
+        if case_id.upper().endswith("-CONF"):
+            policy_decisions["confidential_blocked"] = True
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Confidential cases must use manual text entry; upload routes "
+                "through cloud OCR which is forbidden by security policy.",
             )
 
-    if ai_resp.status_code >= 400:
-        # Mirror the AI engine status when meaningful, otherwise 502.
-        # We surface the detail body so the frontend can show a useful error
-        # (e.g. "PDF is password-protected").
-        try:
-            detail = ai_resp.json().get("detail", ai_resp.text)
-        except Exception:
-            detail = ai_resp.text
-        if ai_resp.status_code in (400, 413, 415, 422):
-            raise HTTPException(ai_resp.status_code, detail)
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"AI engine error: {detail}")
+        # Validate content type FIRST so we don't slurp a 30MB binary just to
+        # discover it's the wrong format.
+        if file.content_type not in _ALLOWED_UPLOAD_MIMES:
+            raise HTTPException(
+                status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                f"unsupported content type: {file.content_type!r}. "
+                f"Allowed: {sorted(_ALLOWED_UPLOAD_MIMES)}.",
+            )
+        policy_decisions["upload_type_passed"] = True
 
-    body = ai_resp.json()
-    usage = body.get("usage") or {}
-    cost_usd = float(usage.get("estimated_cost_usd", 0.0) or 0.0)
-    page_count = int(body.get("page_count", 0))
-    ocr_pages_used = body.get("ocr_pages", []) or []
+        # RPM check before any heavy work.
+        rate_limit.check_rpm(user)
+        policy_decisions["rate_limit_passed"] = True
 
-    extracted_text = _PAGE_SEPARATOR.join(body.get("pages", []) or [])
+        # Read the file into memory and enforce the byte cap. Reading in one
+        # shot is fine because the cap is single-digit MB by default; we
+        # explicitly avoid streaming-to-disk per the "bytes never touch disk"
+        # requirement.
+        file_bytes = await file.read()
+        file_size = len(file_bytes)
+        max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+        if file_size > max_bytes:
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                f"upload exceeds limit: {file_size} bytes > "
+                f"{max_bytes} bytes ({settings.MAX_UPLOAD_MB} MB).",
+            )
+        policy_decisions["upload_size_passed"] = True
 
-    # Account for cost + quota. Cost counts toward the daily circuit breaker.
-    rate_limit.record_usage(
-        user,
-        prompt_tokens=int(usage.get("input_tokens", 0) or 0),
-        completion_tokens=int(usage.get("output_tokens", 0) or 0),
-        cost_usd=cost_usd,
-    )
-
-    duration_ms = int((time.monotonic() - started) * 1000)
-
-    # Audit row — NEVER store the extracted text. Only metrics + counts.
-    audit.writer.write(
-        user=user,
-        case_id=case_id,
-        endpoint="/v1/oa/upload",
-        request_payload={
-            "file_size_bytes": file_size,
+        # Forward to AI engine. Base64 keeps the AI engine surface JSON-only
+        # and matches the orchestrator's existing httpx.AsyncClient pattern.
+        payload = {
+            "file_bytes_b64": base64.b64encode(file_bytes).decode("ascii"),
             "content_type": file.content_type,
-            "filename": file.filename,
-        },
-        response_payload={
+            "max_pages": 100,
+            "security_level": "public",  # we already blocked -CONF above
+        }
+        ai_url = f"{settings.AI_ENGINE_URL.rstrip('/')}/v1/ai/extract_text"
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            # OCR over a 100-page scan can take ~60s through Haiku, so the
+            # timeout intentionally exceeds the orchestrator's 60s.
+            try:
+                # Security Chunk A — C-2. AI Engine refuses requests lacking
+                # X-Internal-Token. Gateway is the only legitimate caller.
+                ai_resp = await client.post(ai_url, json=payload, headers=_internal_headers())
+            except httpx.HTTPError as exc:
+                raise HTTPException(
+                    status.HTTP_502_BAD_GATEWAY,
+                    f"AI engine unreachable: {exc}",
+                )
+
+        if ai_resp.status_code >= 400:
+            # Mirror the AI engine status when meaningful, otherwise 502.
+            # We surface the detail body so the frontend can show a useful
+            # error (e.g. "PDF is password-protected").
+            try:
+                detail = ai_resp.json().get("detail", ai_resp.text)
+            except Exception:
+                detail = ai_resp.text
+            if ai_resp.status_code in (400, 413, 415, 422):
+                raise HTTPException(ai_resp.status_code, detail)
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"AI engine error: {detail}")
+
+        body = ai_resp.json()
+        usage = body.get("usage") or {}
+        cost_usd = float(usage.get("estimated_cost_usd", 0.0) or 0.0)
+        page_count = int(body.get("page_count", 0))
+        ocr_pages_used = body.get("ocr_pages", []) or []
+
+        extracted_text = _PAGE_SEPARATOR.join(body.get("pages", []) or [])
+
+        # Account for cost + quota. Cost counts toward the daily circuit
+        # breaker.
+        prompt_tokens = int(usage.get("input_tokens", 0) or 0)
+        completion_tokens = int(usage.get("output_tokens", 0) or 0)
+        rate_limit.record_usage(
+            user,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=cost_usd,
+        )
+
+        response_payload = {
             "page_count": page_count,
             "ocr_pages_count": len(ocr_pages_used),
             "char_count": int(body.get("char_count", 0) or 0),
             "cost_usd": cost_usd,
-        },
-        masked_rules=[],
-        model_used=settings.LLM_MODEL_CHEAP if ocr_pages_used else "none",
-        prompt_tokens=int(usage.get("input_tokens", 0) or 0),
-        completion_tokens=int(usage.get("output_tokens", 0) or 0),
-        latency_ms=duration_ms,
-        policy_decisions=policy_decisions,
-    )
+        }
+        model_used = settings.LLM_MODEL_CHEAP if ocr_pages_used else "none"
 
-    return {
-        "extracted_text": extracted_text,
-        "page_count": page_count,
-        "ocr_pages_used": ocr_pages_used,
-        "char_count": int(body.get("char_count", 0) or 0),
-        "warnings": body.get("warnings", []) or [],
-        "cost_meta": {
-            "estimated_cost_usd": cost_usd,
-            "input_tokens": int(usage.get("input_tokens", 0) or 0),
-            "output_tokens": int(usage.get("output_tokens", 0) or 0),
-            "cache_read_input_tokens": int(usage.get("cache_read_input_tokens", 0) or 0),
-            "cache_creation_input_tokens": int(
-                usage.get("cache_creation_input_tokens", 0) or 0
-            ),
-        },
-    }
+        return {
+            "extracted_text": extracted_text,
+            "page_count": page_count,
+            "ocr_pages_used": ocr_pages_used,
+            "char_count": int(body.get("char_count", 0) or 0),
+            "warnings": body.get("warnings", []) or [],
+            "cost_meta": {
+                "estimated_cost_usd": cost_usd,
+                "input_tokens": prompt_tokens,
+                "output_tokens": completion_tokens,
+                "cache_read_input_tokens": int(usage.get("cache_read_input_tokens", 0) or 0),
+                "cache_creation_input_tokens": int(
+                    usage.get("cache_creation_input_tokens", 0) or 0
+                ),
+            },
+        }
+    except BaseException as exc:  # noqa: BLE001 — must reach the finally
+        error = exc
+        policy_decisions["error"] = True
+        raise
+    finally:
+        duration_ms = int((time.monotonic() - started) * 1000)
+        if error is not None:
+            audit_response_payload = _error_response_payload(error)
+            audit_model_used = None
+        else:
+            audit_response_payload = response_payload
+            audit_model_used = model_used
+        _safe_audit_write(
+            user=user,
+            # case_id may be None if the X-Case-Id header was missing (we
+            # still record the row so the operator can see the attempt).
+            case_id=case_id,
+            endpoint="/v1/oa/upload",
+            request_payload={
+                "file_size_bytes": file_size,
+                "content_type": file_content_type,
+                "filename": file_name,
+            },
+            response_payload=audit_response_payload,
+            masked_rules=[],
+            model_used=audit_model_used,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=duration_ms,
+            policy_decisions=policy_decisions,
+        )
 
 
 # ---------- Audit query endpoints (for the Auditor role) ----------
@@ -486,35 +623,61 @@ def _do_redact(req: RedactionPreviewRequest, user: User, request: Request, endpo
     """Shared implementation for /v1/redact and its deprecated alias.
 
     Writes exactly one audit row per call (invariant #4) — the input text is
-    NEVER stored, only its hash + the rule ids that fired.
+    NEVER stored, only its hash + the rule ids that fired. The whole flow
+    runs inside a try/finally so the audit row is written even on error
+    paths (H-7 fix).
     """
     started = time.monotonic()
     case_id = request.headers.get("X-Case-Id") or request.query_params.get("case_id")
-    if not case_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "X-Case-Id header required for redaction (tenant routing)",
+
+    policy_decisions: dict[str, bool] = {
+        "authn_passed": True,
+        "authz_passed": False,
+    }
+    rules: list[str] = []
+    redacted: str = ""
+    result_payload: Optional[dict] = None
+    error: Optional[BaseException] = None
+    try:
+        if not case_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "X-Case-Id header required for redaction (tenant routing)",
+            )
+        # auth_dependency already enforced ACL when case_id was on the
+        # header, but we re-check explicitly so the audit row's authz flag
+        # is meaningful and the C-3 invariant ("body-derived case_ids are
+        # re-checked at handler") generalises uniformly to all endpoints.
+        authorize_case_access(user, case_id)
+        policy_decisions["authz_passed"] = True
+
+        redacted, rules = masking.redact(req.text, user.tenant_id)
+        result_payload = {"rules_triggered": rules, "redacted_chars": len(redacted)}
+        return {"redacted": redacted, "rules_triggered": rules}
+    except BaseException as exc:  # noqa: BLE001 — must reach the finally
+        error = exc
+        policy_decisions["error"] = True
+        raise
+    finally:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        audit_response_payload: Any = (
+            _error_response_payload(error) if error is not None else result_payload
         )
-    # auth_dependency already enforced ACL when case_id was on the header.
-
-    redacted, rules = masking.redact(req.text, user.tenant_id)
-
-    audit.writer.write(
-        user=user,
-        case_id=case_id,
-        endpoint=endpoint,
-        # Never store raw text in audit — only its length + content hash via the
-        # writer's _hash_payload mechanism.
-        request_payload={"text_chars": len(req.text)},
-        response_payload={"rules_triggered": rules, "redacted_chars": len(redacted)},
-        masked_rules=rules,
-        model_used=None,
-        prompt_tokens=0,
-        completion_tokens=0,
-        latency_ms=int((time.monotonic() - started) * 1000),
-        policy_decisions={"authn_passed": True, "authz_passed": True},
-    )
-    return {"redacted": redacted, "rules_triggered": rules}
+        _safe_audit_write(
+            user=user,
+            case_id=case_id,
+            endpoint=endpoint,
+            # Never store raw text in audit — only its length + content hash
+            # via the writer's _hash_payload mechanism.
+            request_payload={"text_chars": len(req.text)},
+            response_payload=audit_response_payload,
+            masked_rules=rules,
+            model_used=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=latency_ms,
+            policy_decisions=policy_decisions,
+        )
 
 
 @app.post("/v1/redact")
@@ -623,36 +786,67 @@ def audit_append(
         user from polluting the hash-chained log with rows referencing
         case_ids they don't own (caught by Day 8B review — see commit msg).
     """
-    if user.role not in _AUDIT_APPEND_ROLES:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            f"Role '{user.role.value}' is not permitted to append audit rows.",
+    started = time.monotonic()
+    # Build the "real" audit row (the one requested by the caller) up front
+    # so the finally block can emit it on success, or fall through to an
+    # error row on failure. We never want to write TWO rows for a single
+    # request — invariant #4 says "exactly one".
+    error: Optional[BaseException] = None
+    appended_ok = False
+    try:
+        if user.role not in _AUDIT_APPEND_ROLES:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"Role '{user.role.value}' is not permitted to append audit rows.",
+            )
+        # C-3: Re-check ACL on the body-supplied case_id. auth_dependency
+        # only inspected X-Case-Id (the body was opaque to it).
+        authorize_case_access(user, req.case_id)
+
+        # `policy_decisions` is typed `dict[str, bool]` on the writer, so we
+        # keep a boolean flag for "did an error happen" and preserve the raw
+        # error string in `response_payload`.
+        policy_decisions = dict(req.policy_decisions)
+        if req.error:
+            policy_decisions["error"] = True
+
+        _safe_audit_write(
+            user=user,                       # gateway-trusted; supplies user_id + tenant_id
+            case_id=req.case_id,
+            endpoint=req.endpoint,
+            request_payload={"source": "audit_append"},
+            response_payload={"error": req.error} if req.error else None,
+            masked_rules=req.masked_field_rules,
+            model_used=req.model_used,
+            prompt_tokens=req.prompt_tokens,
+            completion_tokens=req.completion_tokens,
+            latency_ms=req.latency_ms,
+            policy_decisions=policy_decisions,
         )
-    # Re-check ACL: auth_dependency only validates X-Case-Id (header). The
-    # case_id here is in the body, which auth_dependency never saw.
-    authorize_case_access(user, req.case_id)
-
-    # `policy_decisions` is typed `dict[str, bool]` on the writer, so we keep
-    # a boolean flag for "did an error happen" and preserve the raw error
-    # string in `response_payload` (which IS stored verbatim, not just hashed).
-    policy_decisions = dict(req.policy_decisions)
-    if req.error:
-        policy_decisions["error"] = True
-
-    audit.writer.write(
-        user=user,                       # gateway-trusted; supplies user_id + tenant_id
-        case_id=req.case_id,
-        endpoint=req.endpoint,
-        request_payload={"source": "audit_append"},
-        response_payload={"error": req.error} if req.error else None,
-        masked_rules=req.masked_field_rules,
-        model_used=req.model_used,
-        prompt_tokens=req.prompt_tokens,
-        completion_tokens=req.completion_tokens,
-        latency_ms=req.latency_ms,
-        policy_decisions=policy_decisions,
-    )
-    return {"appended": True}
+        appended_ok = True
+        return {"appended": True}
+    except BaseException as exc:  # noqa: BLE001 — must reach the finally
+        error = exc
+        raise
+    finally:
+        # Only write an error row when the caller-supplied append failed
+        # BEFORE we wrote it ourselves (e.g. role gate rejected, ACL
+        # rejected). If the append itself succeeded the row above is the
+        # one audit row for this request — don't write a second.
+        if not appended_ok:
+            _safe_audit_write(
+                user=user,
+                case_id=req.case_id,
+                endpoint="/v1/audit/append",
+                request_payload={"source": "audit_append", "intended_endpoint": req.endpoint},
+                response_payload=_error_response_payload(error) if error is not None else None,
+                masked_rules=[],
+                model_used=None,
+                prompt_tokens=0,
+                completion_tokens=0,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                policy_decisions={"authn_passed": True, "error": True},
+            )
 
 
 if __name__ == "__main__":

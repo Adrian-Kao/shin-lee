@@ -284,6 +284,19 @@ def authorize_case_access(user: User, case_id: Optional[str]) -> None:
     """Q12: legal compliance — confirm user has access to this specific case.
 
     Raises 403 if not.  This is the conflict-of-interest 看錯案件 防呆.
+
+    Important: the dependency-level call (``auth_dependency``) only inspects
+    the X-Case-Id header and the ``case_id`` query string. It deliberately
+    does NOT peek into the request body — Starlette consumes the body stream
+    when Pydantic parses it, and an attempt to read it twice silently
+    deadlocks the request. That means JSON POST handlers carrying ``case_id``
+    in the body (``/v1/oa/analyze``, ``/v1/oa/upload``, ``/v1/audit/append``)
+    MUST re-invoke ``authorize_case_access(user, body.case_id)`` themselves
+    after Pydantic has parsed the body. Without that explicit re-check, a
+    client omitting the X-Case-Id header (frontend always sends it; a
+    malicious client doesn't have to) would silently bypass ACL — fix for
+    C-3 in the security audit. The handler call is the load-bearing one;
+    the dependency call only catches GET endpoints with no body.
     """
     if not case_id:
         # Some endpoints (e.g. /health) don't need case_id.
@@ -479,12 +492,22 @@ async def auth_dependency(request: Request) -> User:
             user.user_id, user.tenant_id, user.role.value, _client_ip,
         )
 
-    # Case-level access check
+    # Case-level access check.
+    #
+    # We only consult X-Case-Id header / ?case_id= query string here. We do
+    # NOT peek into the request body — the previous implementation tried to
+    # do that via ``request.state._cached_body`` but that attribute was never
+    # set anywhere in the codebase, so JSON POSTs that omitted X-Case-Id
+    # silently passed ACL even when their body referenced a foreign case_id
+    # (security finding C-3). Reading the body stream directly here would
+    # block until the request times out, because Starlette only lets the
+    # body be consumed once and Pydantic does that during handler binding.
+    #
+    # Handlers that take a body containing case_id MUST re-invoke
+    # ``authorize_case_access(user, body.case_id)`` after Pydantic parses
+    # the body. See ``/v1/oa/analyze``, ``/v1/oa/upload`` (X-Case-Id-only;
+    # multipart bodies have no JSON case_id) and ``/v1/audit/append``.
     case_id = request.headers.get("X-Case-Id") or request.query_params.get("case_id")
-    if not case_id and request.method == "POST":
-        body = getattr(request.state, "_cached_body", None)
-        if body and isinstance(body, dict):
-            case_id = body.get("case_id")
     authorize_case_access(user, case_id)
 
     request.state.user = user

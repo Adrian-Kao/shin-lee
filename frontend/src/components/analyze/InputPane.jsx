@@ -1,0 +1,232 @@
+import React from 'react';
+import { useTranslation } from 'react-i18next';
+import OAUpload from '../OAUpload.jsx';
+import ErrorBanner from '../ErrorBanner.jsx';
+import { SkeletonText } from '../Skeleton.jsx';
+
+/**
+ * Left pane — OA input + redaction preview + quota / deadline summary.
+ *
+ * Pure presentational; all state and handlers are owned by the Analyze parent
+ * (see UX_RESEARCH §4.4: three-pane layout with independent scroll per pane).
+ *
+ * Header is sticky so context never disappears during scroll on desktop.
+ */
+export default function InputPane({
+  // form state
+  caseId,
+  setCaseId,
+  targetPatent,
+  setTargetPatent,
+  oaText,
+  setOaText,
+  // upload state
+  showUpload,
+  setShowUpload,
+  loadedMeta,
+  uploadWarnings,
+  onExtractSuccess,
+  session,
+  // actions
+  onPreviewRedaction,
+  onAnalyze,
+  running,
+  // status
+  error,
+  setError,
+  onLogout,
+  redactPreview,
+  quota,
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex h-full flex-col">
+      <PaneHeader title={t('analyze.pane_input', { defaultValue: '輸入 OA / Input' })} />
+
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        <div className="rounded-lg border bg-white p-4">
+          <label className="mb-1 block text-xs text-slate-500">Case ID</label>
+          <input
+            value={caseId}
+            onChange={(e) => setCaseId(e.target.value)}
+            className="mb-3 w-full rounded border px-2 py-1.5 text-sm"
+          />
+          <label className="mb-1 block text-xs text-slate-500">Target patent (本案)</label>
+          <input
+            value={targetPatent}
+            onChange={(e) => setTargetPatent(e.target.value)}
+            className="mb-3 w-full rounded border px-2 py-1.5 text-sm"
+          />
+
+          {showUpload && (
+            <div className="mb-3">
+              <OAUpload
+                caseId={caseId}
+                token={session.token}
+                onExtractSuccess={onExtractSuccess}
+                onError={(err) => setError(err?.message ? err : new Error(String(err)))}
+              />
+              <button
+                type="button"
+                onClick={() => setShowUpload(false)}
+                className="mt-2 text-xs text-indigo-600 hover:underline"
+              >
+                {t('upload.switch_to_paste')}
+              </button>
+            </div>
+          )}
+          {!showUpload && (
+            <button
+              type="button"
+              onClick={() => setShowUpload(true)}
+              className="mb-2 text-xs text-indigo-600 hover:underline"
+            >
+              {t('upload.switch_to_upload')}
+            </button>
+          )}
+
+          {loadedMeta && (
+            <div className="mb-2 inline-block rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800">
+              {t('upload.loaded_chip', {
+                filename: loadedMeta.fileName,
+                pages: loadedMeta.pages ?? 0,
+              })}
+            </div>
+          )}
+          {uploadWarnings.length > 0 && (
+            <div className="mb-2 space-y-1">
+              {uploadWarnings.map((w, i) => (
+                <div
+                  key={i}
+                  className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800"
+                >
+                  ⚠ {w}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <label className="mb-1 block text-xs text-slate-500">OA 全文</label>
+          <textarea
+            value={oaText}
+            onChange={(e) => setOaText(e.target.value)}
+            rows={12}
+            className="w-full rounded border px-2 py-1.5 font-mono text-xs"
+          />
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={onPreviewRedaction}
+              className="flex-1 rounded bg-slate-200 px-3 py-2 text-sm hover:bg-slate-300"
+            >
+              預覽 redaction
+            </button>
+            <button
+              onClick={onAnalyze}
+              disabled={running}
+              className="flex-1 rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 disabled:bg-slate-400"
+            >
+              {running ? '分析中…' : '分析 OA'}
+            </button>
+          </div>
+          {error && (
+            <div className="mt-3">
+              <ErrorBanner
+                error={error}
+                onRetry={onAnalyze}
+                onDismiss={() => setError(null)}
+                onLogin={onLogout}
+              />
+            </div>
+          )}
+        </div>
+
+        {redactPreview && (
+          <div className="rounded-lg border bg-white p-4">
+            <h3 className="mb-2 text-sm font-semibold">
+              Redaction 預覽 <span className="text-xs text-slate-500">(Q10)</span>
+            </h3>
+            <div className="mb-2 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 p-2 font-mono text-xs">
+              {redactPreview.redacted}
+            </div>
+            <div className="text-xs">
+              <span className="text-slate-500">觸發規則：</span>
+              {redactPreview.rules_triggered.map((r) => (
+                <span
+                  key={r}
+                  className="mr-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 font-mono"
+                >
+                  {r}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!quota && (
+          <div className="rounded-lg border bg-white p-4">
+            <h3 className="mb-2 text-sm font-semibold">
+              配額 <span className="text-xs text-slate-500">(Q18)</span>
+            </h3>
+            <SkeletonText lines={3} />
+          </div>
+        )}
+
+        {quota && (
+          <div className="rounded-lg border bg-white p-4">
+            <h3 className="mb-2 text-sm font-semibold">
+              配額 <span className="text-xs text-slate-500">(Q18)</span>
+            </h3>
+            <Bar
+              label="今日 token (你)"
+              used={quota.user_daily_used}
+              total={quota.user_daily_limit}
+            />
+            <Bar
+              label="本月 token (tenant)"
+              used={quota.tenant_monthly_used}
+              total={quota.tenant_monthly_cap}
+            />
+            <div className="mt-2 text-xs text-slate-500">
+              Cost breaker: ${quota.circuit_breaker.current_usd} / $
+              {quota.circuit_breaker.threshold_usd}
+              {quota.circuit_breaker.tripped && (
+                <span className="ml-2 font-semibold text-rose-600">TRIPPED</span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PaneHeader({ title, subtitle }) {
+  return (
+    <div className="sticky top-0 z-10 border-b bg-white/90 px-4 py-2 backdrop-blur">
+      <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
+      {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+    </div>
+  );
+}
+
+function Bar({ label, used, total }) {
+  const pct = total ? Math.min(100, (used / total) * 100) : 0;
+  const isHigh = pct > 80;
+  return (
+    <div className="mb-2">
+      <div className="flex justify-between text-xs text-slate-600">
+        <span>{label}</span>
+        <span>
+          {used.toLocaleString()} / {total.toLocaleString()}
+        </span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-slate-200">
+        <div
+          className={`h-full ${isHigh ? 'bg-rose-500' : 'bg-indigo-500'}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}

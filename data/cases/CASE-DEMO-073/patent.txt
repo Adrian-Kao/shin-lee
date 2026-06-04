@@ -1,0 +1,25 @@
+[公開公報] US18000001 A
+中華民國智慧財產局   發明說明書公開本
+公開編號：US18000001 A
+公開日：中華民國 114 年 12 月 1 日（西元 2025-12-01）
+申請日：中華民國 113 年 3 月 8 日
+國際分類：H01L29/778  H01L29/40
+申請人：Pinnacle Power Semi, Inc.（TW）
+發明人：John Wang
+申請專利範圍項數：3 項
+
+【名稱】GaN HEMT Power Transistor Structure
+
+【摘要】
+A gallium nitride high-electron-mobility transistor (GaN HEMT) structure with an integrated field plate to reduce peak electric field.
+
+【說明書節錄】
+Technical field: GaN power transistor.
+Background: Conventional GaN HEMT suffers from peak field at gate edge.
+Description: Field plate redistributes E-field, increasing breakdown voltage.
+
+
+【申請專利範圍】
+請求項 1：1. A GaN HEMT comprising: a substrate; a GaN buffer layer disposed on the substrate; an AlGaN barrier layer disposed on the buffer layer; a gate electrode disposed on the barrier layer; and a field plate connected to the gate electrode and extending toward the drain.
+請求項 2：2. The HEMT of claim 1, wherein the field plate length is between 0.5 and 2 micrometers.
+請求項 3：3. The HEMT of claim 1, wherein the AlGaN barrier layer thickness is between 15 and 25 nanometers.

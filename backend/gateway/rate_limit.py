@@ -10,6 +10,7 @@ Production: replace in-memory state with Redis (atomic INCR + TTL).
 """
 from __future__ import annotations
 
+import logging
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -18,6 +19,9 @@ from fastapi import HTTPException, status
 
 from backend.shared.config import settings
 from backend.shared.models import User
+
+
+logger = logging.getLogger(__name__)
 
 
 # Token bucket for RPM (requests per minute)
@@ -89,23 +93,57 @@ _FALLBACK_PRICING: dict[str, float] = {
 }
 
 
-def _pricing_for(model: str) -> dict[str, float]:
-    """Pick the pricing row for `model`.
+def _pricing_for(model: str) -> tuple[dict[str, float], str]:
+    """Pick the pricing row for ``model`` and return its provenance label.
 
-    Exact match first, then a prefix sweep (so any future tag suffix like
-    -20260101 still resolves), then the conservative fallback.
+    Provenance values:
 
-    Mock model strings (anything ending in '-mock') always fall through to
-    the fallback table so demo runs don't display real-money cost figures.
+    * ``"mock"``     — model string is a mock identifier (``*-mock`` or
+      starts with ``mock``). Cost numbers are synthetic and MUST NOT be
+      trusted by billing dashboards.
+    * ``"exact"``    — model matched an entry in
+      ``_MODEL_PRICING_USD_PER_M`` directly or via prefix sweep. Numbers
+      are the published Anthropic list price as of the dict's last update;
+      cost can be reported in the audit row at face value.
+    * ``"fallback"`` — neither mock nor known. The conservative
+      sonnet-equivalent fallback fires; this typically means a typo in
+      ``LLM_MODEL_REASONING`` (e.g. ``claude-sonet-4-6``) or a deployed
+      model whose pricing we haven't entered yet. A WARNING is logged so
+      the operator notices BEFORE the audit row reports a fictitious cost.
+
+    The fallback case is the audit finding M-3: previously this silently
+    returned the fallback dict and any downstream caller had no way to
+    flag the cost as estimated. Returning provenance alongside the prices
+    lets ``estimate_cost`` propagate it into ``cost_meta`` so the audit row
+    + billing dashboard can show "this number is approximate".
     """
     if model.endswith("-mock") or model.startswith("mock"):
-        return _FALLBACK_PRICING
+        return _FALLBACK_PRICING, "mock"
     if model in _MODEL_PRICING_USD_PER_M:
-        return _MODEL_PRICING_USD_PER_M[model]
+        return _MODEL_PRICING_USD_PER_M[model], "exact"
     for known, prices in _MODEL_PRICING_USD_PER_M.items():
         if model.startswith(known):
-            return prices
-    return _FALLBACK_PRICING
+            return prices, "exact"
+    # M-3 fix: log the fallback so a typo'd LLM_MODEL_* env var (which
+    # silently zeros cache pricing) shows up in the operator's log scrape
+    # rather than masquerading as $0.00.
+    logger.warning(
+        "rate_limit._pricing_for: unknown model %r — using conservative "
+        "sonnet-equivalent fallback. Add this model to "
+        "_MODEL_PRICING_USD_PER_M or fix the LLM_MODEL_* env var. "
+        "cost_provenance will be marked 'fallback' downstream.",
+        model,
+    )
+    return _FALLBACK_PRICING, "fallback"
+
+
+def cost_provenance_for(model: str) -> str:
+    """Public accessor: provenance label without recomputing prices.
+
+    Used by callers that already estimated cost and now want to tag the
+    audit row / cost_meta with how trustworthy the number is.
+    """
+    return _pricing_for(model)[1]
 
 
 def estimate_cost(model: str, usage: dict[str, int]) -> float:
@@ -120,7 +158,7 @@ def estimate_cost(model: str, usage: dict[str, int]) -> float:
 
     For legacy callers we also accept `prompt_tokens` as an alias for input.
     """
-    prices = _pricing_for(model)
+    prices, _provenance = _pricing_for(model)
     input_tokens = int(usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0)
     output_tokens = int(usage.get("output_tokens", usage.get("completion_tokens", 0)) or 0)
     cache_creation = int(usage.get("cache_creation_input_tokens", 0) or 0)

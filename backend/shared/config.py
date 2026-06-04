@@ -213,6 +213,25 @@ class Settings:
     # to 0.0.0.0 only when the host is intentionally a public edge.
     LISTEN_HOST: str = os.getenv("LISTEN_HOST", "127.0.0.1")
 
+    # ------------------------------------------------------------------
+    # Security Chunk D — H-3 / H-4 / M-3 / M-6 / M-7 / M-8
+    # ------------------------------------------------------------------
+    # Per-tenant ceiling on the in-memory cache (M-8). When a tenant hits
+    # the cap the oldest entry is evicted FIFO. 1000 is generous for the
+    # POC workload (cached responses live an hour; the response size
+    # averages ~50KB so worst case is ~50MB per tenant). Set to 0 to
+    # disable the cap (NOT recommended in production — one tenant's
+    # bursty traffic will starve another).
+    MAX_CACHE_ENTRIES_PER_TENANT: int = int(os.getenv("MAX_CACHE_ENTRIES_PER_TENANT", "1000"))
+
+    # Redaction ruleset version (M-7). Embedded in the cache prompt hash
+    # so a ruleset change (new PII rule, tenant dictionary refresh)
+    # invalidates pre-change cached responses. Bump this any time
+    # PII_RULES or TENANT_DICTIONARIES (in backend/gateway/masking.py)
+    # changes in a way that affects redaction output for a previously
+    # served input.
+    REDACTION_VERSION: str = os.getenv("REDACTION_VERSION", "v1")
+
 
 settings = Settings()
 

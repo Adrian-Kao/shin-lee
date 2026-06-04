@@ -19,6 +19,7 @@ import hashlib
 import re
 import sqlite3
 import threading
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Pattern
@@ -156,9 +157,53 @@ def redact(text: str, tenant_id: str) -> tuple[str, list[str]]:
     Returns (redacted_text, list_of_rule_ids_triggered).
 
     Q11 spotlight handling is in oa_analyzer; this layer is purely pattern-based.
+
+    Unicode normalisation (M-6 fix)
+    -------------------------------
+    The input is normalised to **NFKC** (compatibility composition) BEFORE
+    any regex applies. The regex tables target ASCII characters (``a-zA-Z``,
+    ``0-9``, ``@``, ``-``); without normalisation, mixed-script inputs
+    bypass them entirely:
+
+    * Fullwidth digits ``０９１２`` (U+FF10..FF19) match no ``\\d`` class
+      built from ASCII brackets — a fullwidth-typed Taiwan mobile number
+      slips past ``phone_tw``.
+    * Halfwidth/fullwidth ligatures (e.g. ``＠`` U+FF20 for ``@``) bypass
+      the email regex.
+    * Compatibility decompositions (e.g. ``ｆｉ`` U+FB01 → ``fi``) bypass
+      any literal substring rules a tenant dictionary might add.
+
+    NFKC folds all these variants into their canonical ASCII forms so the
+    existing regex inventory keeps working without per-rule
+    Unicode-aware rewrites (which would have to be re-audited every time
+    a tenant adds a rule).
+
+    Why **NFKC** and not NFC?
+
+    * NFC only handles canonical equivalence (composed vs decomposed
+      diacritics) — it would catch the NFD-typed email case
+      (``a\\u0301lice@…`` → ``álice@…``) but NOT fullwidth digits, which
+      are a deliberate threat-model entry: a Taiwanese user pasting from
+      a Word document that auto-corrected to fullwidth would leak phone
+      numbers.
+    * NFKC is a superset of NFC plus compatibility folding (fullwidth →
+      halfwidth, ligatures → components, superscripts → bases). It's
+      lossy in the sense that ``Ⅳ`` becomes ``IV`` — that loss is
+      exactly what we want for PII detection (a roman numeral 4 in a
+      patent claim is informationally identical to ``IV``).
+
+    The mapping table stores the **normalised** form as the original, so
+    when ``unmask`` reverses the placeholder it returns the canonical
+    spelling. For the demo this is fine; a future refinement could keep a
+    side-table mapping back to the raw bytes if any caller needs the
+    pre-normalisation form (the OA preview UI does NOT — it shows the
+    redaction overlay over the normalised view).
     """
     triggered: list[str] = []
-    redacted = text
+    # M-6: normalise input. ``text`` becomes the NFKC form going forward; all
+    # downstream operations (regex matching, placeholder storage,
+    # round-trip through ``unmask``) work on this canonical form.
+    redacted = unicodedata.normalize("NFKC", text)
 
     rules = list(PII_RULES) + TENANT_DICTIONARIES.get(tenant_id, [])
 

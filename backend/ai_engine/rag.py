@@ -165,12 +165,33 @@ class Embedder:
             return self._st_model.get_sentence_embedding_dimension()
         return settings.EMBEDDING_DIM
 
-    def embed_one(self, text: str) -> list[float]:
+    def embed_one(self, text: str, tenant_id: str = "") -> list[float]:
+        """Embed text; ``tenant_id`` only affects the mock backend.
+
+        Security audit H-3: in mock mode the embedding was a pure function of
+        the text (sha256 → float vec). Two tenants indexing the same patent
+        thus shared identical vectors, which (a) lets an attacker who can
+        reach the AI Engine confirm whether a given patent is in *some*
+        tenant's index by submitting the known text and matching the vector,
+        and (b) means a tenant-isolation regression in the storage layer
+        would silently leak similarity scores across tenants.
+
+        Real bge-m3 embeddings are intentionally content-only (semantic
+        similarity is the whole point), so the per-tenant collection split
+        (Q5 stub) is the actual production defence. The mock backend is the
+        only path where we can cheaply add a tenant salt without lying
+        about embedding quality.
+        """
         if self.backend == "bge-m3":
             v = self._st_model.encode(text, normalize_embeddings=True, show_progress_bar=False)
             return v.tolist()
-        # mock: SHA-256 → padded float vec, unit-normalised
-        h = hashlib.sha256(text.encode()).digest()
+        # mock: SHA-256 → padded float vec, unit-normalised.
+        # H-3 fix: salt with tenant_id so different tenants get different
+        # vectors for the same input text. ``tenant_id=""`` (the default,
+        # used by callers that have no tenant context — e.g. unit tests of
+        # the chunker) reproduces the old behaviour exactly.
+        seed = f"{tenant_id}:{text}" if tenant_id else text
+        h = hashlib.sha256(seed.encode()).digest()
         raw = list(h) * (settings.EMBEDDING_DIM // len(h) + 1)
         vec = np.array(raw[: settings.EMBEDDING_DIM], dtype=np.float32) / 255.0
         n = np.linalg.norm(vec)
@@ -182,8 +203,13 @@ class Embedder:
 _embedder = Embedder()
 
 
-def embed(text: str) -> list[float]:
-    return _embedder.embed_one(text)
+def embed(text: str, tenant_id: str = "") -> list[float]:
+    """Module-level embed helper. ``tenant_id`` is plumbed through to the
+    mock backend so per-tenant salting (H-3 fix) takes effect; bge-m3
+    ignores it. Callers that have a tenant context (``index_patent``,
+    ``retrieve``) MUST pass it — leaving the default empty string is
+    only safe in standalone chunker tests."""
+    return _embedder.embed_one(text, tenant_id=tenant_id)
 
 
 # ---------- Vector store ----------
@@ -430,7 +456,11 @@ _store = _make_store()
 
 def index_patent(tenant_id: str, patent: Patent, spec_text: str = "") -> int:
     chunks = chunk_patent(patent, spec_text=spec_text)
-    vectors = [embed(c.text) for c in chunks]
+    # H-3: salt mock embeddings with tenant_id (no-op for bge-m3). Indexing
+    # the same patent in tenant_a vs tenant_b now produces distinct vectors,
+    # so a similarity-oracle attack against /v1/retrieve_prior_art cannot
+    # confirm cross-tenant content.
+    vectors = [embed(c.text, tenant_id=tenant_id) for c in chunks]
     _store.upsert(tenant_id, chunks, vectors)
     return len(chunks)
 
@@ -449,7 +479,11 @@ def retrieve(
     weak — important on mock embeddings where cosine scores cluster within
     ~0.02 and rankings are near random.
     """
-    qvec = embed(query)
+    # H-3: salt the query vector with the same tenant_id used at index time
+    # so retrieval scores are computed in the tenant's vector space. Without
+    # this the query vector would be tenant-independent but the index vectors
+    # would be tenant-salted, producing zero similarity by construction.
+    qvec = embed(query, tenant_id=tenant_id)
     base_filter: dict = {"jurisdiction": jurisdiction} if jurisdiction else {}
 
     semantic_hits = _store.search(

@@ -23,7 +23,7 @@ import httpx
 
 from backend.gateway import cache, masking
 from backend.gateway.auth import _internal_headers
-from backend.gateway.rate_limit import estimate_cost
+from backend.gateway.rate_limit import cost_provenance_for, estimate_cost
 from backend.shared.config import settings
 from backend.shared.models import (
     AnalysisRequest,
@@ -180,6 +180,14 @@ async def orchestrate_analysis(
     total_completion_tokens = sum(r.get("usage", {}).get("completion_tokens", 0) for r in all_call_meta)
 
     estimated_cost = 0.0
+    # M-3 fix: track the *weakest* provenance across every call. Order is
+    # exact > fallback > mock (where "weakest" = least trustworthy for
+    # billing). If any LLM call dispatched to a fallback-priced model, the
+    # aggregate cost is suspect even if other calls were exact-priced.
+    # "mock" is preferred over "fallback" only when EVERY call was mock —
+    # a single fallback call means at least one real-money error path.
+    _provenance_rank = {"exact": 0, "mock": 1, "fallback": 2}
+    worst_provenance = "exact"
     for r in all_call_meta:
         usage = r.get("usage") or {}
         model = r.get("model_used", "mock")
@@ -187,6 +195,9 @@ async def orchestrate_analysis(
         if not usage:
             continue
         estimated_cost += estimate_cost(model, usage)
+        prov = cost_provenance_for(model)
+        if _provenance_rank.get(prov, 99) > _provenance_rank.get(worst_provenance, -1):
+            worst_provenance = prov
 
     cost_meta = CostMeta(
         prompt_tokens=total_prompt_tokens,
@@ -194,6 +205,7 @@ async def orchestrate_analysis(
         model=parsed.get("model_used", "mock"),
         estimated_cost_usd=estimated_cost,
         cache_hit=False,
+        cost_provenance=worst_provenance,
     )
 
     response = AnalysisResponse(

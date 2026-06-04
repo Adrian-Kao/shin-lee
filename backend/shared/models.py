@@ -216,6 +216,23 @@ class CostMeta(BaseModel):
     model: str = Field(..., max_length=128)
     estimated_cost_usd: float
     cache_hit: bool = False
+    # M-3 fix: provenance label that tells billing dashboards whether to
+    # trust `estimated_cost_usd` at face value.
+    #
+    #   "exact"    — model matched _MODEL_PRICING_USD_PER_M; cost is the
+    #                published Anthropic list price.
+    #   "fallback" — unknown model; cost was computed from the conservative
+    #                sonnet-equivalent fallback table. Likely a typo in
+    #                LLM_MODEL_* env or a model whose pricing isn't entered
+    #                yet. WARNING is logged by rate_limit._pricing_for.
+    #   "mock"     — model is a mock identifier (LLM_MODE=mock or local
+    #                Ollama); cost is synthetic and MUST NOT be invoiced.
+    #
+    # Default "exact" keeps every existing test snapshot stable — the
+    # CostMeta(...) call sites that don't supply provenance are the ones
+    # building canned mock responses where the field is informational
+    # only.
+    cost_provenance: str = Field(default="exact", max_length=16)
 
 
 # ---------- Audit (Q13) ----------

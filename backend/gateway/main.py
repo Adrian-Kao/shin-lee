@@ -457,8 +457,29 @@ async def analyze_oa(
         rate_limit.check_quotas(user, estimated_tokens)
         policy_decisions["quota_passed"] = True
 
-        # 4. Cache (Q9)
-        prompt_hash = cache.hash_prompt(body.oa_text + body.target_patent_no, "orchestrator-v1")
+        # 4. Cache (Q9) — M-7 fix: hash POST-redaction text, not raw input.
+        # Pre-fix the cache key used `body.oa_text` directly. That meant:
+        #   (a) Two attorneys typing the same OA shared a cache slot (the
+        #       surrounding tenant/user/case namespacing prevented response
+        #       leakage, but only because of that layer — the hash itself
+        #       had no privacy property);
+        #   (b) A typo (extra space, fullwidth digit, smart-quote) caused
+        #       a miss that should have been a hit (NFKC + dictionary
+        #       normalise away in the redaction step);
+        #   (c) Including a redaction-version tag means a future ruleset
+        #       bump (new PII rule, tenant dictionary refresh) automatically
+        #       invalidates pre-bump cached responses rather than serving
+        #       them under the new policy.
+        # `masking.redact` is idempotent on placeholders (a `[EMAIL_XXXX]`
+        # token doesn't match the email regex) so re-running it inside the
+        # orchestrator is safe and keeps the orchestrator's own redaction
+        # invariant (Q3 + Q10) intact.
+        redacted_for_cache, _ = masking.redact(body.oa_text, user.tenant_id)
+        prompt_hash = cache.hash_prompt(
+            redacted_for_cache + body.target_patent_no,
+            "orchestrator-v1",
+            redaction_version=settings.REDACTION_VERSION,
+        )
         cached = cache.get_response(user.tenant_id, user.user_id, body.case_id, prompt_hash)
         if cached:
             cached_payload = cached
@@ -760,10 +781,34 @@ def audit_recent(limit: int = 50, user: User = Depends(auth_dependency)):
 
 
 @app.get("/v1/audit/verify")
-def audit_verify(user: User = Depends(auth_dependency)):
-    """Walk the audit chain, recompute hashes, report broken rows (Q13 tamper evidence)."""
+def audit_verify(
+    scope: str = "tenant",
+    user: User = Depends(auth_dependency),
+):
+    """Walk the audit chain, recompute hashes, report broken rows (Q13
+    tamper evidence).
+
+    Query parameter ``scope``:
+
+    * ``tenant`` (default) — walks only the caller's tenant. Existing
+      behaviour, role-gated to AUDITOR + IT_ADMIN.
+    * ``global``           — walks every tenant's chain, runs the
+      tenant-whitelist + prev-hash-existence checks (H-4 fix). Restricted
+      to AUDITOR only because a global view crosses tenant boundaries —
+      IT_ADMIN's role description is per-tenant connectors / dashboards,
+      not cross-tenant compliance. An attacker who escalated to IT_ADMIN
+      should not be able to enumerate every tenant's case_ids via this
+      endpoint.
+    """
     if user.role.value not in ("auditor", "it_admin"):
         raise HTTPException(403, "auditor or it_admin role required")
+    if scope == "global":
+        # Tighter gate for the cross-tenant view — auditor only.
+        if user.role.value != "auditor":
+            raise HTTPException(403, "auditor role required for scope=global")
+        return audit.writer.verify_global_chain()
+    if scope != "tenant":
+        raise HTTPException(400, f"unknown scope {scope!r}; expected 'tenant' or 'global'")
     return audit.writer.verify_chain(user.tenant_id)
 
 

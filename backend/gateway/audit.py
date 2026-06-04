@@ -206,5 +206,145 @@ class AuditWriter:
             prev = recorded_row
         return {"verified": ok, "broken": broken, "tenant": tenant_id}
 
+    def verify_global_chain(self) -> dict:
+        """Walk every audit row in global rowid order + run cross-cutting
+        checks no per-tenant walk can perform (H-4 fix — CLAUDE.md §7
+        pitfall #4).
+
+        Important wrinkle the per-tenant ``verify_chain`` does NOT handle:
+        the hash chain is GLOBAL (the writer's ``_last_row_hash`` lookup
+        is not tenant-scoped), so ``prev_row_hash`` on a tenant_b row may
+        legitimately point to a tenant_a row_hash. Walking only
+        ``WHERE tenant_id = 'tenant_b'`` and expecting tenant_b's first
+        row to have ``prev=''`` is therefore wrong in the multi-tenant
+        case — it flags an intact chain as broken. Global verify walks
+        every row in rowid order so the chain is reconstructed faithfully.
+
+        This verifier surfaces THREE classes of anomaly:
+
+        1. **Hash chain integrity (global)** — every row's
+           ``row_hash`` is recomputed from its payload + recorded
+           ``prev_row_hash``; mismatch flags the row as broken. Adjacent
+           rows must form a chain (each row's ``prev_row_hash`` == the
+           previous row's ``row_hash``).
+
+        2. **Tenant whitelist** — any row whose ``tenant_id`` is NOT in
+           ``settings.DEMO_TENANTS`` is flagged as ``unknown_tenant``.
+           Catches typos (``tenat_a``), probes (``tenant_zzz``), and any
+           future ghost tenant smuggled in by a compromised DBA.
+
+        3. **prev_row_hash referential integrity** — every non-empty
+           ``prev_row_hash`` must reference a ``row_hash`` that exists
+           somewhere in the table. Dangling prev = row was tampered with
+           after insert OR written by a process bypassing AuditWriter.
+
+        Returns:
+
+            {
+              "verified": int,                          # rows that passed
+              "broken": list[tuple[tenant_id, audit_id]],
+              "by_tenant": {
+                  tenant_id: {
+                      "verified": int,
+                      "broken": list[audit_id],         # audit_ids only,
+                                                        # for backward-compat
+                                                        # shape with existing
+                                                        # per-tenant verify
+                      "tenant": tenant_id,
+                      "unknown_tenant": bool,           # only when true
+                  },
+                  ...
+              }
+            }
+        """
+        # Load every row in rowid (insertion) order so we reconstruct the
+        # GLOBAL chain rather than a per-tenant view. We also need the full
+        # set of row_hashes to validate prev_row_hash references in pass
+        # two; the same fetchall serves both.
+        cur = self._conn.execute(
+            "SELECT audit_id, timestamp_utc, user_id, tenant_id, case_id, "
+            "       endpoint, request_hash, response_hash, prev_row_hash, row_hash "
+            "FROM audit "
+            "ORDER BY rowid ASC"
+        )
+        all_rows = cur.fetchall()
+        all_row_hashes: set[str] = {r[9] for r in all_rows}
+
+        # Cross-import settings here (not at module top) so a test that
+        # monkeypatches DEMO_TENANTS via settings sees the override.
+        from backend.shared.config import settings as _settings
+        known_tenants: set[str] = set(_settings.DEMO_TENANTS.keys())
+
+        by_tenant: dict[str, dict] = {}
+        broken: list[tuple[str, str]] = []
+        verified_total = 0
+
+        # Pass 1 — walk the global chain, recompute hashes, partition
+        # per-tenant. ``prev`` tracks the expected prev_row_hash for the
+        # NEXT row (starts empty for the first global row).
+        prev = ""
+        for row in all_rows:
+            (audit_id, ts, uid, tid, cid, ep, rqh, rph, recorded_prev, recorded_row) = row
+            per = by_tenant.setdefault(
+                tid, {"verified": 0, "broken": [], "tenant": tid}
+            )
+
+            row_broken = False
+            if recorded_prev != prev:
+                row_broken = True
+            payload = {
+                "audit_id": audit_id, "ts": ts, "user": uid, "tenant": tid,
+                "case": cid, "endpoint": ep, "req": rqh, "resp": rph,
+                "prev": recorded_prev,
+            }
+            if self._hash_payload(payload) != recorded_row:
+                row_broken = True
+
+            if row_broken:
+                per["broken"].append(audit_id)
+                broken.append((tid, audit_id))
+            else:
+                per["verified"] += 1
+                verified_total += 1
+
+            prev = recorded_row
+
+        # Pass 2 — tenant whitelist. Any tenant_id not in DEMO_TENANTS is
+        # flagged; every row from that tenant is added to broken even if
+        # its hash chain happens to be internally consistent (we have no
+        # policy basis for accepting rows from an unknown tenant).
+        for tid, per in by_tenant.items():
+            if tid not in known_tenants:
+                per["unknown_tenant"] = True
+                cur2 = self._conn.execute(
+                    "SELECT audit_id FROM audit WHERE tenant_id = ? ORDER BY rowid ASC",
+                    (tid,),
+                )
+                for (audit_id,) in cur2.fetchall():
+                    pair = (tid, audit_id)
+                    if pair not in broken:
+                        broken.append(pair)
+
+        # Pass 3 — prev_row_hash referential integrity. Every non-empty
+        # prev_row_hash MUST point to some row's row_hash. Catches the
+        # case where a row was written outside the AuditWriter (which is
+        # the only thing that calls ``_last_row_hash`` to set prev).
+        cur = self._conn.execute(
+            "SELECT audit_id, tenant_id, prev_row_hash FROM audit "
+            "WHERE prev_row_hash IS NOT NULL AND prev_row_hash != '' "
+            "ORDER BY rowid ASC"
+        )
+        for audit_id, tenant_id, prev_hash in cur.fetchall():
+            if prev_hash not in all_row_hashes:
+                pair = (tenant_id, audit_id)
+                if pair not in broken:
+                    broken.append(pair)
+
+        return {
+            "verified": verified_total,
+            "broken": broken,
+            "by_tenant": by_tenant,
+        }
+
 
 writer = AuditWriter()

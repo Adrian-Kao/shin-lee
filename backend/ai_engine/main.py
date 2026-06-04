@@ -136,6 +136,18 @@ class DeadlineRequest(BaseModel):
     calendar_version: str = "2025.1"
 
 
+class ClaimTreeRequest(BaseModel):
+    """Look up the dependency tree for a previously-indexed patent.
+
+    Returns an empty list when the patent isn't in this tenant's index — the
+    frontend treats that as "no tree available" and falls back to the
+    flat-claims rendering, so callers don't have to special-case missing
+    patents at the orchestrator layer.
+    """
+    tenant_id: str
+    patent_no: str
+
+
 class ExtractTextRequest(BaseModel):
     file_bytes_b64: str
     content_type: str
@@ -232,6 +244,23 @@ def verify_citations_endpoint(req: VerifyRequest):
 def deadline_endpoint(req: DeadlineRequest):
     received = datetime.fromisoformat(req.received_date_iso)
     return deadline_mod.calculate_deadline(received, req.jurisdiction, req.calendar_version)
+
+
+@app.post("/v1/claim_tree")
+def claim_tree_endpoint(req: ClaimTreeRequest):
+    """Return the indexed patent's claim dependency tree.
+
+    The gateway orchestrator calls this after parse_oa so it can include
+    `claim_tree` on the AnalysisResponse without a second front-end
+    roundtrip. Empty list when the patent has not been indexed (the SPA
+    treats `[]` as "render nothing"). `usage` is zero — this is a pure
+    payload lookup with no LLM call.
+    """
+    tree = rag.get_claim_tree(req.tenant_id, req.patent_no)
+    return {
+        "claim_tree": tree,
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+    }
 
 
 @app.post("/v1/ai/extract_text")

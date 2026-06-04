@@ -241,6 +241,21 @@ class MemoryVectorStore:
             "per_tenant_count": {k: len(v) for k, v in self._tenant_index.items()},
         }
 
+    def list_claim_chunks(self, tenant_id: str, patent_no: str) -> list[Chunk]:
+        """Return all claim-section chunks for one patent, sorted by claim_no.
+
+        Used by the claim-tree endpoint to recover the indexed patent's
+        flat claim list. Returns [] if the patent wasn't indexed for this
+        tenant (caller treats that as "no tree available").
+        """
+        out: list[Chunk] = []
+        for cid in self._tenant_index.get(tenant_id, set()):
+            ch = self._chunks[cid]
+            if ch.patent_no == patent_no and ch.claim_no is not None:
+                out.append(ch)
+        out.sort(key=lambda c: c.claim_no or 0)
+        return out
+
 
 class QdrantVectorStore:
     """Q7: Qdrant per-tenant collection, payload-stored chunk fields."""
@@ -356,6 +371,51 @@ class QdrantVectorStore:
             "per_tenant_count": per,
         }
 
+    def list_claim_chunks(self, tenant_id: str, patent_no: str) -> list[Chunk]:
+        """Scroll through this tenant's collection and return claim chunks
+        for the given patent, sorted by claim_no. Returns [] when the
+        tenant collection or the patent has no claim chunks.
+        """
+        coll = self._coll(tenant_id)
+        existing = {c.name for c in self._client.get_collections().collections}
+        if coll not in existing:
+            return []
+        flt = self._qm.Filter(must=[
+            self._qm.FieldCondition(
+                key="patent_no", match=self._qm.MatchValue(value=patent_no),
+            ),
+        ])
+        out: list[Chunk] = []
+        # Qdrant `scroll` is the read-all-by-filter primitive; cap pages at
+        # 256 so a misconfigured caller scrolling a 100k-claim corpus can't
+        # OOM us. Real patents top out around 50 claims, so 256 is generous.
+        offset = None
+        for _ in range(8):  # 8 * 32 = 256 chunks max — bounded.
+            scroll_res, offset = self._client.scroll(
+                collection_name=coll,
+                scroll_filter=flt,
+                limit=32,
+                with_payload=True,
+                offset=offset,
+            )
+            for p in scroll_res:
+                pl = p.payload or {}
+                if pl.get("claim_no") is None:
+                    continue
+                out.append(Chunk(
+                    chunk_id=pl.get("chunk_id", str(p.id)),
+                    patent_no=pl.get("patent_no", ""),
+                    section=pl.get("section", ""),
+                    claim_no=pl.get("claim_no"),
+                    text=pl.get("text", ""),
+                    jurisdiction=pl.get("jurisdiction", ""),
+                    metadata=pl.get("metadata", {}),
+                ))
+            if offset is None:
+                break
+        out.sort(key=lambda c: c.claim_no or 0)
+        return out
+
 
 def _make_store():
     if settings.VECTOR_BACKEND == "qdrant":
@@ -427,6 +487,23 @@ def retrieve(
         )
         for ch, score in hits
     ]
+
+
+def get_claim_tree(tenant_id: str, patent_no: str) -> list[dict]:
+    """Return the indexed patent's claims as a list of ClaimNode dicts.
+
+    Pulls the patent's claim_* chunks out of the vector store (sorted by
+    `claim_no`) and runs the pure-Python `parse_claim_dependencies` parser
+    over them. Returns an empty list when the patent hasn't been indexed
+    for this tenant — the frontend treats "[]" as "no tree to render"
+    so callers don't have to special-case it.
+    """
+    from backend.ai_engine.claim_tree import parse_claim_dependencies
+
+    chunks = _store.list_claim_chunks(tenant_id, patent_no)
+    if not chunks:
+        return []
+    return parse_claim_dependencies([c.text for c in chunks])
 
 
 def stats() -> dict:

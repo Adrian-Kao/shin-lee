@@ -148,6 +148,12 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
     onLogout,
     redactPreview,
     quota,
+    // UX_RESEARCH §5 #2 — claim dependency tree props. Defaults to empty
+    // when there's no result yet; ClaimTree returns null in that case.
+    claimTree: result?.claim_tree || [],
+    rejections: result?.oa?.rejections || [],
+    activeRejectionId,
+    setActiveRejectionId,
   };
 
   const draftsPaneProps = {

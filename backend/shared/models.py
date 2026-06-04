@@ -156,6 +156,25 @@ class DraftResponse(BaseModel):
     requires_attorney_review: bool = True  # Q16: 永遠 True
 
 
+class ClaimNode(BaseModel):
+    """One node in the claim dependency tree (UX_RESEARCH §4.1 / §5 #2).
+
+    Produced by `backend.ai_engine.claim_tree.parse_claim_dependencies`. The
+    front-end ClaimTree component renders these as a vertical tree, colored
+    by rejection status. `depends_on` is the FIRST parent for tree layout;
+    `parents` carries all parents for multi-parent claims so the UI can
+    surface cascade-risk highlighting when an independent claim is rejected.
+    """
+    model_config = {"extra": "forbid"}
+
+    claim_no: int
+    depends_on: Optional[int] = None
+    parents: list[int] = Field(default_factory=list)
+    text: str = Field(..., max_length=_MAX_OA_TEXT_CHARS)
+    is_independent: bool
+    depth: int = 0
+
+
 class AnalysisResponse(BaseModel):
     # NOT extra=forbid: AI Engine responses are versioned; we want to tolerate
     # the engine sending NEW fields (forward compatibility) while still
@@ -166,6 +185,12 @@ class AnalysisResponse(BaseModel):
     related_prior_art: list[RetrievalHit]
     deadline_summary: "DeadlineInfo"
     cost_meta: "CostMeta"
+    # UX_RESEARCH §5 #2 — claim dependency tree for left-rail rendering.
+    # default_factory=list keeps the field optional from the AI Engine's
+    # point of view (older engines that don't populate it will still
+    # validate) and from the SPA's point of view (older clients that don't
+    # render it will simply ignore the field).
+    claim_tree: list[ClaimNode] = Field(default_factory=list)
 
 
 # ---------- Deadline (Q17) ----------

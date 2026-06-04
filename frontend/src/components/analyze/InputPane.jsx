@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import OAUpload from '../OAUpload.jsx';
 import ErrorBanner from '../ErrorBanner.jsx';
 import { SkeletonText } from '../Skeleton.jsx';
+import ClaimTree from './ClaimTree.jsx';
 
 /**
  * Left pane — OA input + redaction preview + quota / deadline summary.
@@ -37,6 +38,11 @@ export default function InputPane({
   onLogout,
   redactPreview,
   quota,
+  // claim tree (UX_RESEARCH §5 #2)
+  claimTree = [],
+  rejections = [],
+  activeRejectionId = null,
+  setActiveRejectionId = null,
 }) {
   const { t } = useTranslation();
 
@@ -140,6 +146,27 @@ export default function InputPane({
             </div>
           )}
         </div>
+
+        {/*
+         * UX_RESEARCH §5 #2 — claim dependency tree.
+         * Only renders once an analysis has produced a `claim_tree`; until
+         * then this is a no-op (ClaimTree returns null on empty).
+         * Mounted between the OA card and the redaction-preview card so
+         * it sits naturally next to the "what claims got rejected" data
+         * the attorney is reasoning about.
+         */}
+        {claimTree && claimTree.length > 0 && (
+          <ClaimTree
+            claimTree={claimTree}
+            rejections={rejections}
+            activeRejectionId={activeRejectionId}
+            onClaimClick={(_claim_no, rejection_id) => {
+              if (setActiveRejectionId && rejection_id) {
+                setActiveRejectionId(rejection_id);
+              }
+            }}
+          />
+        )}
 
         {redactPreview && (
           <div className="rounded-lg border bg-white p-4">

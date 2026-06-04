@@ -28,6 +28,7 @@ from backend.shared.config import settings
 from backend.shared.models import (
     AnalysisRequest,
     AnalysisResponse,
+    ClaimNode,
     CostMeta,
     DeadlineInfo,
     DraftResponse,
@@ -141,6 +142,23 @@ async def orchestrate_analysis(
     deadline = DeadlineInfo(**deadline_resp)
     oa_doc.deadline = deadline.statutory_deadline
 
+    # ---- Step 5b: claim tree (UX_RESEARCH §5 #2) ----
+    # Pure payload lookup against the indexed target patent; no LLM call,
+    # no cost. Defensive: if the AI engine errors or the patent isn't
+    # indexed, fall back to an empty tree so the front-end renders normally.
+    claim_tree_nodes: list[ClaimNode] = []
+    try:
+        ct_resp = await ai.call("/v1/claim_tree", {
+            "tenant_id": user.tenant_id,
+            "patent_no": req.target_patent_no,
+        })
+        claim_tree_nodes = [ClaimNode(**n) for n in ct_resp.get("claim_tree", [])]
+    except Exception:
+        # Trees are a presentation nicety — never let their absence break
+        # the analysis pipeline. Empty list = "front-end renders nothing"
+        # which is what `Field(default_factory=list)` was designed for.
+        claim_tree_nodes = []
+
     # ---- Step 6: un-mask outbound for attorney's eyes ----
     for d in drafts:
         d.draft_text = masking.unmask(d.draft_text, user.tenant_id)
@@ -185,6 +203,7 @@ async def orchestrate_analysis(
         related_prior_art=all_hits,
         deadline_summary=deadline,
         cost_meta=cost_meta,
+        claim_tree=claim_tree_nodes,
     )
 
     obs = {

@@ -88,6 +88,20 @@ const resources = {
         no_audit_title: '尚無 audit 紀錄',
         no_audit_desc: '完成任何 API 呼叫後會在此顯示',
       },
+      analyze: {
+        pane_input: '輸入 OA / Input',
+        pane_drafts: '草稿 / Drafts',
+        pane_refs: '引證 / References',
+        claim_tree: {
+          title: '請求項依賴樹',
+          claims: '項',
+          legend: {
+            rejected: '駁回',
+            cascade: '連帶風險',
+            clean: '無駁回',
+          },
+        },
+      },
     },
   },
   en: {
@@ -166,6 +180,20 @@ const resources = {
         no_result_hint: 'Demo defaults to CASE-2025-001 (Alice has access)',
         no_audit_title: 'No audit records yet',
         no_audit_desc: 'Will appear here after any API call completes',
+      },
+      analyze: {
+        pane_input: 'Input',
+        pane_drafts: 'Drafts',
+        pane_refs: 'References',
+        claim_tree: {
+          title: 'Claim dependency tree',
+          claims: 'claims',
+          legend: {
+            rejected: 'Rejected',
+            cascade: 'Cascade',
+            clean: 'Clean',
+          },
+        },
       },
     },
   },

@@ -17,6 +17,11 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 
+# Playwright runtime artifacts — traces, video, screenshots, HTML report.
+# Baseline snapshots under frontend/tests/e2e/__screenshots__/ ARE committed.
+frontend/test-results/
+frontend/playwright-report/
+
 # Claude Code worktrees (locally created, not for commit)
 .claude/
 

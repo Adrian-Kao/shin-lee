@@ -141,11 +141,11 @@ jobs:
         run: pytest tests/integration -v
 
   # ---------------------------------------------------------------------------
-  # Frontend build + Playwright smoke.
+  # Frontend build + Playwright e2e (desktop + mobile projects).
   # Build step is green today.
-  # Playwright step will go green once `frontend/package-lock.json` is
-  # regenerated to include @playwright/test (added to package.json in this PR).
-  # Until then the `npm ci` step fails — flagged in the summary.
+  # The Playwright suite covers login, analyze three-pane flow, audit + chain
+  # verify, OAUpload drag-drop, the Day 9C trust band, and visual regression
+  # baselines under tests/e2e/__screenshots__/.
   # ---------------------------------------------------------------------------
   frontend-build:
     runs-on: ubuntu-latest
@@ -168,8 +168,81 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Cache Playwright browsers separately from npm — they live in
+      # ~/.cache/ms-playwright and downloading them is ~150 MB.
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # Bump the cache key if @playwright/test changes — different
+          # browser versions ship per Playwright release.
+          key: ${{ runner.os }}-pw-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-pw-
+
       - name: Install Playwright browsers
+        # Even on a cache hit we need the OS-level libs (`--with-deps`) on a
+        # fresh runner. `playwright install` is a no-op if the binaries are
+        # already on disk.
         run: npx playwright install --with-deps chromium
 
-      - name: Playwright smoke
-        run: npx playwright test
+      - name: Playwright (desktop)
+        run: npx playwright test --project=chromium-desktop
+
+      - name: Playwright (mobile)
+        # Don't short-circuit on desktop failure — the mobile project covers
+        # different selectors (tab strip, single-pane, ≤sm breakpoint) and
+        # we want both signals in the same CI run.
+        if: always()
+        run: npx playwright test --project=chromium-mobile
+
+      - name: Upload Playwright traces + screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # On a visual regression diff, surface the diff image into the PR so
+      # reviewers can see it without downloading artifacts. Only runs in PR
+      # context — push-only runs skip silently.
+      - name: Comment on PR with visual regression diffs
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const root = path.join(process.env.GITHUB_WORKSPACE, 'frontend', 'test-results');
+            if (!fs.existsSync(root)) return;
+            const diffs = [];
+            const walk = (dir) => {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (entry.name.endsWith('-diff.png')) diffs.push(full);
+              }
+            };
+            walk(root);
+            if (diffs.length === 0) return;
+            const body = [
+              '### Visual regression diffs',
+              '',
+              `${diffs.length} snapshot(s) differ from the baseline.`,
+              'Download the `playwright-artifacts` archive to inspect the full diff,',
+              'or run `npx playwright test --update-snapshots` locally to refresh.',
+              '',
+              ...diffs.map((p) => `- \`${path.relative(process.env.GITHUB_WORKSPACE, p)}\``),
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

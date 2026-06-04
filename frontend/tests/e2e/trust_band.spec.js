@@ -67,8 +67,15 @@ test.describe('Trust band (Day 9C CHUNK-8)', () => {
 
     // Drop a -CONF case id into the Case ID input. The trust band's routing
     // chip is driven by the live case id, not a backend response, so this
-    // exercises the SPA-side detection (Q15 mirroring).
-    const caseInput = page.locator('input').first();
+    // exercises the SPA-side detection (Q15 mirroring). The SPA renders two
+    // inner <main> elements (mobile + desktop); filter to the visible one so
+    // we don't try to type into the hidden duplicate.
+    const caseInput = page
+      .locator('main')
+      .filter({ visible: true })
+      .last()
+      .locator('input')
+      .first();
     await caseInput.fill('CASE-2025-001-CONF');
 
     // Wait one tick for the trust context push to land.

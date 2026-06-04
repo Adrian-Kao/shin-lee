@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
+import { AlertTriangle } from 'lucide-react';
 
 import App from './App.jsx';
 import { ThemeProvider } from './lib/theme.jsx';
@@ -19,7 +20,11 @@ createRoot(document.getElementById('root')).render(
       fallback={
         <div className="flex min-h-screen items-center justify-center p-6 text-center">
           <div className="max-w-md">
-            <div className="mb-3 text-5xl">⚠️</div>
+            <AlertTriangle
+              className="mx-auto mb-3 h-12 w-12 text-amber-500"
+              strokeWidth={1.5}
+              aria-hidden="true"
+            />
             <h1 className="mb-1 text-lg font-semibold">Something went wrong</h1>
             <p className="mb-4 text-sm text-slate-500">
               The error has been reported. Try refreshing the page.
@@ -27,7 +32,7 @@ createRoot(document.getElementById('root')).render(
             <button
               type="button"
               onClick={() => window.location.reload()}
-              className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700"
             >
               Reload
             </button>

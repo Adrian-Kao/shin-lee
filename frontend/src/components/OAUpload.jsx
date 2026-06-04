@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { UploadCloud } from 'lucide-react';
 import { api } from '../api/client.js';
 
 // Day 2: drag-drop PDF / DOCX upload for the Analyze view.
@@ -241,10 +242,14 @@ function DropZone({ dragOver, onDragOver, onDragLeave, onDrop, onBrowseClick, t 
         if (e.key === 'Enter' || e.key === ' ') onBrowseClick();
       }}
     >
-      <div className="mb-2 text-4xl">📎</div>
+      <UploadCloud
+        className="mx-auto mb-2 h-10 w-10 text-slate-400"
+        strokeWidth={1.5}
+        aria-hidden="true"
+      />
       <div className="text-sm">
         {t('upload.drop_zone')}{' '}
-        <span className="text-indigo-600 underline">{t('upload.browse')}</span>
+        <span className="text-navy-700 underline">{t('upload.browse')}</span>
       </div>
       <div className="mt-2 text-xs text-slate-400">PDF / DOCX · ≤ 30MB</div>
     </div>

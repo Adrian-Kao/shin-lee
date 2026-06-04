@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { LogOut, RefreshCw, ScrollText, ShieldCheck, ShieldAlert, Loader2 } from 'lucide-react';
 import { api } from '../api/client.js';
 import ErrorBanner from './ErrorBanner.jsx';
 import EmptyState from './EmptyState.jsx';
@@ -12,13 +13,26 @@ import { SkeletonCard } from './Skeleton.jsx';
  *   - mask rules triggered (proves Q10 redaction happened before going to LLM)
  *   - policy decisions (proves Q12/Q18 gates fired)
  *   - hash-chain verify button (proves no tampering since insert)
+ *
+ * Day 9C — embedded mode + CHUNK-8 hero metric block. When mounted inside
+ * the AppShell (the default for authenticated routes after CHUNK-1) the
+ * in-component <Header> is suppressed; the hero block above the audit table
+ * surfaces the three numbers BigLaw procurement asks about first
+ * (PRODUCT_STRATEGY §0 bullet 3): row count, mismatch count, last verified.
  */
-export default function AuditView({ session, onSwitchView, onLogout }) {
+export default function AuditView({ session, onSwitchView, onLogout, embedded = false }) {
   const { t } = useTranslation();
   const [rows, setRows] = useState([]);
   const [verify, setVerify] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+  const [lastVerifiedAt, setLastVerifiedAt] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Auditor → global scope (cross-tenant chain); it_admin stays per-tenant
+  // because their role description is per-tenant connectors / dashboards,
+  // not cross-tenant compliance (matches audit_verify gate in main.py).
+  const scope = session?.role === 'auditor' ? 'global' : 'tenant';
 
   async function refresh() {
     setLoading(true);
@@ -35,97 +49,88 @@ export default function AuditView({ session, onSwitchView, onLogout }) {
 
   useEffect(() => {
     refresh();
+    // Kick off an initial verify so the hero block has live numbers on
+    // first paint, not zeros — auditors expect "Last verified" to be
+    // populated when they land.
+    runVerify();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function runVerify() {
+    setVerifying(true);
     try {
-      const r = await api.auditVerify(session.token);
+      const r = await api.auditVerify(session.token, null, scope);
       setVerify(r);
+      setLastVerifiedAt(new Date());
     } catch (e) {
       setError(e);
+    } finally {
+      setVerifying(false);
     }
   }
 
-  return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-6 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-indigo-600 text-sm font-bold text-white">
-              PM
-            </div>
-            <span className="font-semibold">PatentMind AI</span>
-            <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs uppercase tracking-wider text-amber-800">
-              POC
-            </span>
-          </div>
-          <nav className="ml-6 flex gap-1">
-            <button
-              onClick={() => onSwitchView('analyze')}
-              className="rounded px-3 py-1.5 text-sm hover:bg-slate-100"
-            >
-              分析
-            </button>
-            <button
-              onClick={() => onSwitchView('audit')}
-              className="rounded bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700"
-            >
-              Audit
-            </button>
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <div className="text-right">
-              <div className="font-medium">{session.display_name}</div>
-              <div className="text-xs text-slate-500">
-                {session.tenant_id} · {session.role}
-              </div>
-            </div>
-            <button onClick={onLogout} className="rounded bg-slate-200 px-2 py-1 text-xs">
-              登出
-            </button>
-          </div>
-        </div>
-      </header>
+  // Hero metrics derived from the latest verify response.
+  const heroMetrics = useMemo(() => {
+    const verified = verify?.verified ?? 0;
+    const broken = Array.isArray(verify?.broken) ? verify.broken.length : 0;
+    return {
+      totalRows: verified + broken,
+      mismatches: broken,
+      lastVerified: lastVerifiedAt,
+      allPass: broken === 0,
+    };
+  }, [verify, lastVerifiedAt]);
 
-      <main className="mx-auto w-full max-w-7xl flex-1 space-y-4 px-6 py-6">
-        <div className="rounded-lg border bg-white p-4">
+  return (
+    <div className={`flex flex-col ${embedded ? 'min-h-0 flex-1' : 'min-h-screen'}`}>
+      {!embedded && <LegacyHeader session={session} onSwitchView={onSwitchView} onLogout={onLogout} t={t} />}
+
+      <div className="mx-auto w-full max-w-7xl flex-1 space-y-4 px-4 py-6 sm:px-6">
+        {/* CHUNK-8 hero metric block — three big numbers in JetBrains Mono. */}
+        <HeroMetrics metrics={heroMetrics} verifying={verifying} onVerify={runVerify} t={t} />
+
+        <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="font-semibold">
-                Audit Log <span className="text-xs font-normal text-slate-500">(Q13)</span>
+              <h2 className="flex items-center gap-2 font-semibold text-slate-900">
+                <ScrollText className="h-4 w-4 text-navy-700" strokeWidth={1.75} aria-hidden="true" />
+                <span>Audit Log</span>
+                <span className="text-xs font-normal text-slate-500">(Q13)</span>
               </h2>
-              <p className="text-xs text-slate-500">
-                Append-only SQLite + UPDATE/DELETE trigger 阻擋。 Production 加 S3 Object Lock
-                每小時封存。
+              <p className="mt-1 text-xs text-slate-500">
+                Append-only SQLite + UPDATE/DELETE trigger 阻擋。 Production 加 S3 Object Lock 每小時封存。
               </p>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={refresh}
-                className="rounded bg-slate-200 px-3 py-1.5 text-sm hover:bg-slate-300"
-              >
-                重新整理
-              </button>
-              <button
-                onClick={runVerify}
-                className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white hover:bg-indigo-700"
-              >
-                驗證 hash chain
-              </button>
-            </div>
+            <button
+              onClick={refresh}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+              重新整理
+            </button>
           </div>
 
           {verify && (
             <div
-              className={`mt-3 rounded p-2 text-sm ${
-                verify.broken.length === 0
+              className={`mt-3 flex items-start gap-2 rounded-md p-2 text-sm ${
+                heroMetrics.allPass
                   ? 'border border-emerald-200 bg-emerald-50 text-emerald-800'
                   : 'border border-rose-200 bg-rose-50 text-rose-800'
               }`}
             >
-              {verify.broken.length === 0
-                ? `✓ ${verify.verified} 列全部通過 hash 驗證，無 tampering 痕跡。`
-                : `✗ 發現 ${verify.broken.length} 列被竄改（${verify.broken.join(', ')}）`}
+              {heroMetrics.allPass ? (
+                <ShieldCheck className="mt-0.5 h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+              ) : (
+                <ShieldAlert className="mt-0.5 h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+              )}
+              <span>
+                {heroMetrics.allPass
+                  ? t('audit.verify_passed', { rows: heroMetrics.totalRows })
+                  : t('audit.verify_failed', {
+                      count: heroMetrics.mismatches,
+                      rows: brokenRowsLabel(verify.broken),
+                    })}
+              </span>
             </div>
           )}
           {error && (
@@ -144,14 +149,20 @@ export default function AuditView({ session, onSwitchView, onLogout }) {
 
         {!loading && rows.length === 0 && !error && (
           <EmptyState
-            icon="📋"
+            icon={
+              <ScrollText
+                className="mx-auto h-10 w-10 text-slate-400"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              />
+            }
             title={t('empty.no_audit_title')}
             description={t('empty.no_audit_desc')}
           />
         )}
 
         {!loading && rows.length > 0 && (
-          <div className="overflow-hidden rounded-lg border bg-white">
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="overflow-x-auto">
               <table className="min-w-full text-xs">
                 <thead className="bg-slate-100 uppercase tracking-wider text-slate-600">
@@ -169,7 +180,7 @@ export default function AuditView({ session, onSwitchView, onLogout }) {
                 </thead>
                 <tbody>
                   {rows.map((r) => (
-                    <tr key={r.audit_id} className="border-t hover:bg-slate-50">
+                    <tr key={r.audit_id} className="border-t border-slate-200 hover:bg-slate-50">
                       <td className="px-3 py-2 font-mono text-slate-500">
                         {r.timestamp_utc.slice(0, 19)}
                       </td>
@@ -224,7 +235,128 @@ export default function AuditView({ session, onSwitchView, onLogout }) {
             </div>
           </div>
         )}
-      </main>
+      </div>
     </div>
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  CHUNK-8 hero metric block                                                 */
+/* -------------------------------------------------------------------------- */
+
+function HeroMetrics({ metrics, verifying, onVerify, t }) {
+  const numberFmt = (n) => (n ?? 0).toLocaleString();
+  const lastVerifiedStr = metrics.lastVerified
+    ? metrics.lastVerified.toISOString().replace('T', ' ').slice(0, 19) + ' UTC'
+    : t('audit.hero.never_verified');
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="grid flex-1 grid-cols-1 gap-6 sm:grid-cols-3">
+          <HeroStat
+            label={t('audit.hero.rows_label')}
+            value={numberFmt(metrics.totalRows)}
+            tone={metrics.allPass ? 'emerald' : 'rose'}
+          />
+          <HeroStat
+            label={t('audit.hero.mismatches_label')}
+            value={numberFmt(metrics.mismatches)}
+            tone={metrics.allPass ? 'emerald' : 'rose'}
+          />
+          <HeroStat
+            label={t('audit.hero.last_verified_label')}
+            value={lastVerifiedStr}
+            tone="slate"
+            small
+          />
+        </div>
+        <button
+          type="button"
+          onClick={onVerify}
+          disabled={verifying}
+          data-testid="audit-verify-now"
+          className="inline-flex items-center gap-2 rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-navy-700 disabled:cursor-wait disabled:opacity-70"
+        >
+          {verifying ? (
+            <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
+          ) : (
+            <ShieldCheck className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+          )}
+          {verifying ? t('audit.verifying') : t('audit.verify_now')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HeroStat({ label, value, tone, small }) {
+  const toneClasses = {
+    emerald: 'text-emerald-700',
+    rose: 'text-rose-700',
+    slate: 'text-slate-700',
+  };
+  return (
+    <div>
+      <div className="text-[11px] font-medium uppercase tracking-wider text-slate-500">{label}</div>
+      <div
+        className={`mt-1 font-mono font-semibold ${toneClasses[tone] || toneClasses.slate} ${
+          small ? 'text-sm sm:text-base' : 'text-2xl sm:text-3xl'
+        }`}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Legacy standalone header (only when `embedded=false`)                     */
+/* -------------------------------------------------------------------------- */
+
+function LegacyHeader({ session, onSwitchView, onLogout, t }) {
+  return (
+    <header className="border-b bg-white">
+      <div className="mx-auto flex max-w-7xl items-center gap-4 px-6 py-3">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded bg-navy-900 text-sm font-bold text-white">
+            PM
+          </div>
+          <span className="font-semibold">PatentMind AI</span>
+          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs uppercase tracking-wider text-amber-800">
+            POC
+          </span>
+        </div>
+        <nav className="ml-6 flex gap-1">
+          <button onClick={() => onSwitchView('analyze')} className="rounded px-3 py-1.5 text-sm hover:bg-slate-100">
+            分析
+          </button>
+          <button onClick={() => onSwitchView('audit')} className="rounded bg-navy-50 px-3 py-1.5 text-sm font-medium text-navy-700">
+            Audit
+          </button>
+        </nav>
+        <div className="ml-auto flex items-center gap-3 text-sm">
+          <div className="text-right">
+            <div className="font-medium">{session.display_name}</div>
+            <div className="text-xs text-slate-500">
+              {session.tenant_id} · {session.role}
+            </div>
+          </div>
+          <button onClick={onLogout} className="inline-flex items-center gap-1 rounded bg-slate-200 px-2 py-1 text-xs">
+            <LogOut className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
+            {t('buttons.logout')}
+          </button>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function brokenRowsLabel(broken) {
+  if (!Array.isArray(broken)) return '';
+  // verify_global_chain → list[tuple[tenant_id, audit_id]]; per-tenant → list[str]
+  return broken
+    .slice(0, 5)
+    .map((b) => (Array.isArray(b) ? b[1] : b))
+    .join(', ');
 }

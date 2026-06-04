@@ -33,6 +33,7 @@ from backend.shared.models import (
     DeadlineInfo,
     DraftResponse,
     OADocument,
+    RedactionSummary,
     Rejection,
     RetrievalHit,
     User,
@@ -208,6 +209,16 @@ async def orchestrate_analysis(
         cost_provenance=worst_provenance,
     )
 
+    # CHUNK-8 trust band — surface the redaction count so the SPA can show
+    # "N entities masked" on THIS analysis. `mask_rules_triggered` is the
+    # list of rule ids that fired (one per match); we count distinct
+    # occurrences via length, and pass the de-duplicated rule ids so the
+    # tooltip can list the rule types without re-revealing values.
+    redaction_summary = RedactionSummary(
+        masked_entity_count=len(mask_rules_triggered),
+        rules_triggered=sorted(set(mask_rules_triggered)),
+    )
+
     response = AnalysisResponse(
         request_id=request_id,
         oa=oa_doc,
@@ -216,6 +227,7 @@ async def orchestrate_analysis(
         deadline_summary=deadline,
         cost_meta=cost_meta,
         claim_tree=claim_tree_nodes,
+        redaction_summary=redaction_summary,
     )
 
     obs = {

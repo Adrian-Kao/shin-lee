@@ -175,6 +175,25 @@ class ClaimNode(BaseModel):
     depth: int = 0
 
 
+class RedactionSummary(BaseModel):
+    """Day 9C — CHUNK-8 trust band feed.
+
+    Aggregate count of PII / customer-dictionary entities that the gateway
+    redacted from the OA before any text left on-prem. Surfaced to the SPA
+    so the trust band can show `Redaction: N entities masked` instead of
+    a generic "redaction active" badge — gives the attorney evidence the
+    invariant fired on THEIR document, not just in the abstract.
+
+    `rules_triggered` lists the rule ids only (e.g. ``email``, ``tw_phone``)
+    — never the matched values. CLAUDE.md invariant #3 forbids the
+    matched content from leaving the gateway.
+    """
+    model_config = {"extra": "forbid"}
+
+    masked_entity_count: int = 0
+    rules_triggered: list[str] = Field(default_factory=list, max_length=128)
+
+
 class AnalysisResponse(BaseModel):
     # NOT extra=forbid: AI Engine responses are versioned; we want to tolerate
     # the engine sending NEW fields (forward compatibility) while still
@@ -191,6 +210,9 @@ class AnalysisResponse(BaseModel):
     # validate) and from the SPA's point of view (older clients that don't
     # render it will simply ignore the field).
     claim_tree: list[ClaimNode] = Field(default_factory=list)
+    # CHUNK-8 trust band. Default = empty summary so legacy callers keep
+    # working and so cached responses missing this field still validate.
+    redaction_summary: RedactionSummary = Field(default_factory=RedactionSummary)
 
 
 # ---------- Deadline (Q17) ----------

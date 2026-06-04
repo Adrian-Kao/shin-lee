@@ -76,8 +76,8 @@ export const api = {
       token,
       headers: { 'X-Case-Id': case_id || 'CASE-2025-001' },
     }),
-  auditVerify: (token, case_id) =>
-    call('/v1/audit/verify', {
+  auditVerify: (token, case_id, scope = 'tenant') =>
+    call(`/v1/audit/verify?scope=${encodeURIComponent(scope)}`, {
       token,
       headers: { 'X-Case-Id': case_id || 'CASE-2025-001' },
     }),

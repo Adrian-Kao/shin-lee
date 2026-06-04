@@ -19,6 +19,37 @@ const resources = {
         analyze: '分析',
         audit: 'Audit',
         cases: '案件',
+        expand: '展開導覽',
+        collapse: '收合導覽',
+      },
+      shell: {
+        audit_chip: {
+          ok: '已驗證鏈',
+          checking: '驗證中…',
+          fail: '鏈不一致 — 請聯絡 Ops',
+          rows: '{{rows}} 列',
+        },
+        role_badge: {
+          attorney: '律師',
+          paralegal: '法務助理',
+          it_admin: 'IT 管理',
+          auditor: '稽核',
+        },
+        trust: {
+          redaction_default: '自動遮罩啟用',
+          redaction_active: '已遮罩 {{count}} 項實體',
+          redaction_tooltip:
+            'PII / 客戶字典於每次 LLM 呼叫前強制套用（CLAUDE.md §4 不可違反）。',
+          mapping_default: '映射表本地端',
+          mapping_tooltip:
+            '對應表存於 data/redaction_mapping.db；不離開本地端（CLAUDE.md §9）。',
+          routing_auto: '路由：自動',
+          routing_confidential: '路由：本地 LLM（機密）',
+          routing_tooltip_auto:
+            '一般案件可走雲端模型；含 -CONF 字尾的案件號將強制改走 on-prem LLM。',
+          routing_tooltip_conf:
+            'CASE 字尾為 -CONF：依 CLAUDE.md §4 不可違反第 7 條強制路由 on-prem LLM。',
+        },
       },
       buttons: {
         login: '登入',
@@ -40,8 +71,8 @@ const resources = {
         success: '已抽出 {{pages}} 頁 / {{chars}} 字',
         ocr_used: '{{count}} 頁透過 OCR（成本 ${{cost}}）',
         loaded_chip: '從 {{filename}} 載入 ({{pages}} 頁)',
-        switch_to_paste: '📋 改貼文字',
-        switch_to_upload: '📎 改用上傳',
+        switch_to_paste: '改貼文字',
+        switch_to_upload: '改用上傳',
         docx_no_preview: 'DOCX 無法預覽；抽出文字將顯示於下方',
         uploading: '上傳中...',
         change_file: '換一個',
@@ -88,6 +119,18 @@ const resources = {
         no_audit_title: '尚無 audit 紀錄',
         no_audit_desc: '完成任何 API 呼叫後會在此顯示',
       },
+      audit: {
+        hero: {
+          rows_label: '稽核總列數',
+          mismatches_label: '不一致數',
+          last_verified_label: '最近驗證時間',
+          never_verified: '尚未驗證',
+        },
+        verify_now: '立即驗證鏈',
+        verifying: '驗證中…',
+        verify_passed: '{{rows}} 列全部通過 hash 驗證，無 tampering 痕跡。',
+        verify_failed: '發現 {{count}} 列被竄改：{{rows}}',
+      },
       analyze: {
         pane_input: '輸入 OA / Input',
         pane_drafts: '草稿 / Drafts',
@@ -112,6 +155,37 @@ const resources = {
         analyze: 'Analyze',
         audit: 'Audit',
         cases: 'Cases',
+        expand: 'Expand navigation',
+        collapse: 'Collapse navigation',
+      },
+      shell: {
+        audit_chip: {
+          ok: 'Chain verified',
+          checking: 'Verifying…',
+          fail: 'Chain mismatch — contact ops',
+          rows: '{{rows}} rows',
+        },
+        role_badge: {
+          attorney: 'Attorney',
+          paralegal: 'Paralegal',
+          it_admin: 'IT Admin',
+          auditor: 'Auditor',
+        },
+        trust: {
+          redaction_default: 'Auto-mask active',
+          redaction_active: '{{count}} entities masked',
+          redaction_tooltip:
+            'PII and customer dictionaries are applied before any LLM call (CLAUDE.md §4 invariant).',
+          mapping_default: 'Mapping table on-prem',
+          mapping_tooltip:
+            'Reversal map stored at data/redaction_mapping.db — NEVER leaves on-prem (CLAUDE.md §9).',
+          routing_auto: 'Routing: Auto',
+          routing_confidential: 'Routing: Local LLM (confidential)',
+          routing_tooltip_auto:
+            'Standard cases may use cloud models; cases ending in -CONF auto-route to the on-prem LLM.',
+          routing_tooltip_conf:
+            'Case ID ends in -CONF: routed to the on-prem LLM per CLAUDE.md §4 invariant #7.',
+        },
       },
       buttons: {
         login: 'Login',
@@ -133,8 +207,8 @@ const resources = {
         success: 'Extracted {{pages}} pages / {{chars}} chars',
         ocr_used: '{{count}} pages via OCR (cost ${{cost}})',
         loaded_chip: 'Loaded from {{filename}} ({{pages}} pages)',
-        switch_to_paste: '📋 Paste text instead',
-        switch_to_upload: '📎 Upload file instead',
+        switch_to_paste: 'Paste text instead',
+        switch_to_upload: 'Upload file instead',
         docx_no_preview: 'DOCX preview not supported; extracted text will appear below',
         uploading: 'Uploading...',
         change_file: 'Change file',
@@ -180,6 +254,18 @@ const resources = {
         no_result_hint: 'Demo defaults to CASE-2025-001 (Alice has access)',
         no_audit_title: 'No audit records yet',
         no_audit_desc: 'Will appear here after any API call completes',
+      },
+      audit: {
+        hero: {
+          rows_label: 'Audit rows',
+          mismatches_label: 'Mismatches',
+          last_verified_label: 'Last verified',
+          never_verified: 'Not verified yet',
+        },
+        verify_now: 'Verify chain now',
+        verifying: 'Verifying…',
+        verify_passed: 'All {{rows}} rows passed hash verification — no tampering detected.',
+        verify_failed: '{{count}} rows tampered: {{rows}}',
       },
       analyze: {
         pane_input: 'Input',

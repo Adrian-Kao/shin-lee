@@ -23,12 +23,14 @@ Claims 4-5 are rejected under 35 U.S.C. § 102 as anticipated by US7654321.
 Attorney contact: alice.chen@apex-ip.com (mobile: 0912-345-678)
 `;
 
+// Day 9C: emoji-free chip labels. The visual cue is now the chip color tone
+// (emerald / rose / amber) computed below, not a glyph prefix.
 const SECURITY_BADGE = {
-  rate_limit_passed: { ok: '✓ RPM', no: '✗ RPM' },
-  quota_passed: { ok: '✓ Quota', no: '✗ Quota' },
-  authz_passed: { ok: '✓ Authz', no: '✗ Authz' },
-  cache_hit: { ok: '⚡ Cache', no: '🆕 Fresh' },
-  circuit_open: { ok: '⚠ Breaker', no: '✓ Breaker OK' },
+  rate_limit_passed: { ok: 'RPM ok', no: 'RPM blocked' },
+  quota_passed: { ok: 'Quota ok', no: 'Quota blocked' },
+  authz_passed: { ok: 'Authz ok', no: 'Authz denied' },
+  cache_hit: { ok: 'Cache hit', no: 'Fresh' },
+  circuit_open: { ok: 'Breaker open', no: 'Breaker ok' },
 };
 
 /**
@@ -39,8 +41,22 @@ const SECURITY_BADGE = {
  * so the tab strip in DraftsPane and the filter in ReferencesPane stay in sync.
  *
  * Tablet / mobile (< xl): single column, top tab strip swaps which pane renders.
+ *
+ * Day 9C — embedded mode. When mounted inside `<AppShell>` (the default for
+ * all authenticated routes after CHUNK-1), the in-component `<Header>` and
+ * tenant chip are suppressed: the shell owns the chrome. The three-pane
+ * grid (`xl:grid-cols-[3fr_4fr_3fr]`) is preserved exactly. `onTrustChange`
+ * lets the shell's trust band react to per-analysis context (case id +
+ * masked-entity count). All optional / default no-op so older callers /
+ * tests that don't pass `embedded` keep rendering the standalone header.
  */
-export default function Analyze({ session, onLogout, onSwitchView }) {
+export default function Analyze({
+  session,
+  onLogout,
+  onSwitchView,
+  embedded = false,
+  onTrustChange,
+}) {
   const { t } = useTranslation();
   const [oaText, setOaText] = useState(SAMPLE_OA);
   const [caseId, setCaseId] = useState('CASE-2025-001');
@@ -87,6 +103,18 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
   useEffect(() => {
     if (result) setMobileTab('drafts');
   }, [result]);
+
+  // Day 9C — feed the AppShell trust band. Fires on every case/result change
+  // so the band's `Routing` chip flips between Auto/Confidential and the
+  // Redaction chip shows the per-analysis entity count. The default
+  // `onTrustChange` is a no-op, so standalone (non-embedded) mounts skip this.
+  useEffect(() => {
+    if (typeof onTrustChange !== 'function') return;
+    onTrustChange({
+      caseId,
+      maskedEntityCount: result?.redaction_summary?.masked_entity_count ?? 0,
+    });
+  }, [onTrustChange, caseId, result]);
 
   async function previewRedaction() {
     try {
@@ -170,8 +198,10 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50">
-      <Header session={session} onLogout={onLogout} onSwitchView={onSwitchView} />
+    <div className={`flex flex-col bg-slate-50 ${embedded ? 'min-h-0 flex-1' : 'min-h-screen'}`}>
+      {!embedded && (
+        <Header session={session} onLogout={onLogout} onSwitchView={onSwitchView} />
+      )}
 
       {result && <ResultSummaryBar result={result} />}
 
@@ -217,12 +247,15 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
   );
 }
 
+// Day 9C: legacy standalone Header retained for `embedded=false` callers
+// (a few tests + the placeholder cases route prior to the shell switch).
+// The shell's TopBar/NavRail superset this when mounted inside AppShell.
 function Header({ session, onLogout, onSwitchView }) {
   return (
     <header className="border-b bg-white">
       <div className="mx-auto flex max-w-[1920px] items-center gap-4 px-6 py-3">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded bg-indigo-600 text-sm font-bold text-white">
+          <div className="flex h-8 w-8 items-center justify-center rounded bg-navy-900 text-sm font-bold text-white">
             PM
           </div>
           <span className="font-semibold">PatentMind AI</span>
@@ -233,7 +266,7 @@ function Header({ session, onLogout, onSwitchView }) {
         <nav className="ml-6 flex gap-1">
           <button
             onClick={() => onSwitchView('analyze')}
-            className="rounded bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700"
+            className="rounded bg-navy-50 px-3 py-1.5 text-sm font-medium text-navy-700"
           >
             分析
           </button>

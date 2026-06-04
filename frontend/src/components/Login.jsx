@@ -62,8 +62,8 @@ export default function Login({ onLogin }) {
 
   return (
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
-      {/* Hero / brand */}
-      <section className="relative flex flex-col justify-center bg-gradient-to-br from-indigo-700 via-indigo-800 to-slate-900 px-8 py-12 text-white lg:px-16">
+      {/* Hero / brand — Day 9C: navy palette (PRODUCT_STRATEGY §11). */}
+      <section className="relative flex flex-col justify-center bg-gradient-to-br from-navy-800 via-navy-900 to-slate-900 px-8 py-12 text-white lg:px-16">
         <div className="max-w-xl">
           <div className="mb-8 flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white ring-1 ring-white/20 backdrop-blur">
@@ -75,15 +75,15 @@ export default function Login({ onLogin }) {
             </span>
           </div>
 
-          <h2 className="mb-8 text-2xl font-semibold leading-snug text-indigo-50 lg:text-3xl">
+          <h2 className="mb-8 text-2xl font-semibold leading-snug text-navy-50 lg:text-3xl">
             {t('landing.tagline')}
           </h2>
 
           <ul className="hidden space-y-4 lg:block">
             {VALUE_BULLETS.map(({ Icon, key }) => (
-              <li key={key} className="flex items-start gap-3 text-indigo-100">
+              <li key={key} className="flex items-start gap-3 text-navy-100">
                 <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15">
-                  <Icon className="h-5 w-5" aria-hidden="true" />
+                  <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
                 </span>
                 <span className="text-[15px] leading-6">{t(key)}</span>
               </li>
@@ -91,7 +91,7 @@ export default function Login({ onLogin }) {
           </ul>
         </div>
 
-        <div className="absolute bottom-6 left-8 text-xs text-indigo-200/70 lg:left-16">
+        <div className="absolute bottom-6 left-8 text-xs text-navy-200/70 lg:left-16">
           {t('landing.footer')}
         </div>
       </section>
@@ -116,15 +116,15 @@ export default function Login({ onLogin }) {
                   className={[
                     'group rounded-lg border border-slate-200 p-4 text-left',
                     'transition-all duration-150 ease-out',
-                    'hover:scale-[1.02] hover:border-indigo-400 hover:shadow-md',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2',
+                    'hover:scale-[1.02] hover:border-navy-400 hover:shadow-md',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-700 focus-visible:ring-offset-2',
                     disabled
                       ? 'cursor-wait opacity-60 hover:scale-100 hover:shadow-none'
                       : 'cursor-pointer',
                   ].join(' ')}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-600 font-bold text-white">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-navy-900 font-bold text-white">
                       {u.initial}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -136,7 +136,7 @@ export default function Login({ onLogin }) {
                     </div>
                     {isBusy && (
                       <Loader2
-                        className="h-5 w-5 shrink-0 animate-spin text-indigo-600"
+                        className="h-5 w-5 shrink-0 animate-spin text-navy-700"
                         aria-hidden="true"
                       />
                     )}

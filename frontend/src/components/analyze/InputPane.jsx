@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { AlertTriangle, ClipboardPaste, Paperclip } from 'lucide-react';
 import OAUpload from '../OAUpload.jsx';
 import ErrorBanner from '../ErrorBanner.jsx';
 import { SkeletonText } from '../Skeleton.jsx';
@@ -76,8 +77,9 @@ export default function InputPane({
               <button
                 type="button"
                 onClick={() => setShowUpload(false)}
-                className="mt-2 text-xs text-indigo-600 hover:underline"
+                className="mt-2 inline-flex items-center gap-1 text-xs text-navy-700 hover:underline"
               >
+                <ClipboardPaste className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
                 {t('upload.switch_to_paste')}
               </button>
             </div>
@@ -86,8 +88,9 @@ export default function InputPane({
             <button
               type="button"
               onClick={() => setShowUpload(true)}
-              className="mb-2 text-xs text-indigo-600 hover:underline"
+              className="mb-2 inline-flex items-center gap-1 text-xs text-navy-700 hover:underline"
             >
+              <Paperclip className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
               {t('upload.switch_to_upload')}
             </button>
           )}
@@ -105,9 +108,14 @@ export default function InputPane({
               {uploadWarnings.map((w, i) => (
                 <div
                   key={i}
-                  className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800"
+                  className="flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800"
                 >
-                  ⚠ {w}
+                  <AlertTriangle
+                    className="mt-0.5 h-3 w-3 shrink-0"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
+                  <span>{w}</span>
                 </div>
               ))}
             </div>
@@ -130,7 +138,7 @@ export default function InputPane({
             <button
               onClick={onAnalyze}
               disabled={running}
-              className="flex-1 rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700 disabled:bg-slate-400"
+              className="flex-1 rounded-md bg-navy-900 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-700 disabled:cursor-wait disabled:bg-slate-400"
             >
               {running ? '分析中…' : '分析 OA'}
             </button>

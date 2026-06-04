@@ -715,3 +715,27 @@ From `docs/UX_RESEARCH.md` §5, must-have items NOT yet shipped:
 ## 20. 給接手 Claude 的一句話 (2026-06-01 版 — overnight wrap)
 
 > 22 commits ahead of origin, 120/120 pytests pass, all 4 Critical security findings closed + 4 High + 2 Medium, three-pane UX live, digiRunner+Dify migration unblocked (prompts externalized + /v1/redact + /v1/audit/append + upstream-header auth ready), HANDOFF §16-20 has the complete play-by-play. Push auth still blocks (§11). Priorities when you wake up: (1) push to origin §19.1; (2) ANTHROPIC_API_KEY + real LLM smoke §19.2; (3) demo dry-run §12 (visuals refreshed by 8E); (4) Phase 2 Chunk D (H-3 + H-4 cross-tenant) if time. UX_RESEARCH §5 items #2-#8 are the next sprint after demo.
+
+---
+
+# 2026-06-05 session — Phase 3 migration planning
+
+## 21. Phase 3 migration plan
+
+> User explicitly chose digiRunner + Dify as the production landing stack
+> ("我要使用 digirunner 和 dify"). This session produced planning + artefacts
+> only — no backend or frontend code changed.
+
+- **Comprehensive plan:** [`docs/PHASE3_MIGRATION.md`](docs/PHASE3_MIGRATION.md) — 11 sections covering goals/non-goals, target architecture (3-layer → 5-layer), stays-vs-moves table with file:line evidence, 4-phase rollout (3.1 design + shadow → 3.2 digiRunner front-line → 3.3 cutover → 3.4 cleanup), risk register, open questions for TPIsoftware contact.
+- **Generated Dify workflow artefacts:** [`dify_workflows/`](dify_workflows/)
+  - `analyze_oa.workflow.json` — main orchestrator DAG (replaces `backend/gateway/orchestrator.py`)
+  - `extract_pdf.workflow.json` — PDF/DOCX upload → text (replaces `/v1/oa/upload` path)
+  - `ocr_page.workflow.json` — per-page Vision OCR sub-workflow (refuses confidential)
+  - `prompts_export.md` — paste-ready system prompts + JSON schemas, manual-setup fallback
+- **Generated digiRunner config templates:** [`digirunner/`](digirunner/)
+  - `routes.yaml` — design-intent route definitions + auth + rate-limit + AI policy refs
+  - `oidc.yaml` — OIDC provider template with claim mapping + audit hook forwarding
+  - `ai-gateway-models.yaml` — Anthropic + Ollama provider config, routing rules, cost tracking, confidential-routing rule
+- **Design invariants preserved:** all 8 from `CLAUDE.md §4`. Audit chain stays authoritative in our thin gateway; redaction mapping table stays on-prem; verifier stays as Dify HTTP node calling our `/v1/verify_citations` (Q14 hard wall); confidential routing has three walls (digiRunner AI gateway rule + Dify IF/ELSE branch + our `llm_client.py:556-563` assert).
+- **Next steps:** (1) socialise the plan with TPIsoftware contact — see §10 of PHASE3_MIGRATION.md for the 10 open questions; (2) stand up Dify sandbox + import workflow JSONs; (3) Phase 3.1 shadow mode against 30 synthetic cases via `scripts/eval_cases.py`.
+- **No code changed.** Backend gateway/ai_engine/orchestrator paths untouched. 120 pytests should still pass — no edits to any tested path.

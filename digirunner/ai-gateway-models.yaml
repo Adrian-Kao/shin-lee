@@ -1,0 +1,186 @@
+# digiRunner AI gateway — managed model configuration
+#
+# Per TPIsoftware's 2026 product page (https://www.tpisoftware.com/en/products/digirunner):
+# "digiRunner has transitioned from an API gateway into an AI gateway that
+# allows users to centrally and efficiently manage Large Language Models
+# (LLMs) and AI agents with enhanced governance and observability."
+#
+# This file documents the model providers, routing rules, cost tracking,
+# and confidential-routing policy that the digiRunner AI gateway enforces
+# for PatentMind.
+#
+# Fields marked [CONFIRM WITH TPISOFT] should be checked against the
+# digiRunner Enterprise 2026 schema during Phase 3.2 setup.
+
+apiVersion: digirunner.tpisoftware.com/v2026  # [CONFIRM WITH TPISOFT]
+kind: AIGatewayConfig
+metadata:
+  name: patentmind-ai-gateway
+  environment: pilot
+
+# Model providers. The Anthropic key lives in TPIsoftware's secret vault;
+# digiRunner injects it on outbound requests. This collapses the
+# `.env ANTHROPIC_API_KEY` scatter in our current setup into a single
+# managed secret per https://www.tpisoftware.com/en/products/digirunner
+# "Data Security" pillar.
+providers:
+  anthropic:
+    type: anthropic
+    api_key: ${ANTHROPIC_API_KEY}     # from external secret vault
+    base_url: https://api.anthropic.com
+    default_headers:
+      anthropic-version: '2023-06-01'
+      anthropic-beta: 'prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15'
+    # 2026 1M context — Sonnet 4.6 GA (HANDOFF.md §13.3).
+    timeout_seconds: 120
+    # Prompt-caching pass-through: do NOT strip cache_control headers.
+    # Per Anthropic prompt caching docs cited in HANDOFF.md §13.3.
+    pass_through_headers:
+      - cache-control
+      - anthropic-beta
+  ollama:
+    # Local LLM for confidential cases (Q15 invariant).
+    type: ollama
+    base_url: ${OLLAMA_BASE_URL}      # http://patentmind-ollama.svc.cluster.local:11434
+    timeout_seconds: 180
+    # No API key — same VPC.
+
+# Models exposed to Dify and the SPA. Each entry pins one provider + model name.
+# Dify references these via the provider config; the SPA never names a model directly.
+models:
+  - id: reasoning-default
+    provider: anthropic
+    model: claude-sonnet-4-6
+    description: Primary reasoning model for parse_oa + draft_response
+    pricing_usd_per_million:
+      input: 3.00
+      output: 15.00
+      cache_read: 0.30   # 90% discount per HANDOFF.md §13.3
+      cache_write: 3.75  # 5-min ephemeral cache surcharge
+    rate_limit:
+      requests_per_minute: 50      # leave headroom under Anthropic's per-org limit
+      tokens_per_minute: 200000
+  - id: verifier-cheap
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    description: Citation verifier (Q14 third defence) + Vision OCR
+    pricing_usd_per_million:
+      input: 1.00
+      output: 5.00
+    rate_limit:
+      requests_per_minute: 100
+      tokens_per_minute: 200000
+  - id: local-confidential
+    provider: ollama
+    model: llama3.1:8b
+    description: Forced route for case_id ending -CONF (Q15)
+    pricing_usd_per_million:
+      input: 0.00   # on-prem
+      output: 0.00
+      _comment: 'Track as cost_provenance: on_prem in audit row per SECURITY_AUDIT.md M-3'
+    rate_limit:
+      requests_per_minute: 30      # bounded by GPU throughput
+
+# Routing rules. The order matters — first match wins.
+routing_rules:
+  # RULE 1 (highest priority): confidential cases ALWAYS local.
+  # Defence-in-depth: Dify workflow also has its own IF/ELSE, our thin
+  # gateway also re-checks. Three walls per SECURITY_AUDIT.md "What's done
+  # well" item #2.
+  - id: confidential-forces-local
+    description: Q15 invariant — case_id ending -CONF must use local LLM.
+    condition: 'request.header.X-Case-Id ends_with "-CONF"'
+    action:
+      override_model: local-confidential
+      override_provider: ollama
+    on_violation:
+      # If a downstream consumer somehow bypasses this rule (e.g., calls
+      # Anthropic directly without going through digiRunner), the violation
+      # is logged but cannot be intercepted at request time. The thin
+      # gateway's audit row + the llm_client.py:556-563 defence-in-depth
+      # assert catch it after the fact.
+      log_level: critical
+      alert: pagerduty
+  # RULE 2: verifier intent routes to Haiku.
+  - id: verifier-uses-haiku
+    description: Citation verifier uses cheap Haiku model
+    condition: 'request.body.intent == "verify_citations"'
+    action:
+      override_model: verifier-cheap
+  # RULE 3: vision intent routes to Haiku (vision-enabled).
+  - id: vision-uses-haiku
+    description: Vision OCR uses Haiku vision
+    condition: 'request.body.intent == "vision_ocr"'
+    action:
+      override_model: verifier-cheap
+      override_vision: true
+  # RULE 4 (default): everything else uses Sonnet 4.6.
+  - id: default-reasoning
+    description: Default reasoning model
+    condition: 'true'
+    action:
+      override_model: reasoning-default
+
+# Cost tracking. digiRunner's AI gateway dashboard ("real-time monitoring
+# dashboards with AI usage insights" per the 2026 product page) aggregates
+# spend by tag.
+cost_tracking:
+  enabled: true
+  # Per-request tags. digiRunner reads from headers forwarded by upstream
+  # routes (see routes.yaml).
+  tags:
+    - name: tenant_id
+      source: header.X-Tenant-Id
+    - name: case_id
+      source: header.X-Case-Id
+    - name: user_id
+      source: header.X-User-Id
+    - name: intent
+      source: body.intent
+      fallback: workflow.name
+  # Budget alerts.
+  alerts:
+    - id: daily-tenant-cap
+      threshold_usd: 50
+      window: 1d
+      group_by: tenant_id
+      action: alert-only   # do not block; let the per-tenant quota in routes.yaml block
+    - id: monthly-org-cap
+      threshold_usd: 1500
+      window: 30d
+      action: alert-pagerduty
+
+# Observability hooks. Forward AI gateway events to our Sentry + log scraper.
+observability:
+  emit_request_metric: true
+  emit_token_metric: true
+  emit_cost_metric: true
+  metric_format: prometheus  # [CONFIRM WITH TPISOFT]
+  log_destination: sentry
+  sentry_dsn: ${SENTRY_DSN_DIGIRUNNER}
+  # Per https://www.tpisoftware.com/en/products/digirunner — "AI-based data
+  # lineage tracking for visibility and regulatory adherence". Forward
+  # lineage events to thin gateway audit endpoint.
+  lineage:
+    enabled: true
+    forward_to: http://patentmind-thin-gw.svc.cluster.local:8010/v1/gateway/audit/append
+
+# Prompt versioning. [CONFIRM WITH TPISOFT] — digiRunner 2026 AI gateway
+# docs mention governance but don't specifically document a "prompt version
+# pin" feature. If unsupported, prompts version-control happens at the Dify
+# side (workflow DSL versioning + git diff of dify_workflows/*.json).
+prompt_versioning:
+  enabled: false
+  _comment: 'If digiRunner adds this feature, pin: parse_oa@v1, draft_response@v1, verify_citations@v1 matching backend/ai_engine/prompts/*.yaml.version field.'
+
+# Environment variables digiRunner expects.
+env:
+  - name: ANTHROPIC_API_KEY
+    required: true
+    secret: true
+  - name: OLLAMA_BASE_URL
+    required: true
+    example: http://patentmind-ollama.svc.cluster.local:11434
+  - name: SENTRY_DSN_DIGIRUNNER
+    required: false
+    secret: true

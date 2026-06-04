@@ -605,6 +605,172 @@ def build_report(
 
 
 # ---------------------------------------------------------------------------
+# 4b. Structured summary (additive — REPORT.md stays the human-facing artefact,
+#     summary.json is the machine-facing artefact eval_compare.py consumes.
+#     Shape MUST stay backward-compatible: only add keys, never remove, and
+#     never change a key's type. Downstream readers MAY tolerate missing keys
+#     but assume keys that ARE present have the documented type.
+# ---------------------------------------------------------------------------
+def build_summary(
+    results: list[dict],
+    mode: str,
+    wall_time_sec: float,
+    timestamp: str,
+) -> dict:
+    """Compute the same metrics REPORT.md surfaces, in machine-readable form.
+
+    The schema is the contract eval_compare.py reads. Bumping fields is fine
+    (the comparator uses .get() everywhere with sensible defaults), but
+    breaking shape changes require updating the comparator + its tests.
+    """
+    ok = [r for r in results if r["status"] == "ok"]
+
+    # ---- Top-line accuracy counts ----
+    rt_pass = sum(1 for r in ok if r["comparison"]["rejection_types_match"])
+    ac_pass = sum(r["comparison"]["affected_claims_matches"] for r in ok)
+    ac_total = sum(r["comparison"]["affected_claims_total"] for r in ok)
+    rd_pass = sum(1 for r in ok if r["comparison"]["received_date_match"])
+    dl_pass = sum(1 for r in ok if r["comparison"]["deadline_within_range"])
+
+    # ---- Token + cost totals ----
+    total_input = sum(r["cost_meta"]["prompt_tokens"] for r in ok)
+    total_output = sum(r["cost_meta"]["completion_tokens"] for r in ok)
+    total_cost = sum(r["cost_meta"]["estimated_cost_usd"] for r in ok)
+
+    # ---- Latency stats (optional but cheap to compute, useful for SLA tracking) ----
+    latencies = [r.get("latency_sec", 0.0) for r in ok]
+    mean_latency_ms = (statistics.fmean(latencies) * 1000.0) if latencies else 0.0
+    p95_latency_ms = 0.0
+    if len(latencies) >= 2:
+        # statistics.quantiles needs >=2 data points; for tiny corpora fall
+        # back to max() which is a reasonable upper bound.
+        try:
+            p95_latency_ms = statistics.quantiles(latencies, n=20)[18] * 1000.0
+        except statistics.StatisticsError:
+            p95_latency_ms = max(latencies) * 1000.0
+    elif latencies:
+        p95_latency_ms = max(latencies) * 1000.0
+
+    # ---- Per-rejection-type breakdown ----
+    by_type: dict[str, dict] = {}
+    for r in ok:
+        for er in r["expected"]["rejections"]:
+            t = er["rejection_type"]
+            st = by_type.setdefault(t, {
+                "count": 0,
+                "pass": 0,
+                "confs": [],
+                "latencies_sec": [],
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+            })
+            st["count"] += 1
+            pred_match = any(
+                pr["rejection_type"] == t
+                and set(pr["affected_claims"]) == set(er["affected_claims"])
+                for pr in r["predicted"]["rejections"]
+            )
+            if pred_match:
+                st["pass"] += 1
+            for pr in r["predicted"]["rejections"]:
+                if pr["rejection_type"] == t:
+                    st["confs"].append(pr["confidence"])
+            # Per-type cost / latency is attributed at the case level
+            # (a case might have multiple rejection_types; we credit each
+            # one equally — good enough for ballpark per-type cost trends).
+            st["latencies_sec"].append(r.get("latency_sec", 0.0))
+            st["input_tokens"] += r["cost_meta"]["prompt_tokens"]
+            st["output_tokens"] += r["cost_meta"]["completion_tokens"]
+            st["cost_usd"] += r["cost_meta"]["estimated_cost_usd"]
+
+    by_type_out: dict[str, dict] = {}
+    for t, st in by_type.items():
+        by_type_out[t] = {
+            "count": st["count"],
+            "pass": st["pass"],
+            "mean_confidence": (
+                round(statistics.fmean(st["confs"]), 4) if st["confs"] else 0.0
+            ),
+            "mean_latency_ms": (
+                round(statistics.fmean(st["latencies_sec"]) * 1000.0, 2)
+                if st["latencies_sec"] else 0.0
+            ),
+            "total_input_tokens": st["input_tokens"],
+            "total_output_tokens": st["output_tokens"],
+            "total_cost_usd": round(st["cost_usd"], 6),
+        }
+
+    # ---- Cost provenance: "mock" if any mock-style model name appears,
+    # "exact" if every model resolves through the pricing table, "fallback"
+    # if any model used the catch-all pricing row. The eval_compare.py
+    # cost-projection cell prints a warning when provenance != "exact".
+    cost_provenance = _detect_cost_provenance(ok, mode)
+
+    return {
+        "timestamp": timestamp,
+        "mode": mode,
+        "n_cases": len(results),
+        "n_completed": len(ok),
+        "n_errors": len(results) - len(ok),
+        "wall_time_sec": round(wall_time_sec, 3),
+        "rejection_type_correct": rt_pass,
+        "rejection_type_total": len(ok),
+        "affected_claims_correct": ac_pass,
+        "affected_claims_total": ac_total,
+        "received_date_correct": rd_pass,
+        "received_date_total": len(ok),
+        "deadline_correct": dl_pass,
+        "deadline_total": len(ok),
+        "total_input_tokens": total_input,
+        "total_output_tokens": total_output,
+        "total_cost_usd": round(total_cost, 6),
+        "mean_latency_ms": round(mean_latency_ms, 2),
+        "p95_latency_ms": round(p95_latency_ms, 2),
+        "by_type": by_type_out,
+        "case_ids": sorted(r["case_id"] for r in results),
+        "cost_provenance": cost_provenance,
+        "schema_version": 1,
+    }
+
+
+def _detect_cost_provenance(ok: list[dict], mode: str) -> str:
+    """Classify cost-figure trustworthiness for downstream display.
+
+    Returns one of:
+      "mock"     — at least one model name is the synthetic '-mock' shape.
+                   Cost numbers are computed from the fallback table and do
+                   not represent real money.
+      "exact"    — every model resolves to a row in the rate_limit pricing
+                   table. Cost numbers are dollar-accurate.
+      "fallback" — at least one model fell through to _FALLBACK_PRICING
+                   (an unrecognised future model name). Cost numbers are a
+                   rough approximation; the comparator will flag.
+    """
+    if mode == "mock":
+        return "mock"
+    if not ok:
+        return "exact"  # vacuously — no calls were made
+    try:
+        from backend.gateway.rate_limit import _MODEL_PRICING_USD_PER_M
+    except Exception:  # pragma: no cover — defensive
+        return "fallback"
+    models = {r["cost_meta"].get("model", "") for r in ok}
+    saw_mock = any(m.endswith("-mock") or m.startswith("mock") for m in models)
+    if saw_mock:
+        return "mock"
+    saw_fallback = False
+    for m in models:
+        if m in _MODEL_PRICING_USD_PER_M:
+            continue
+        if any(m.startswith(known) for known in _MODEL_PRICING_USD_PER_M):
+            continue
+        saw_fallback = True
+        break
+    return "fallback" if saw_fallback else "exact"
+
+
+# ---------------------------------------------------------------------------
 # 5. CLI glue.
 # ---------------------------------------------------------------------------
 def _confirm_cost(estimated_usd: float, threshold: float, auto_confirm: bool) -> bool:
@@ -716,6 +882,16 @@ async def _amain(args: argparse.Namespace) -> int:
 
     report = build_report(results, args.mode, concurrency, wall_time, timestamp)
     (out_dir / "REPORT.md").write_text(report, encoding="utf-8")
+
+    # Additive: structured summary for downstream tooling (eval_compare.py).
+    # REPORT.md stays the human-facing artefact; summary.json is the contract.
+    summary = build_summary(results, args.mode, wall_time, timestamp)
+    summary["concurrency"] = concurrency
+    summary["output_dir"] = str(out_dir)
+    (out_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2, ensure_ascii=False, sort_keys=True),
+        encoding="utf-8",
+    )
 
     # ---- Console summary ----
     ok = [r for r in results if r["status"] == "ok"]

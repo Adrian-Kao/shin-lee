@@ -1,30 +1,64 @@
 """Deadline calculation (Q17).
 
 Three core requirements:
-    1. Per-jurisdiction rules (TW vs US start counting differently).
+    1. Per-jurisdiction rules (TW vs US vs JP start counting differently).
     2. Calendar-version locking — recompute uses the same holiday version
        so re-running 6 months later doesn't yield a different answer.
     3. Multi-timezone: mailing date in sender's TZ, deadline in case TZ.
 
-POC: TW + US.  Other jurisdictions stub-out.
+Holiday calendars are CLIENT-UPDATABLE + VERSIONED. They live as
+``data/calendars/<jurisdiction>_<version>.json`` (schema below) and are loaded
++ cached on first use. The hard-coded ``_FALLBACK_HOLIDAYS`` dict below is the
+safety net: when no JSON file is present (fresh checkout / absent data dir / CI)
+the loader degrades to it so nothing ever breaks. This mirrors how the masking
+layer externalises per-tenant dictionaries (data/tenant_dicts/<id>.json with a
+hard-coded TENANT_DICTIONARIES fallback).
 
-Real holiday calendars (loaded from data/calendars/<jurisdiction>_<version>.json
-in production).  POC ships hard-coded 2025 lists for demo.
+Calendar JSON schema::
+
+    {
+      "jurisdiction": "TW",
+      "version": "2025.1",
+      "holidays": { "2025-01-01": "元旦", ... }
+    }
+
+Calendar-version locking invariant: the same ``(jurisdiction, version)`` ALWAYS
+resolves to the same holiday set (the file is the authoritative source; the
+hard-coded dict is a byte-for-byte mirror for the shipped 2025.1 versions). A
+requested version with NO file AND no hard-coded entry resolves to an EMPTY
+calendar plus a LOUD warning in the returned dict — never a silently-wrong date.
+
+POC jurisdictions: TW, US, JP. Others stub-out (60-day default + warning).
 """
 from __future__ import annotations
 
+import json
+import logging
+import threading
 from dataclasses import dataclass
 from datetime import datetime, date, time, timedelta, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 from typing import Optional
 
-from backend.shared.config import settings
+from backend.shared.config import settings, DATA_DIR
+
+logger = logging.getLogger(__name__)
+
+# Where versioned calendars live. Override-able for tests.
+CALENDARS_DIR: Path = DATA_DIR / "calendars"
 
 
-# ---------- Holiday data (POC: 2025) ----------
-
+# ---------- Hard-coded fallback holiday data (POC: 2025) ----------
+#
+# This is the SAFETY NET, not the primary source. The loader below prefers the
+# JSON file at data/calendars/<jurisdiction>_<version>.json and only falls back
+# here when the file is absent / unreadable. Keep this in sync with the shipped
+# *_2025.1.json files (they are byte-for-byte mirrors) so version-locking holds
+# regardless of whether the data dir is present.
+#
 # Format: {(jurisdiction, version): {date: name}}
-HOLIDAYS: dict[tuple[str, str], dict[date, str]] = {
+_FALLBACK_HOLIDAYS: dict[tuple[str, str], dict[date, str]] = {
     ("TW", "2025.1"): {
         date(2025, 1, 1): "元旦",
         date(2025, 1, 27): "農曆除夕（補假）",
@@ -55,7 +89,195 @@ HOLIDAYS: dict[tuple[str, str], dict[date, str]] = {
         date(2025, 11, 27): "Thanksgiving",
         date(2025, 12, 25): "Christmas",
     },
+    # JP fallback — abbreviated mirror of JP_2025.1.json (key dates only). The
+    # JSON file is authoritative; this guarantees JP still resolves on a fresh
+    # checkout with no data dir.
+    ("JP", "2025.1"): {
+        date(2025, 1, 1): "元日",
+        date(2025, 1, 2): "年始休 (JPO closed)",
+        date(2025, 1, 3): "年始休 (JPO closed)",
+        date(2025, 1, 13): "成人の日",
+        date(2025, 2, 11): "建国記念の日",
+        date(2025, 2, 23): "天皇誕生日",
+        date(2025, 2, 24): "天皇誕生日 振替休日",
+        date(2025, 3, 20): "春分の日",
+        date(2025, 4, 29): "昭和の日",
+        date(2025, 5, 3): "憲法記念日",
+        date(2025, 5, 4): "みどりの日",
+        date(2025, 5, 5): "こどもの日",
+        date(2025, 5, 6): "こどもの日 振替休日",
+        date(2025, 7, 21): "海の日",
+        date(2025, 8, 11): "山の日",
+        date(2025, 9, 15): "敬老の日",
+        date(2025, 9, 23): "秋分の日",
+        date(2025, 10, 13): "スポーツの日",
+        date(2025, 11, 3): "文化の日",
+        date(2025, 11, 23): "勤労感謝の日",
+        date(2025, 11, 24): "勤労感謝の日 振替休日",
+        date(2025, 12, 29): "年末休 (JPO closed)",
+        date(2025, 12, 30): "年末休 (JPO closed)",
+        date(2025, 12, 31): "年末休 (JPO closed)",
+    },
 }
+
+
+# ---------- Versioned-calendar loader (client-updatable + cached) ----------
+
+# Cache keyed by (jurisdiction, version). A sentinel object distinguishes
+# "loaded, resolved to empty" from "not yet loaded" so a genuinely-empty /
+# missing calendar is cached (and warned about) exactly once rather than
+# re-read on every request.
+_calendar_cache: dict[tuple[str, str], dict[date, str]] = {}
+_calendar_cache_lock = threading.Lock()
+# Records which (jurisdiction, version) resolved with NO source at all, so
+# calculate_deadline can surface the loud warning. Populated alongside the
+# cache under the same lock.
+_calendar_missing: set[tuple[str, str]] = set()
+
+
+def _calendar_path(jurisdiction: str, version: str) -> Path:
+    return CALENDARS_DIR / f"{jurisdiction}_{version}.json"
+
+
+def _parse_calendar_doc(
+    jurisdiction: str, version: str, doc: object
+) -> Optional[dict[date, str]]:
+    """Validate + parse a loaded calendar JSON document into {date: name}.
+
+    Returns None (caller falls back) on any structural problem. A single bad
+    date string is skipped + logged, but does NOT abort the whole calendar."""
+    if not isinstance(doc, dict):
+        logger.warning(
+            "calendar %s_%s: top-level JSON is not an object; ignoring file.",
+            jurisdiction, version,
+        )
+        return None
+    # Soft-validate the self-describing fields (don't hard-fail on mismatch,
+    # but warn — a mislabelled file is a real ops footgun).
+    if doc.get("jurisdiction") not in (None, jurisdiction):
+        logger.warning(
+            "calendar %s_%s: file declares jurisdiction=%r (filename says %r).",
+            jurisdiction, version, doc.get("jurisdiction"), jurisdiction,
+        )
+    if doc.get("version") not in (None, version):
+        logger.warning(
+            "calendar %s_%s: file declares version=%r (filename says %r).",
+            jurisdiction, version, doc.get("version"), version,
+        )
+    raw = doc.get("holidays")
+    if not isinstance(raw, dict):
+        logger.warning(
+            "calendar %s_%s: 'holidays' is not an object; ignoring file.",
+            jurisdiction, version,
+        )
+        return None
+    out: dict[date, str] = {}
+    for k, name in raw.items():
+        try:
+            d = date.fromisoformat(k)
+        except (TypeError, ValueError):
+            logger.warning(
+                "calendar %s_%s: skipping un-parseable date key %r.",
+                jurisdiction, version, k,
+            )
+            continue
+        out[d] = str(name)
+    return out
+
+
+def _read_calendar(jurisdiction: str, version: str) -> tuple[dict[date, str], bool]:
+    """Resolve a calendar from disk, then hard-coded fallback.
+
+    Returns ``(holidays, found)``. ``found`` is False ONLY when neither a usable
+    JSON file NOR a hard-coded fallback exists — that's the "missing version"
+    case the caller must warn about. Never raises."""
+    path = _calendar_path(jurisdiction, version)
+    if path.exists():
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning(
+                "calendar %s: failed to read/parse (%s); falling back to "
+                "hard-coded calendar.", path, exc,
+            )
+        else:
+            parsed = _parse_calendar_doc(jurisdiction, version, doc)
+            if parsed is not None:
+                return parsed, True
+
+    fallback = _FALLBACK_HOLIDAYS.get((jurisdiction, version))
+    if fallback is not None:
+        return dict(fallback), True
+
+    # Neither file nor hard-coded fallback. This is NOT the same as an unknown
+    # jurisdiction (handled earlier): it's a known jurisdiction asked for a
+    # calendar VERSION we don't have. Empty set + found=False so the caller
+    # emits a loud warning rather than silently returning a wrong date.
+    return {}, False
+
+
+def get_holidays(jurisdiction: str, version: str) -> dict[date, str]:
+    """Public, cached accessor for a versioned holiday calendar.
+
+    Thread-safe. Same ``(jurisdiction, version)`` ALWAYS returns the same set
+    for the process lifetime (version-locking). Call ``reload_calendars()``
+    after dropping a new/updated JSON file."""
+    key = (jurisdiction, version)
+    cached = _calendar_cache.get(key)
+    if cached is not None:
+        return cached
+    with _calendar_cache_lock:
+        cached = _calendar_cache.get(key)
+        if cached is not None:
+            return cached
+        holidays, found = _read_calendar(jurisdiction, version)
+        _calendar_cache[key] = holidays
+        if not found:
+            _calendar_missing.add(key)
+            logger.warning(
+                "calendar %s_%s: NO source (no JSON file, no hard-coded "
+                "fallback). Using an EMPTY holiday set — deadline may be wrong. "
+                "Load data/calendars/%s_%s.json before relying on this.",
+                jurisdiction, version, jurisdiction, version,
+            )
+    return _calendar_cache[key]
+
+
+def calendar_is_missing(jurisdiction: str, version: str) -> bool:
+    """True iff the requested (jurisdiction, version) resolved with no source.
+
+    Triggers a load (and the warning) if not yet cached."""
+    get_holidays(jurisdiction, version)
+    return (jurisdiction, version) in _calendar_missing
+
+
+def deadline_year_is_covered(
+    jurisdiction: str, calendar_version: str, deadline_date: date
+) -> bool:
+    """True iff the loaded calendar covers ``deadline_date``'s year.
+
+    Out-of-band query so callers/tests can branch on the year-boundary
+    condition without parsing the warnings list. Mirrors the inline check in
+    ``calculate_deadline``: a year is "covered" iff the loaded calendar has at
+    least one holiday in it."""
+    holidays = get_holidays(jurisdiction, calendar_version)
+    return any(h.year == deadline_date.year for h in holidays)
+
+
+def reload_calendars() -> None:
+    """Drop the calendar cache so freshly-dropped JSON files are picked up.
+
+    The masking layer has the same per-upload reload story. Cheap; calendars
+    are small."""
+    with _calendar_cache_lock:
+        _calendar_cache.clear()
+        _calendar_missing.clear()
+
+
+# Backwards-compatible alias. Older code / tests referenced the module-level
+# ``HOLIDAYS`` dict directly. It now maps to the hard-coded fallback (the
+# authoritative source is the JSON loader via get_holidays()).
+HOLIDAYS = _FALLBACK_HOLIDAYS
 
 
 # ---------- Rule specs ----------
@@ -85,6 +307,23 @@ RULES: dict[str, JurisdictionRule] = {
         excludes_weekends=False,
         excludes_holidays=False,
         timezone_name="America/New_York",
+        extension_days=90,
+    ),
+    # JP (JPO) — POC APPROXIMATION, pending attorney confirmation.
+    # Basis: a JPO office action (拒絶理由通知) gives a domestic applicant a
+    # ~3-month response period; overseas applicants commonly get an extended
+    # window. We model the common 3-month (90-day) figure counted from the
+    # received/dispatch date in Asia/Tokyo. If the last day falls on a JPO
+    # closure day (national holiday, 振替休日, or the 12/29–1/3 year-end break)
+    # it rolls to the next business day under 特許法施行規則 practice. The exact
+    # start event (dispatch vs deemed-receipt 発送日 +N) and overseas-extension
+    # rules MUST be confirmed with a JP attorney before production use.
+    "JP": JurisdictionRule(
+        name="JPO 拒絶理由通知 応答期間 (POC approximation)",
+        response_days=90,
+        excludes_weekends=False,
+        excludes_holidays=False,
+        timezone_name="Asia/Tokyo",
         extension_days=90,
     ),
 }
@@ -136,7 +375,11 @@ def calculate_deadline(
 
     rule = RULES[jurisdiction]
     case_tz = ZoneInfo(rule.timezone_name)
-    holidays = HOLIDAYS.get((jurisdiction, calendar_version), {})
+    # Load from the versioned, client-updatable calendar (cached). Falls back to
+    # the hard-coded mirror; resolves to empty + a loud warning if the requested
+    # version has no source at all (never a silently-wrong date).
+    holidays = get_holidays(jurisdiction, calendar_version)
+    calendar_missing = (jurisdiction, calendar_version) in _calendar_missing
 
     # Convert received date to case timezone, take the date part
     received_local = received_date.astimezone(case_tz)
@@ -145,6 +388,21 @@ def calculate_deadline(
     # Roll forward if last day is weekend/holiday
     final_deadline_date = _next_business_day(raw_deadline_date, holidays)
     rolled = final_deadline_date != raw_deadline_date
+
+    # Year-boundary guard. The loaded calendar version is keyed to a year
+    # (e.g. "2025.1" covers 2025). When the statutory deadline lands in — OR
+    # ROLLS INTO — a year the calendar doesn't cover, the roll-forward can't see
+    # that year's holidays (it could land on, say, 2026 元旦 and not know it).
+    # We check BOTH the raw deadline year and the final (post-roll) year against
+    # the loaded calendar: if EITHER falls in a year with no holidays loaded, we
+    # surface a loud warning rather than silently computing against a partial
+    # calendar. (Checking only the raw year missed the case where the roll
+    # itself crosses the boundary — e.g. JP 12/31 rolling onto 1/1.)
+    loaded_years = {h.year for h in holidays}
+    deadline_year_covered = (
+        raw_deadline_date.year in loaded_years
+        and final_deadline_date.year in loaded_years
+    )
 
     # Recommended internal deadline = ~7 days earlier. Roll BACKWARD to the
     # previous business day — rolling forward (the old behaviour) could land
@@ -163,6 +421,25 @@ def calculate_deadline(
     days_remaining = (final_deadline_date - datetime.now(case_tz).date()).days
 
     warnings = []
+    if calendar_missing:
+        warnings.append(
+            f"⛔ Holiday calendar {jurisdiction}_{calendar_version} could not be "
+            f"loaded (no JSON file, no fallback). Computed against an EMPTY "
+            f"holiday set — VERIFY this deadline manually; it may be wrong."
+        )
+    elif not deadline_year_covered:
+        # Deadline lands in / rolled into a year the loaded calendar doesn't
+        # cover. Name the uncovered year(s) explicitly.
+        uncovered = sorted(
+            {raw_deadline_date.year, final_deadline_date.year} - loaded_years
+        )
+        years_str = ", ".join(str(y) for y in uncovered)
+        warnings.append(
+            f"⚠️  Statutory deadline involves year(s) {years_str}, but the loaded "
+            f"calendar {jurisdiction}_{calendar_version} does not cover them. "
+            f"Those years' holidays were NOT considered — load the matching "
+            f"calendar(s) and recompute."
+        )
     if rolled:
         warnings.append(
             f"Statutory deadline rolled from {raw_deadline_date} (weekend/holiday) "
@@ -173,6 +450,12 @@ def calculate_deadline(
     if days_remaining < 0:
         warnings.append(f"⛔ DEADLINE PASSED {abs(days_remaining)} days ago.")
 
+    # NOTE: the returned dict's keys are constrained to the wire model
+    # (backend.shared.models.DeadlineInfo, which forbids extras). The structured
+    # flags (calendar_missing / deadline_year_covered) are surfaced via the
+    # human-readable `warnings` list above, and are also queryable out-of-band
+    # via calendar_is_missing() / deadline_year_is_covered() for callers/tests
+    # that need to branch without string-matching.
     return {
         "received_date": received_local.isoformat(),
         "statutory_deadline": statutory_dt.isoformat(),

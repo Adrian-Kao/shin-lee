@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from backend.gateway import audit, audit_outbox, cache, masking, rate_limit
+from backend.gateway import audit, audit_outbox, cache, masking, rate_limit, signoff
 from backend.gateway.auth import (
     _get_password_hash,
     _get_user,
@@ -38,7 +38,14 @@ from backend.gateway.auth import (
 )
 from backend.gateway.orchestrator import orchestrate_analysis
 from backend.shared.config import settings
-from backend.shared.models import AnalysisRequest, AnalysisResponse, User, UserRole
+from backend.shared.models import (
+    AnalysisRequest,
+    AnalysisResponse,
+    ExportRequest,
+    ExportResponse,
+    User,
+    UserRole,
+)
 from backend.shared.observability import init_sentry
 
 logger = logging.getLogger(__name__)
@@ -1288,6 +1295,157 @@ def audit_append(
                 latency_ms=int((time.monotonic() - started) * 1000),
                 policy_decisions={"authn_passed": True, "error": True},
             )
+
+
+# ---------- Q16 — mandatory sign-off export ----------
+
+@app.post("/v1/oa/export", response_model=ExportResponse)
+def export_draft(
+    body: ExportRequest,
+    request: Request,
+    # Q16 responsibility boundary: sign-off is an ATTORNEY act. Paralegals
+    # assist with analysis (they CAN call /v1/oa/analyze and /v1/oa/upload),
+    # but the legal accountability for the final filed document — the act of
+    # ticking "我已逐項確認" — rests with a licensed attorney. So this gate is
+    # ATTORNEY-ONLY, deliberately tighter than analyze/upload. A paralegal
+    # hitting this endpoint gets a 403 from require_roles BEFORE any document
+    # is assembled.
+    user: User = Depends(require_roles(UserRole.ATTORNEY)),
+):
+    """Assemble + return the final draft — ONLY after attorney sign-off (Q16).
+
+    Hard export gate (Q16 decision): unless ``attorney_signoff`` is exactly
+    ``True`` we refuse with 409 and produce NO document. The attorney ticking
+    "我已逐項確認" in the DraftEditor is what flips that flag; an un-ticked
+    checkbox means the request is an auditable refused-export attempt, not an
+    export.
+
+    On success the gateway:
+      1. Re-checks the case ACL on ``body.case_id`` (C-3 belt-and-braces — the
+         dependency only saw the X-Case-Id header, not the JSON body).
+      2. Assembles the document from the ACCEPTED provenance segments.
+      3. Records EXACTLY ONE audit row capturing WHO signed off, the case, the
+         provenance SUMMARY (counts of ai_generated / attorney_edited /
+         attorney_added — the responsibility boundary), signoff=True, and the
+         SHA-256 of the assembled document. It deliberately stores NO raw draft
+         text — only counts + the content hash (CLAUDE.md §9).
+
+    Feedback capture (Q16): the ``attorney_edited`` + ``attorney_added`` counts
+    in the audit row ARE the feedback signal. We don't run a training pipeline
+    here — we just ensure the edit deltas are durably captured in the audit
+    trail so a future loop can mine high-edit exports to improve the AI draft.
+
+    The whole flow runs inside a try/finally so an audit row is written even on
+    the refusal path and even when assembly throws (invariant #4, CLAUDE.md §4).
+    The refused-export attempt is itself an auditable event (signoff=False).
+    """
+    started = time.monotonic()
+    policy_decisions: dict[str, Any] = {
+        "authn_passed": True,
+        # authz starts False — the dependency only saw the X-Case-Id header;
+        # the load-bearing re-check on body.case_id is below (C-3).
+        "authz_passed": False,
+        "signoff_passed": False,
+    }
+    response: Optional[ExportResponse] = None
+    summary = None
+    doc_hash: Optional[str] = None
+    error: Optional[BaseException] = None
+    try:
+        # 1. Confused-deputy guard + ACL re-check on the body case_id, mirroring
+        #    /v1/oa/analyze. If both header and body case_id are present they
+        #    must agree; then the body case_id is ACL-checked explicitly.
+        header_case_id = (
+            request.headers.get("X-Case-Id") or request.query_params.get("case_id")
+        )
+        if header_case_id and header_case_id != body.case_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"case_id mismatch: header={header_case_id!r} body={body.case_id!r}. "
+                "X-Case-Id and body case_id must agree when both are supplied.",
+            )
+        authorize_case_access(user, body.case_id)
+        policy_decisions["authz_passed"] = True
+
+        # 2. THE HARD GATE. No document without an explicit, exactly-True
+        #    sign-off. We always compute the provenance summary first (it's
+        #    cheap and carries no raw text) so the audit row records the
+        #    responsibility boundary even on the refusal path.
+        summary = signoff.summarise_provenance(body.segments)
+        if body.attorney_signoff is not True:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "attorney sign-off required: tick '我已逐項確認' before export. "
+                "No document was produced.",
+            )
+        policy_decisions["signoff_passed"] = True
+
+        # 3. Assemble the accepted segments + hash the result.
+        document = signoff.assemble_document(body.segments)
+        doc_hash = signoff.content_hash(document)
+        response = ExportResponse(
+            case_id=body.case_id,
+            rejection_id=body.rejection_id,
+            draft_set_id=body.draft_set_id,
+            document=document,
+            content_sha256=doc_hash,
+            provenance_summary=summary,
+            signed_off_by=user.user_id,
+            attorney_signoff=True,
+        )
+        return response
+    except BaseException as exc:  # noqa: BLE001 — must reach the finally
+        error = exc
+        policy_decisions["error"] = True
+        raise
+    finally:
+        latency_ms = int((time.monotonic() - started) * 1000)
+        signed_off = response is not None  # True only on the success path
+        # policy_decisions carries the booleans (typed dict[str, bool] on the
+        # writer); the responsibility-boundary COUNTS go alongside as integer
+        # entries so an auditor reading /v1/audit/recent sees them directly.
+        # The summary object is None only if we threw before computing it
+        # (e.g. the ACL 403) — fall back to a zeroed summary in that case.
+        pd: dict[str, Any] = {
+            **policy_decisions,
+            "attorney_signoff": signed_off,
+        }
+        if summary is not None:
+            pd["prov_total_segments"] = summary.total_segments
+            pd["prov_accepted_segments"] = summary.accepted_segments
+            pd["prov_ai_generated"] = summary.ai_generated
+            pd["prov_attorney_edited"] = summary.attorney_edited
+            pd["prov_attorney_added"] = summary.attorney_added
+        # response_payload NEVER contains raw draft text — only the content
+        # hash (on success) or the error shape (on failure). The writer hashes
+        # this into response_hash; even that hashed column stays text-free.
+        if error is not None:
+            response_payload: Any = _error_response_payload(error)
+        else:
+            response_payload = {
+                "content_sha256": doc_hash,
+                "signed_off_by": user.user_id,
+            }
+        _safe_audit_write(
+            user=user,
+            case_id=body.case_id,
+            endpoint="/v1/oa/export",
+            # request_payload omits the raw segment text — only the segment
+            # COUNT + the export handles. The writer would hash whatever we
+            # pass; we keep raw text out of the hashed column entirely.
+            request_payload={
+                "segment_count": len(body.segments),
+                "rejection_id": body.rejection_id,
+                "draft_set_id": body.draft_set_id,
+            },
+            response_payload=response_payload,
+            masked_rules=[],
+            model_used=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=latency_ms,
+            policy_decisions=pd,
+        )
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ Production: replace in-memory state with Redis (atomic INCR + TTL).
 """
 from __future__ import annotations
 
+import calendar
 import logging
 import time
 from collections import defaultdict
@@ -46,6 +47,24 @@ _user_rpm: dict[str, _TokenBucket] = {}
 _user_daily_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (user_id, YYYY-MM-DD) -> tokens
 _tenant_monthly_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (tenant_id, YYYY-MM) -> tokens
 _daily_cost_usd: dict[str, float] = defaultdict(float)  # YYYY-MM-DD -> usd
+
+# Q18 layer 5 (budget dashboard + month-end forecast). The dicts above answer
+# "are we over a token/cost limit *right now*"; these answer "where is the
+# money going, and where will we land at month-end". Keyed finely so the
+# dashboard can show per-tenant / per-model spend and run-rate projection.
+#   - _tenant_daily_cost  : (tenant_id, YYYY-MM-DD) -> usd   (today, per tenant)
+#   - _tenant_monthly_cost: (tenant_id, YYYY-MM)    -> usd   (MTD, per tenant)
+#   - _model_daily_cost   : (model, YYYY-MM-DD)     -> usd   (today, per model)
+#   - _tenant_model_daily_cost   : (tenant_id, model, YYYY-MM-DD) -> usd
+#   - _tenant_model_monthly_cost : (tenant_id, model, YYYY-MM)    -> usd
+# The tenant_model_* dicts are what the dashboard's per-model breakdown reads;
+# the coarser _tenant_*/_model_* dicts give cheap totals without re-summing.
+_UNKNOWN_MODEL = "_unknown_"  # sentinel when record_usage gets model=None
+_tenant_daily_cost: dict[tuple[str, str], float] = defaultdict(float)
+_tenant_monthly_cost: dict[tuple[str, str], float] = defaultdict(float)
+_model_daily_cost: dict[tuple[str, str], float] = defaultdict(float)
+_tenant_model_daily_cost: dict[tuple[str, str, str], float] = defaultdict(float)
+_tenant_model_monthly_cost: dict[tuple[str, str, str], float] = defaultdict(float)
 
 # Day 8 post-review (Important #1 from Chunk A/B review): per-IP RPM bucket
 # for /v1/auth/login. Login is pre-auth so we can't key on user_id; key on
@@ -264,12 +283,120 @@ def check_quotas(user: User, tokens_about_to_use: int) -> None:
         )
 
 
-def record_usage(user: User, prompt_tokens: int, completion_tokens: int, cost_usd: float) -> None:
-    """Account for usage after the LLM call.  Trip the breaker if needed."""
+def record_usage(
+    user: User,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cost_usd: float,
+    model: str | None = None,
+) -> None:
+    """Account for usage after the LLM call.  Trip the breaker if needed.
+
+    ``model`` is OPTIONAL and keyword-only-friendly: existing callers
+    (``backend/gateway/main.py`` analyze + OCR-upload paths) pass
+    ``prompt_tokens`` / ``completion_tokens`` / ``cost_usd`` by keyword and do
+    NOT pass ``model``; the ``None`` default keeps them working unchanged.
+    When ``model`` is provided (or later wired from ``obs["model_used"]``) the
+    spend is additionally attributed to per-tenant and per-model buckets so the
+    Q18 budget dashboard can break cost down and forecast month-end.
+    """
     total = prompt_tokens + completion_tokens
-    _user_daily_tokens[(user.user_id, _today())] += total
-    _tenant_monthly_tokens[(user.tenant_id, _this_month())] += total
-    _daily_cost_usd[_today()] += cost_usd
+    day = _today()
+    month = _this_month()
+    _user_daily_tokens[(user.user_id, day)] += total
+    _tenant_monthly_tokens[(user.tenant_id, month)] += total
+    _daily_cost_usd[day] += cost_usd
+
+    # Q18 layer 5 — attributable spend (tenant + model).
+    model_key = model or _UNKNOWN_MODEL
+    _tenant_daily_cost[(user.tenant_id, day)] += cost_usd
+    _tenant_monthly_cost[(user.tenant_id, month)] += cost_usd
+    _model_daily_cost[(model_key, day)] += cost_usd
+    _tenant_model_daily_cost[(user.tenant_id, model_key, day)] += cost_usd
+    _tenant_model_monthly_cost[(user.tenant_id, model_key, month)] += cost_usd
+
+
+def _tenant_monthly_cost_cap(tenant_id: str) -> float | None:
+    """Per-tenant month-end USD cap, if the operator configured one.
+
+    DEMO_TENANTS today only ships a token cap (``monthly_token_cap``); a USD
+    cap is optional. Returns the ``monthly_cost_cap_usd`` value when present,
+    else None (no contractual dollar ceiling — forecast still reported,
+    just without a vs-cap percentage).
+    """
+    cap = settings.DEMO_TENANTS.get(tenant_id, {}).get("monthly_cost_cap_usd")
+    return float(cap) if cap is not None else None
+
+
+def project_month_end_cost(tenant_id: str, now: datetime | None = None) -> dict:
+    """Q18 layer 5 — linear run-rate projection of month-end spend.
+
+    Given month-to-date (MTD) spend and the elapsed fraction of the current
+    month, extrapolate where the tenant lands at month-end:
+
+        projected = mtd / elapsed_fraction
+                  = mtd * days_in_month / days_elapsed
+
+    ``now`` is injectable so tests can pin the date; production passes None
+    and we read the wall clock (UTC, matching _today/_this_month).
+
+    Edge cases:
+      * Day 1 — ``days_elapsed == 1``; projection = ``mtd * days_in_month``
+        (no divide-by-zero; treats day-1 spend as the daily run-rate).
+      * MTD == 0 — projection is 0.0 (and 0% of any cap).
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    month = now.strftime("%Y-%m")
+    mtd = _tenant_monthly_cost[(tenant_id, month)]
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    days_elapsed = now.day  # 1-based; day 1 -> 1, never 0
+
+    # run-rate: scale MTD by (whole month / elapsed-so-far).
+    projected = mtd * days_in_month / days_elapsed
+
+    cap = _tenant_monthly_cost_cap(tenant_id)
+    projected_vs_cap_pct = (
+        round(projected / cap * 100.0, 2) if cap else None
+    )
+
+    return {
+        "month": month,
+        "month_to_date_usd": round(mtd, 4),
+        "projected_month_end_usd": round(projected, 4),
+        "days_elapsed": days_elapsed,
+        "days_in_month": days_in_month,
+        "tenant_monthly_cap_usd": cap,
+        "projected_vs_cap_pct": projected_vs_cap_pct,
+    }
+
+
+def tenant_model_breakdown(tenant_id: str, now: datetime | None = None) -> list[dict]:
+    """Per-model spend for ``tenant_id`` (today + month-to-date).
+
+    Returns one row per model the tenant has spent on this month, sorted by
+    month-to-date spend descending so the dashboard shows the biggest line
+    items first.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    month = now.strftime("%Y-%m")
+
+    # Collect models the tenant touched this month.
+    models: set[str] = {
+        m for (t, m, mo) in _tenant_model_monthly_cost if t == tenant_id and mo == month
+    }
+    rows = [
+        {
+            "model": model,
+            "today_usd": round(_tenant_model_daily_cost[(tenant_id, model, day)], 4),
+            "month_to_date_usd": round(_tenant_model_monthly_cost[(tenant_id, model, month)], 4),
+        }
+        for model in models
+    ]
+    rows.sort(key=lambda r: r["month_to_date_usd"], reverse=True)
+    return rows
 
 
 def cost_circuit_state() -> dict:
@@ -287,7 +414,20 @@ def cost_circuit_state() -> dict:
 
 
 def get_quota_snapshot(user: User) -> dict:
-    """For the IT admin dashboard (Q19 cost observability)."""
+    """For the IT admin dashboard (Q19 cost observability).
+
+    The original keys (user_daily_*, tenant_monthly_*, circuit_breaker) are
+    token-quota + breaker state and are consumed by the frontend token bar +
+    existing tests — they are kept verbatim. The Q18-layer-5 ``budget`` block
+    is ADDED alongside: per-model $ breakdown, month-end forecast, and an
+    on-track / will-exceed flag so a client's IT can watch the spend in real
+    time.
+    """
+    forecast = project_month_end_cost(user.tenant_id)
+    cap = forecast["tenant_monthly_cap_usd"]
+    will_exceed_cap = bool(
+        cap is not None and forecast["projected_month_end_usd"] > cap
+    )
     return {
         "user_daily_used": _user_daily_tokens[(user.user_id, _today())],
         "user_daily_limit": user.daily_token_quota,
@@ -296,4 +436,16 @@ def get_quota_snapshot(user: User) -> dict:
             "monthly_token_cap", settings.TENANT_MONTHLY_TOKENS
         ),
         "circuit_breaker": cost_circuit_state(),
+        "budget": {
+            "tenant_id": user.tenant_id,
+            "per_model": tenant_model_breakdown(user.tenant_id),
+            "forecast": forecast,
+            # status flag the dashboard can colour: cap configured + projected
+            # over it = "will_exceed", cap configured + under = "on_track",
+            # no cap configured = "no_cap".
+            "status": (
+                "no_cap" if cap is None else ("will_exceed" if will_exceed_cap else "on_track")
+            ),
+            "will_exceed_cap": will_exceed_cap,
+        },
     }

@@ -189,6 +189,19 @@ def _reset_module_state():
         _rl._user_daily_tokens.clear()
         _rl._tenant_monthly_tokens.clear()
         _rl._daily_cost_usd.clear()
+        # Q18 layer 5 — budget/forecast accounting dicts. Same leak hazard as
+        # the token dicts above: spend accumulates across the session-scoped
+        # app, so a forecast/breakdown test would inherit prior tests' spend.
+        for _name in (
+            "_tenant_daily_cost",
+            "_tenant_monthly_cost",
+            "_model_daily_cost",
+            "_tenant_model_daily_cost",
+            "_tenant_model_monthly_cost",
+        ):
+            _d = getattr(_rl, _name, None)
+            if _d is not None:
+                _d.clear()
         # Day 8 post-review: per-IP login bucket added (LOGIN_RPM, default
         # 10/min). Tests issue dozens of logins per session — must clear or
         # they trip the bucket and start returning 429s instead of 401s.

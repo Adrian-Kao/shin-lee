@@ -145,7 +145,7 @@ class Settings:
 
     # Holiday calendar (Q17)
     HOLIDAY_CALENDAR_VERSION: str = "2025.1"
-    SUPPORTED_JURISDICTIONS: tuple[str, ...] = ("TW", "US")  # 其他國家留 stub
+    SUPPORTED_JURISDICTIONS: tuple[str, ...] = ("TW", "US", "JP")  # 其他國家留 stub
 
     # Tenants（POC 預設兩家事務所做 demo）
     DEMO_TENANTS: dict[str, dict] = {

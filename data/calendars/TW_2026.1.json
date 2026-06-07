@@ -1,0 +1,17 @@
+{
+  "jurisdiction": "TW",
+  "version": "2026.1",
+  "source": "POC seed. TW national holidays for early 2026 (春節 2026 begins mid-Feb). Production loads from data.gov.tw 行政院人事行政總處. NOTE: dates beyond 2026-02 are illustrative and pending official 補班補休 confirmation.",
+  "holidays": {
+    "2026-01-01": "元旦",
+    "2026-02-16": "農曆除夕",
+    "2026-02-17": "春節初一",
+    "2026-02-18": "春節初二",
+    "2026-02-19": "春節初三",
+    "2026-02-20": "春節初四",
+    "2026-02-28": "和平紀念日",
+    "2026-04-04": "兒童節 / 清明",
+    "2026-05-01": "勞動節",
+    "2026-10-10": "國慶日"
+  }
+}

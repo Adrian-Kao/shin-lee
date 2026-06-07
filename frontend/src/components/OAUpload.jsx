@@ -221,6 +221,46 @@ export default function OAUpload({ caseId, token, onExtractSuccess, onError }) {
   );
 }
 
+/**
+ * Q8 figure-element table — reference numeral → description, surfaced after a
+ * successful upload. Defensive: absent / empty / non-object → render nothing.
+ * Numerals are sorted numerically so "10, 20, 200" reads in figure order.
+ */
+function ElementTable({ table, t }) {
+  if (!table || typeof table !== 'object') return null;
+  const rows = Object.entries(table).filter(([, desc]) => desc != null && desc !== '');
+  if (rows.length === 0) return null;
+  rows.sort((a, b) => {
+    const na = Number(a[0]);
+    const nb = Number(b[0]);
+    if (Number.isNaN(na) || Number.isNaN(nb)) return String(a[0]).localeCompare(String(b[0]));
+    return na - nb;
+  });
+  return (
+    <div className="rounded border border-slate-200 bg-white p-2" data-testid="element-table">
+      <div className="mb-1 text-xs font-semibold text-slate-600">
+        {t('upload.element_table_title')}
+      </div>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-left text-slate-400">
+            <th className="w-16 font-normal">{t('upload.element_table_numeral')}</th>
+            <th className="font-normal">{t('upload.element_table_desc')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([numeral, desc]) => (
+            <tr key={numeral} className="border-t border-slate-100">
+              <td className="py-1 pr-2 font-mono text-slate-700">{numeral}</td>
+              <td className="py-1 text-slate-700">{String(desc)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DropZone({ dragOver, onDragOver, onDragLeave, onDrop, onBrowseClick, t }) {
   // Three border-color states: idle (slate), dragging-over (indigo + bg).
   const base =
@@ -362,6 +402,7 @@ function StatusPane({
               </div>
             )}
           </div>
+          <ElementTable table={extractResult.element_table} t={t} />
           <div className="flex gap-2">
             <button
               onClick={onAccept}

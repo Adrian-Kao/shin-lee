@@ -55,10 +55,30 @@ export const api = {
       body: { user_id },
       headers: DEMO_LOGIN_SECRET ? { 'X-Demo-Secret': DEMO_LOGIN_SECRET } : {},
     }),
+  // Q12 magic-link login. `magicRequest` returns { message, magic_token? }
+  // (the token is a DEMO-ONLY escape hatch — production emails the link and
+  // returns no token). `magicConsume` exchanges that token for the SAME
+  // LoginResponse shape as password login.
+  magicRequest: (user_id) =>
+    call('/v1/auth/magic/request', { method: 'POST', body: { user_id } }),
+  magicConsume: (token) =>
+    call('/v1/auth/magic/consume', { method: 'POST', body: { token } }),
   quota: (token, case_id) =>
     call(`/v1/quota?case_id=${encodeURIComponent(case_id || '')}`, { token }),
   analyze: (token, payload) =>
     call('/v1/oa/analyze', {
+      method: 'POST',
+      token,
+      body: payload,
+      headers: { 'X-Case-Id': payload.case_id },
+    }),
+  // Q16 sign-off export. Mirrors `analyze`: POST with the X-Case-Id header.
+  // payload = { case_id, rejection_id?, segments:[{segment_id, text, source,
+  // accepted}], attorney_signoff }. Backend 409s if attorney_signoff !== true
+  // (the hard "不勾不能匯出" gate) — the ApiError carries status 409 so the
+  // caller can surface the sign-off-required message instead of swallowing it.
+  exportDraft: (token, payload) =>
+    call('/v1/oa/export', {
       method: 'POST',
       token,
       body: payload,

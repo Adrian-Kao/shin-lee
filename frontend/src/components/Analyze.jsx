@@ -190,6 +190,8 @@ export default function Analyze({
     activeRejectionId,
     setActiveRejectionId,
     citationLookup,
+    caseId,
+    session,
   };
 
   const referencesPaneProps = {

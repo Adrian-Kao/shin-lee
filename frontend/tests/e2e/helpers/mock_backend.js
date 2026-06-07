@@ -233,6 +233,78 @@ export function mockAnalyze(page, response = defaultAnalysisResponse()) {
   return installed;
 }
 
+/**
+ * Mock POST /api/v1/oa/export (Q16 sign-off gate). Mirrors the real backend:
+ * if the request body's `attorney_signoff` is not exactly true, respond 409
+ * (the hard gate). Otherwise respond 200 with an assembled document built from
+ * the accepted segments. Returns `{ capture }` — a promise resolving with the
+ * first captured request body — so specs can assert on what was sent.
+ */
+export function mockExportDraft(page, opts = {}) {
+  let resolveCapture;
+  const capture = new Promise((r) => {
+    resolveCapture = r;
+  });
+  const installed = page.route('**/api/v1/oa/export', (route) => {
+    let body = null;
+    try {
+      body = route.request().postDataJSON();
+    } catch {
+      body = route.request().postData();
+    }
+    resolveCapture(body);
+
+    if (opts.forceStatus) {
+      route.fulfill({
+        status: opts.forceStatus,
+        contentType: 'application/json',
+        body: JSON.stringify(opts.body ?? { detail: 'forced' }),
+      });
+      return;
+    }
+
+    // Replicate the real 409 hard gate.
+    if (!body || body.attorney_signoff !== true) {
+      route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          detail:
+            "attorney sign-off required: tick '我已逐項確認' before export. No document was produced.",
+        }),
+      });
+      return;
+    }
+
+    const segments = Array.isArray(body.segments) ? body.segments : [];
+    const accepted = segments.filter((s) => s.accepted);
+    const document = accepted.map((s) => s.text).join('\n');
+    const summary = {
+      total_segments: segments.length,
+      accepted_segments: accepted.length,
+      ai_generated: accepted.filter((s) => s.source === 'ai_generated').length,
+      attorney_edited: accepted.filter((s) => s.source === 'attorney_edited').length,
+      attorney_added: accepted.filter((s) => s.source === 'attorney_added').length,
+    };
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        case_id: body.case_id,
+        rejection_id: body.rejection_id ?? null,
+        draft_set_id: body.draft_set_id ?? null,
+        document,
+        content_sha256: 'a'.repeat(64),
+        provenance_summary: summary,
+        signed_off_by: 'alice',
+        attorney_signoff: true,
+      }),
+    });
+  });
+  installed.capture = capture;
+  return installed;
+}
+
 /** Mock POST /api/v1/debug/redaction_preview. */
 export async function mockRedactionPreview(
   page,

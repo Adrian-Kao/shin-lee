@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, ChevronRight } from 'lucide-react';
+import { Loader2, ChevronRight, Mail } from 'lucide-react';
 
 import { api } from '../api/client.js';
 
@@ -141,12 +141,153 @@ export default function Login({ onLogin }) {
               {err}
             </div>
           )}
+
+          <MagicLink onLogin={onLogin} disabled={busy !== null} />
         </div>
       </main>
 
       <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-400">
         {t('landing.footer')}
       </footer>
+    </div>
+  );
+}
+
+/**
+ * Q12 magic-link sign-in. Secondary path: request a link for a user_id, the
+ * demo returns the token directly (clearly labelled DEMO — production emails
+ * it), then "sign in with this link" consumes the token and yields the SAME
+ * logged-in state as password login.
+ */
+function MagicLink({ onLogin, disabled }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [phase, setPhase] = useState('idle'); // idle | requesting | sent | consuming
+  const [token, setToken] = useState(null);
+  const [error, setError] = useState(null);
+
+  async function requestLink(e) {
+    e.preventDefault();
+    if (!userId.trim()) return;
+    setPhase('requesting');
+    setError(null);
+    setToken(null);
+    try {
+      const r = await api.magicRequest(userId.trim());
+      // magic_token is the DEMO-ONLY escape hatch; null for unknown users
+      // (the message is identical either way — enumeration-safe).
+      setToken(r.magic_token || null);
+      setPhase('sent');
+    } catch (e2) {
+      setError(e2.message);
+      setPhase('idle');
+    }
+  }
+
+  async function consume() {
+    if (!token) return;
+    setPhase('consuming');
+    setError(null);
+    try {
+      const session = await api.magicConsume(token);
+      onLogin(session);
+    } catch {
+      setError(t('magic.consume_failed'));
+      setPhase('sent');
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={disabled}
+        className="mt-6 inline-flex items-center gap-2 text-sm text-navy-700 hover:underline disabled:opacity-50"
+      >
+        <Mail className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+        {t('magic.link_cta')}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-6 rounded-md border border-slate-200 bg-white p-4">
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700">
+        <Mail className="h-4 w-4 text-navy-700" strokeWidth={1.75} aria-hidden="true" />
+        {t('magic.link_cta')}
+      </div>
+
+      <form onSubmit={requestLink} className="space-y-2">
+        <label className="block text-xs text-slate-500">{t('magic.user_label')}</label>
+        <div className="flex gap-2">
+          <input
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            placeholder={t('magic.user_placeholder')}
+            className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-700"
+          />
+          <button
+            type="submit"
+            disabled={!userId.trim() || phase === 'requesting' || phase === 'consuming'}
+            className="rounded bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-700 disabled:bg-slate-300"
+          >
+            {phase === 'requesting' ? t('magic.requesting') : t('magic.request')}
+          </button>
+        </div>
+      </form>
+
+      {phase === 'sent' && (
+        <div className="mt-3 space-y-2">
+          <div className="text-xs text-slate-500">{t('magic.sent')}</div>
+          {token && (
+            <div className="rounded border border-amber-300 bg-amber-50 p-2">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+                {t('magic.demo_label')}
+              </div>
+              <div
+                className="mb-2 break-all font-mono text-[10px] text-slate-600"
+                data-testid="magic-token"
+              >
+                {token}
+              </div>
+              <button
+                type="button"
+                onClick={consume}
+                disabled={phase === 'consuming'}
+                className="inline-flex items-center gap-1 rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {phase === 'consuming' && (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                )}
+                {phase === 'consuming'
+                  ? t('magic.consuming')
+                  : t('magic.sign_in_with_link')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="mt-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(false);
+          setPhase('idle');
+          setToken(null);
+          setError(null);
+        }}
+        className="mt-3 text-xs text-slate-500 hover:underline"
+      >
+        {t('magic.back')}
+      </button>
     </div>
   );
 }

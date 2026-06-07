@@ -231,6 +231,8 @@ export default function InputPane({
             </div>
           </div>
         )}
+
+        {quota?.budget && <BudgetPanel budget={quota.budget} t={t} />}
       </div>
     </div>
   );
@@ -241,6 +243,91 @@ function PaneHeader({ title, subtitle }) {
     <div className="sticky top-0 z-10 border-b bg-white/90 px-4 py-2 backdrop-blur">
       <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
       {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+    </div>
+  );
+}
+
+/**
+ * Q18 budget dashboard — compact panel. Reads the `budget` block the quota
+ * endpoint now returns (month-to-date spend, projected month-end, per-model
+ * breakdown, and an on-track / will-exceed badge). Reuses the existing quota
+ * fetch in Analyze.jsx — no extra request.
+ */
+function BudgetPanel({ budget, t }) {
+  const forecast = budget.forecast || {};
+  const perModel = Array.isArray(budget.per_model) ? budget.per_model : [];
+  const status = budget.status || 'no_cap';
+
+  const badge =
+    status === 'will_exceed'
+      ? { cls: 'bg-amber-100 text-amber-800', label: t('budget.will_exceed') }
+      : status === 'on_track'
+        ? { cls: 'bg-emerald-100 text-emerald-800', label: t('budget.on_track') }
+        : { cls: 'bg-slate-100 text-slate-600', label: t('budget.no_cap') };
+
+  const fmt = (n) => `$${Number(n ?? 0).toFixed(2)}`;
+  const cap = forecast.tenant_monthly_cap_usd;
+
+  return (
+    <div className="rounded-lg border bg-white p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold">
+          {t('budget.title')} <span className="text-xs text-slate-500">(Q18)</span>
+        </h3>
+        <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
+          {badge.label}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded border border-slate-100 bg-slate-50 p-2">
+          <div className="text-slate-500">{t('budget.month_to_date')}</div>
+          <div className="font-mono text-sm text-slate-800">
+            {fmt(forecast.month_to_date_usd)}
+          </div>
+        </div>
+        <div className="rounded border border-slate-100 bg-slate-50 p-2">
+          <div className="text-slate-500">{t('budget.projected')}</div>
+          <div className="font-mono text-sm text-slate-800">
+            {fmt(forecast.projected_month_end_usd)}
+            {cap != null && (
+              <span className="ml-1 text-[10px] text-slate-400">
+                / {fmt(cap)} {t('budget.cap')}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {perModel.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 text-xs uppercase tracking-wider text-slate-500">
+            {t('budget.per_model')}
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-slate-400">
+                <th className="font-normal">{t('budget.model')}</th>
+                <th className="text-right font-normal">{t('budget.today')}</th>
+                <th className="text-right font-normal">{t('budget.month_to_date')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {perModel.map((m) => (
+                <tr key={m.model} className="border-t border-slate-100">
+                  <td className="truncate py-1 pr-2 font-mono">{m.model}</td>
+                  <td className="py-1 text-right font-mono text-slate-600">
+                    {fmt(m.today_usd)}
+                  </td>
+                  <td className="py-1 text-right font-mono text-slate-800">
+                    {fmt(m.month_to_date_usd)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

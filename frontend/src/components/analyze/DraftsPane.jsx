@@ -16,6 +16,8 @@ export default function DraftsPane({
   activeRejectionId,
   setActiveRejectionId,
   citationLookup,
+  caseId,
+  session,
 }) {
   const { t } = useTranslation();
 
@@ -77,6 +79,8 @@ export default function DraftsPane({
             rejection={activeRejection}
             draft={activeDraft}
             citationLookup={citationLookup}
+            caseId={caseId}
+            session={session}
           />
         )}
       </div>
@@ -124,7 +128,10 @@ function shortType(t) {
   return `§${m[1]}`;
 }
 
-function RejectionDetail({ rejection, draft, citationLookup }) {
+function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) {
+  // Export (Q16 sign-off) is an ATTORNEY act — the backend 403s a paralegal.
+  // Only surface the sign-off gate to attorneys so the UI matches the policy.
+  const canExport = session?.role === 'attorney';
   const typeColor =
     {
       '102_novelty': 'rose',
@@ -162,7 +169,14 @@ function RejectionDetail({ rejection, draft, citationLookup }) {
           <div className="mb-2 text-xs uppercase tracking-wider text-slate-500">
             草稿（律師逐句簽核 — Q16）
           </div>
-          <DraftEditor initialDraft={draft.draft_text} citationLookup={citationLookup} />
+          <DraftEditor
+            initialDraft={draft.draft_text}
+            citationLookup={citationLookup}
+            caseId={caseId}
+            rejectionId={rejection.rejection_id}
+            token={session?.token}
+            canExport={canExport}
+          />
           <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500">
             <span>grounded citations: {draft.grounded_citations.length}</span>
             <span>verifier confidence: {(draft.confidence * 100).toFixed(0)}%</span>

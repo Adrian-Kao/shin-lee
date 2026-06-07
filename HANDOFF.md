@@ -739,3 +739,103 @@ From `docs/UX_RESEARCH.md` §5, must-have items NOT yet shipped:
 - **Design invariants preserved:** all 8 from `CLAUDE.md §4`. Audit chain stays authoritative in our thin gateway; redaction mapping table stays on-prem; verifier stays as Dify HTTP node calling our `/v1/verify_citations` (Q14 hard wall); confidential routing has three walls (digiRunner AI gateway rule + Dify IF/ELSE branch + our `llm_client.py:556-563` assert).
 - **Next steps:** (1) socialise the plan with TPIsoftware contact — see §10 of PHASE3_MIGRATION.md for the 10 open questions; (2) stand up Dify sandbox + import workflow JSONs; (3) Phase 3.1 shadow mode against 30 synthetic cases via `scripts/eval_cases.py`.
 - **No code changed.** Backend gateway/ai_engine/orchestrator paths untouched. 120 pytests should still pass — no edits to any tested path.
+
+
+# 2026-06-05 to 06-07 session — Day 9 autonomous multi-agent sprint
+
+## 22. Day 9 sprint wrap
+
+> User mandate this session: "盡量使用 token" + "繼續研究如何產品化" + "我覺得
+> 要多研究使用者體驗或設計". Pattern: spawn 4-5 agents in parallel (worktree-
+> isolated), cherry-pick on completion, fall back to file-copy when agents
+> leak to main tree (recurring pattern documented in §22.pattern below).
+
+**9 commits**, pytest **120 → 163 + 1 xfail** (+43), frontend e2e **1 → 50**
++ 6 visual baselines, ~**55k words** new research docs across 8 files.
+
+### Commits
+| Commit | Day | Deliverable | Tests |
+|--------|-----|-------------|-------|
+| `75f4f17` | 9A | UX #2 claim dependency tree (parser + `ClaimTree.jsx` in InputPane) | +13 |
+| `cd56d8a` | 9B | Security Chunk D — tenant isolation (H-3+H-4+M-3+M-6+M-7+M-8) | +14 |
+| `33bb19d` | 9D | Anthropic eval comparison harness | +7 |
+| `6e6fd2c` | 9F | 7 productization + UX research docs (~50k words) | — |
+| `3a85536` | 9G | Test data 30→80 cases + 12 adversarial fixtures | +10 |
+| `663a953` | 9H | `docs/AI_TRANSPARENCY_UX.md` (8th research doc) | — |
+| `fdf9bd8` | 9C | Frontend CHUNK-1 app shell + CHUNK-8 trust band | gzip −14kB |
+| `f5f4749` | 9I | Playwright e2e 1→50 + visual regression baselines + CI | +49 e2e |
+
+(Day 9E ops runbook content was rolled into the 9F multi-doc commit; the
+file is `docs/OPERATIONS_AND_ONBOARDING.md`.)
+
+### Backend hardening highlights (Day 9B, `cd56d8a`)
+- `Embedder.embed_one` / `embed` / `index_patent` / `retrieve` salt mock SHA-256 with `f"{tenant_id}:{text}"` — cross-tenant mock embeddings no longer collide (verified < 1.0 sim).
+- `verify_global_chain()` in `backend/gateway/audit.py` walks rows in **global rowid order** (the original `verify_chain(tenant)` was flawed when tenants interleaved — fixed + documented). `GET /v1/audit/verify?scope=global` is **auditor-only** (IT_ADMIN refused).
+- `_pricing_for(model)` returns `(prices, provenance ∈ {exact, mock, fallback})`. Unknown-model fallback logs WARNING. `cost_provenance` propagates through orchestrator into `cost_meta` (rank: `exact < mock < fallback`, worst-case wins).
+- `masking.redact()` runs **NFKC normalisation BEFORE regex** (fullwidth digits, ligatures, superscripts now caught). Mapping table stores normalised form (one-way, documented).
+- `cache.hash_prompt(prompt, model, redaction_version)` — key now includes `settings.REDACTION_VERSION` (default `"v1"`). `_MemoryCache` rewritten with per-tenant FIFO eviction at `MAX_CACHE_ENTRIES_PER_TENANT` (default 1000).
+- `CLAUDE.md §9 "Don't cache responses cross-user"` now **provably enforced via key derivation**, not just namespacing.
+
+### Frontend shipped (Day 9C, `fdf9bd8`)
+- New `frontend/src/components/AppShell.jsx`: top bar (navy `#1e3a8a`) + trust band + collapsible nav rail.
+- Trust band exposes three previously-invisible differentiators:
+  - Redaction chip (Shield, live count from new `RedactionSummary` model)
+  - Mapping-table chip (Server, tooltip explains on-prem requirement)
+  - Routing chip (Cloud/Lock, switches to purple `Routing: Local LLM (confidential)` for `-CONF` cases)
+- Audit-chain header badge polls `/v1/audit/verify?scope=global` every 60s; clickable → AuditView.
+- AuditView gained hero metric block (rows / mismatches / last-verified, JetBrains Mono).
+- Google Fonts (Inter / Noto Sans TC / JetBrains Mono) via `index.html`.
+- lucide-react replacing all emoji.
+- **Tailwind safelist tightened from 216 → 15 candidates** — caught a 130kB CSS leak. Net gzip −14 kB despite shipping a whole new shell.
+- New `backend/shared/models.py::RedactionSummary` exposed on `AnalysisResponse.redaction_summary`. Populated in `backend/gateway/orchestrator.py`.
+
+### 8 research docs (~55k words, all in `docs/`)
+
+**Productization (~30k)**
+- `MARKET_AND_PRICING.md` (8.1k, 53 URLs) — top-20 TIPO firms, 3 pricing models (recommend Model C: platform + per-OA, 30% on-prem premium), 90-day GTM, 5 named design partners (NAIPO / Jianq Chyun / Top Team / Formosa Transnational / Longriver). **Key insight**: Lawbank v Lawsnote ruling (June 2025) makes "training-data lineage" the TW procurement entry question.
+- `LEGAL_COMPLIANCE.md` (8.7k, 29 URLs) — bilingual disclosure clause (§1.5), 24-month cert pipeline, invariant→clause matrix (ABA 1.6 / ISO 27001 / ISO 42001 / PDPA §27). **Catastrophic risk**: confidential leak to cloud LLM = Mata v Avianca for TW.
+- `OPERATIONS_AND_ONBOARDING.md` (7.3k) — Day 0 due-diligence → 90-day playbook. **3 P0 gaps**: `scripts/import_patents.py` missing (1 eng-day), backup cron unwired (0.5 eng-day), argon2 KDF swap (0.5 eng-day, avoidable if customer picks Path B). **~1.5-2 eng-days** to unblock customer #1.
+- `BUILD_VS_BUY.md` (8.3k, 40+ URLs) — 24 components. TPIsoftware covers 5/24 (digiRunner, digiLism, digiLogs). **Wrong-choice-kills-us**: digiRunner / audit storage / confidential routing. **Surprising partner**: digiLogs for audit archival tier.
+
+**UX / design (~25k)**
+- `UX_PERSONA_JOURNEYS.md` (8.5k) — 5 named personas (陳麗華 partner / 林冠廷 mid-career / Jessica Wang bilingual / 王俊豪 paralegal / Marcus Lin IT). 3 journeys (iPad sign-off / fresh §103 / TW↔US handoff). 10 PatentMind Design Principles. **Riskiest persona**: Marcus Lin (kills tier-1 deals if procurement signals invisible). **Under-invested moment**: scaffold-mode draft with `[ATTORNEY_FILL]` placeholders — converts 林冠廷 from ChatGPT side-tab.
+- `DESIGN_SYSTEM.md` (7.3k) — three-layer tokens (primitives → semantic → component), 20 component anatomy specs, CJK line-height 1.6 / Pangu-space verdict / `radius.brand = 6px`, motion cap 250ms. Audit chip + confidential lock **never invert** in dark mode.
+- `ACCESSIBILITY_AND_I18N.md` (7.6k, ~50 URLs) — WCAG 2.2 AA (Audit + Sign-off AAA), keyboard maps + IME-safe shortcuts, NVDA/JAWS/VO matrix, zh-TW typography (Pangu-space: **NO for drafts, OK for UI labels**), 民國 calendar, iPad review-only mode. **3 a11y lurkers** flagged for review: ClaimTree roving tabindex, hover-only citation preview, Tailwind preflight stripping focus rings.
+- `AI_TRANSPARENCY_UX.md` (4.6k) — 8 citation patterns, multi-signal confidence (**never single 0-1 score**), 5-rung verification ladder, AI-as-junior-associate framing, 6 competitor teardowns, 7 transparency principles. **Do NOT copy**: Solve's single confidence number.
+
+### Test data + harness (Day 9G, `3a85536`)
+- 50 new cases CASE-DEMO-031..080 across 12 TW + US rejection types + edge cases (079 zero rejections, 080 six rejections hostile examiner).
+- 12 adversarial fixtures + 10 hardening tests in `tests/integration/test_adversarial_inputs.py`.
+- `test_zero_width_chars_redacted_around` **xfail-gated on `_ZW_STRIP_LANDED` probe** — flips to XPASS when `re.sub(r'[​-‍﻿]', '', text)` is added BEFORE the NFKC step in `backend/gateway/masking.py`.
+- `scripts/generate_test_data.py` regenerates binary fixtures idempotently.
+- Mock-LLM weaknesses surfaced (documented in `data/cases/README.md`): case 079 falls back to default 103, `§26-1/§26-4/§32` collapse to `other`, multi-rejection claim aggregation mis-attributes across categories, Cyrillic homoglyph yields generic. These are the **regression baseline** for the Anthropic eval (Day 9D).
+
+### Eval pipeline productionised (Day 9D, `33bb19d`)
+- `scripts/eval_cases.py` writes `summary.json` alongside existing `REPORT.md` (additive, byte-identical REPORT).
+- `scripts/eval_compare.py BASELINE CANDIDATE` → `data/eval_compare/<ts-uuid>/COMPARE.md` + `per_case_delta.json`. Tolerant of disjoint case sets + missing summary.json. Cost projection reads canonical `_MODEL_PRICING_USD_PER_M` at compute time (single source of truth).
+- `scripts/anthropic_smoke.py` 4 assertions (auth / prompt caching / pricing / confidential routing). Gated on `ANTHROPIC_API_KEY` — exits 0 with SKIP banner when unset (CI-safe). Distinct exit codes mapped to playbook (3/4/5/6).
+- `docs/EVAL_PLAYBOOK.md` — key-arrival runbook + delta interpretation + troubleshooting.
+
+### Playwright e2e (Day 9I, `f5f4749`)
+- 1 smoke → 5 new spec files + visual regression: `login_flow / analyze_flow / audit_flow / upload_flow / visual_regression / trust_band`.
+- 64 tests = 32 desktop (chromium 1440×900) + 32 mobile (Pixel 5 375×812, Chromium-only). 50 passing + 14 intentional viewport-conditional skips. ~42s wall.
+- 6 visual baselines @ 5% threshold.
+- `frontend/tests/e2e/helpers/mock_backend.js` — shared `page.route()` interceptors + `loginAsAlice` + `DEMO_USERS`.
+- `.github/workflows/ci.yml` `frontend-build` job: playwright cache, artifact upload on failure, PR-comment diff PNG list.
+- Friction: **two `<main>` in DOM** (Analyze.jsx renders mobile + desktop concurrent, toggles via display:none — must scope to visible) — documented in `visibleMain()` helper.
+
+### Pattern lessons (recurring)
+1. **Agents leak to main tree** — 5/9 Day 9 agents wrote directly to `D:\patentmind-poc\` instead of their worktree. Mitigation that worked: `git add` selectively (e.g., `git add docs/` while leaving in-flight `frontend/*` mods unstaged). Always `git status -s` before commit.
+2. **Stale-base worktrees** — Day 9G agent reported "Already up to date" against `ffc4cc3` (pre-9A/9B/9D), giving 120 not 147 baseline. Adding `git merge --no-edit feature/patentmind-poc` to every agent prompt mostly works but isn't bulletproof.
+3. **Cherry-pick of merge commit fails** — when an agent merges feature/patentmind-poc but never commits its file, worktree HEAD is just the merge. `cp worktree/path main/path` is the workhorse.
+4. **Bundle hygiene wins compound** — 9C agent caught a 130kB Tailwind safelist leak that had been bleeding into every page. `PRODUCT_STRATEGY §11` talks palette but never audits bundle — open P0 for next strategy refresh.
+5. **Token-liberal autonomous mode produces breadth** — 9 agents in ~36 hours, ~55k words research + 50 e2e tests + new shell + tenant isolation. Quality holds because each agent gets a tight, citation-required brief.
+
+### Pending after Day 9
+- **4 orphan files** untracked in main: `LICENSE` (Apache 2.0), `NOTICE`, `SECURITY.md`, `CONTRIBUTING.md` + small `README.md` / `pyproject.toml` diffs. Unknown origin (no Day 9 agent claimed). Possibly user-added or earlier session. **Awaiting user decision** to commit or revert.
+- **Push 39 commits to origin** — still blocked on user-side GitHub auth (HANDOFF §11 recipes unchanged).
+- **`anthropic_smoke.py`** ready to run the moment the key arrives. SKIP banner fires currently.
+- **3 P0 build gaps** from `OPERATIONS_AND_ONBOARDING.md`: `scripts/import_patents.py`, backup cron, argon2 swap. ~1.5-2 eng-days for customer #1.
+- **Zero-width strip pre-pass** in `backend/gateway/masking.py` — one-line fix flips `test_zero_width_chars_redacted_around` from xfail to XPASS.
+- **CHUNK-2..12** from `docs/PRODUCT_STRATEGY.md §9` not yet executed (CHUNK-1 + CHUNK-8 shipped Day 9C). Next per strategy: CHUNK-3 (cases list), CHUNK-7 (onboarding tour), CHUNK-2 (dashboard).
+- **Real Anthropic + Dify integration** — Phase 3 plan + workflow JSONs ready; awaiting TPIsoftware contact (HANDOFF §21).

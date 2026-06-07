@@ -259,9 +259,6 @@ function Header({ session, onLogout, onSwitchView }) {
             PM
           </div>
           <span className="font-semibold">PatentMind AI</span>
-          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs uppercase tracking-wider text-amber-800">
-            POC
-          </span>
         </div>
         <nav className="ml-6 flex gap-1">
           <button

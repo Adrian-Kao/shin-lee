@@ -174,10 +174,19 @@ DEMO_PATENTS = [
 
 def main():
     url = f"{settings.AI_ENGINE_URL}/v1/index/patent"
+    # AI Engine requires a matching X-Internal-Token whenever INTERNAL_TOKEN
+    # is configured (main.py middleware). Send it so seeding works against a
+    # secured engine; empty token (local-dev/pytest mock) sends no header,
+    # matching the engine's "empty + mock = permit" rule.
+    headers = (
+        {"X-Internal-Token": settings.INTERNAL_TOKEN}
+        if settings.INTERNAL_TOKEN
+        else {}
+    )
     print(f"Seeding patents → {url}")
     with httpx.Client(timeout=30.0) as client:
         for p in DEMO_PATENTS:
-            r = client.post(url, json=p)
+            r = client.post(url, json=p, headers=headers)
             if r.status_code != 200:
                 print(f"  ✗ {p['patent_no']}: HTTP {r.status_code} {r.text}")
                 sys.exit(1)

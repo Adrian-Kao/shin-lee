@@ -24,10 +24,10 @@ const resources = {
       },
       shell: {
         audit_chip: {
-          ok: '已驗證鏈',
+          ok: '紀錄已驗證',
           checking: '驗證中…',
-          fail: '鏈不一致 — 請聯絡 Ops',
-          rows: '{{rows}} 列',
+          fail: '紀錄驗證未通過 — 請聯絡管理員',
+          rows: '{{rows}} 筆',
         },
         role_badge: {
           attorney: '律師',
@@ -36,19 +36,15 @@ const resources = {
           auditor: '稽核',
         },
         trust: {
-          redaction_default: '自動遮罩啟用',
-          redaction_active: '已遮罩 {{count}} 項實體',
-          redaction_tooltip:
-            'PII / 客戶字典於每次 LLM 呼叫前強制套用（CLAUDE.md §4 不可違反）。',
-          mapping_default: '映射表本地端',
-          mapping_tooltip:
-            '對應表存於 data/redaction_mapping.db；不離開本地端（CLAUDE.md §9）。',
-          routing_auto: '路由：自動',
-          routing_confidential: '路由：本地 LLM（機密）',
-          routing_tooltip_auto:
-            '一般案件可走雲端模型；含 -CONF 字尾的案件號將強制改走 on-prem LLM。',
-          routing_tooltip_conf:
-            'CASE 字尾為 -CONF：依 CLAUDE.md §4 不可違反第 7 條強制路由 on-prem LLM。',
+          redaction_default: '資料遮罩：開啟',
+          redaction_active: '已遮罩 {{count}} 項機密資訊',
+          redaction_tooltip: '機密資料於送出分析前會自動遮罩。',
+          mapping_default: '資料保存於本地',
+          mapping_tooltip: '遮罩對應資料僅保存於本地，不會外傳。',
+          routing_auto: '一般案件',
+          routing_confidential: '機密案件（本地處理）',
+          routing_tooltip_auto: '一般案件採標準流程；機密案件自動改為本地處理。',
+          routing_tooltip_conf: '此為機密案件，已自動改為本地處理。',
         },
       },
       buttons: {
@@ -80,14 +76,14 @@ const resources = {
         toast_success: '已抽出 {{pages}} 頁，文字已填入下方',
       },
       landing: {
-        tagline: 'AI 輔助專利答辯草擬 — Office Action 自動分析與草稿生成',
-        value_classify: 'OA 自動分類（§22-2 進步性 / §26-2 明確性 等 7 種）',
-        value_grounded: 'RAG grounded 引證，每段引用必有先前技術出處',
-        value_deadline: '自動計算法定期日（TW + US，含假日 roll-forward）',
-        value_compliance: '自動 redaction + audit chain（事務所合規）',
-        pick_user: '選擇 demo 身分',
-        poc_note: 'POC 預設無密碼。正式版接 OIDC / SAML / magic link（Q12）',
-        footer: 'POC · v0.3 · 內部 demo only',
+        tagline: '專利審查意見通知書　分析與答辯協助',
+        value_classify: '自動辨識核駁理由',
+        value_grounded: '答辯內容自動標註引用出處',
+        value_deadline: '自動推算答辯期限',
+        value_compliance: '機密資料自動遮罩，全程留存紀錄',
+        pick_user: '請選擇身分登入',
+        poc_note: '內部測試環境，請選擇下列身分進入。',
+        footer: 'v0.3 · 內部使用',
       },
       placeholder: {
         cases_title: '案件管理 — Coming Soon',
@@ -115,9 +111,9 @@ const resources = {
       empty: {
         no_result_title: '準備分析',
         no_result_desc: '左側輸入或上傳 OA，點「分析 OA」開始',
-        no_result_hint: 'Demo 預設 CASE-2025-001（Alice 有權限）',
-        no_audit_title: '尚無 audit 紀錄',
-        no_audit_desc: '完成任何 API 呼叫後會在此顯示',
+        no_result_hint: '預設 CASE-2025-001（Alice 有權限）',
+        no_audit_title: '尚無作業紀錄',
+        no_audit_desc: '完成任何操作後會在此顯示',
       },
       audit: {
         hero: {
@@ -126,10 +122,10 @@ const resources = {
           last_verified_label: '最近驗證時間',
           never_verified: '尚未驗證',
         },
-        verify_now: '立即驗證鏈',
+        verify_now: '立即驗證',
         verifying: '驗證中…',
-        verify_passed: '{{rows}} 列全部通過 hash 驗證，無 tampering 痕跡。',
-        verify_failed: '發現 {{count}} 列被竄改：{{rows}}',
+        verify_passed: '{{rows}} 筆紀錄全部驗證通過，未發現竄改。',
+        verify_failed: '發現 {{count}} 筆紀錄遭竄改：{{rows}}',
       },
       analyze: {
         pane_input: '輸入 OA / Input',
@@ -221,9 +217,9 @@ const resources = {
         value_grounded: 'RAG-grounded citations — every quote points to real prior art',
         value_deadline: 'Auto-compute statutory deadlines (TW + US, holiday roll-forward)',
         value_compliance: 'Auto redaction + audit chain (law firm compliance)',
-        pick_user: 'Pick a demo identity',
-        poc_note: 'POC has no password. Production wires OIDC / SAML / magic link (Q12)',
-        footer: 'POC · v0.3 · internal demo only',
+        pick_user: 'Select an identity',
+        poc_note: 'No password by default. Production wires OIDC / SAML / magic link (Q12)',
+        footer: 'v0.3 · internal use',
       },
       placeholder: {
         cases_title: 'Case Management — Coming Soon',
@@ -251,7 +247,7 @@ const resources = {
       empty: {
         no_result_title: 'Ready to analyze',
         no_result_desc: 'Enter or upload an OA on the left, then click "Analyze OA"',
-        no_result_hint: 'Demo defaults to CASE-2025-001 (Alice has access)',
+        no_result_hint: 'Defaults to CASE-2025-001 (Alice has access)',
         no_audit_title: 'No audit records yet',
         no_audit_desc: 'Will appear here after any API call completes',
       },

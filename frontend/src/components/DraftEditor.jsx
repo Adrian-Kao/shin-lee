@@ -130,7 +130,7 @@ export default function DraftEditor({ initialDraft, citationLookup, onAccept }) 
         <div className="text-xs text-slate-500">
           {signed
             ? '✅ 已簽核：律師確認所有句子的責任歸屬'
-            : '簽核後此 draft 即可匯出（POC 不接 export）'}
+            : '簽核後此 draft 即可匯出'}
         </div>
         <button
           disabled={!allDecided || signed}

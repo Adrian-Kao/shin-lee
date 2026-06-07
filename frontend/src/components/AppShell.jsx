@@ -136,9 +136,6 @@ function TopBar({ session, onLogout, auditState, canCallAudit, onNavigateAudit, 
             PM
           </div>
           <span className="text-base font-semibold tracking-tight">{t('app_title')}</span>
-          <span className="rounded bg-amber-400/90 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-950">
-            {t('app_tag_poc')}
-          </span>
         </div>
 
         <div className="ml-auto flex items-center gap-3">

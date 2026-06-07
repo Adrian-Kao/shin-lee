@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FileSearch, Quote, Calendar, ShieldCheck, Loader2 } from 'lucide-react';
+import { Loader2, ChevronRight } from 'lucide-react';
 
 import { api } from '../api/client.js';
 
@@ -35,13 +35,17 @@ const DEMO_USERS = [
   },
 ];
 
-const VALUE_BULLETS = [
-  { Icon: FileSearch, key: 'landing.value_classify' },
-  { Icon: Quote, key: 'landing.value_grounded' },
-  { Icon: Calendar, key: 'landing.value_deadline' },
-  { Icon: ShieldCheck, key: 'landing.value_compliance' },
-];
-
+/**
+ * Official-portal login (per user direction: reference a patent-office site).
+ *
+ * Deliberately NOT a startup hero: solid agency header bar, white body,
+ * no gradient / card shadows / marketing value bullets. Identity selection
+ * is a plain bordered list. Conservative navy + amber accent palette.
+ *
+ * Contract preserved for e2e: a "PatentMind" brand string, one <button>
+ * per identity whose accessible name contains the person's name, and the
+ * error surfaced as <div role="alert">.
+ */
 export default function Login({ onLogin }) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(null);
@@ -61,48 +65,32 @@ export default function Login({ onLogin }) {
   }
 
   return (
-    <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
-      {/* Hero / brand — Day 9C: navy palette (PRODUCT_STRATEGY §11). */}
-      <section className="relative flex flex-col justify-center bg-gradient-to-br from-navy-800 via-navy-900 to-slate-900 px-8 py-12 text-white lg:px-16">
-        <div className="max-w-xl">
-          <div className="mb-8 flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-lg font-bold text-white ring-1 ring-white/20 backdrop-blur">
-              PM
-            </div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t('app_title')}</h1>
-            <span className="rounded bg-amber-400 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-900">
-              POC
-            </span>
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+      {/* Agency header bar — solid navy with an amber accent rule underneath,
+          the visual signature of an official government portal. */}
+      <header className="border-b-4 border-amber-400 bg-navy-900 text-white">
+        <div className="mx-auto flex h-16 max-w-5xl items-center gap-3 px-6">
+          <div className="flex h-9 w-9 items-center justify-center rounded bg-white/10 text-sm font-bold ring-1 ring-white/20">
+            PM
           </div>
+          <div className="leading-tight">
+            <div className="text-base font-semibold tracking-tight">{t('app_title')}</div>
+            <div className="text-[12px] text-navy-200">專利答辯協助系統</div>
+          </div>
+        </div>
+      </header>
 
-          <h2 className="mb-8 text-2xl font-semibold leading-snug text-navy-50 lg:text-3xl">
-            {t('landing.tagline')}
+      <main className="flex flex-1 justify-center px-6 py-10">
+        <div className="w-full max-w-2xl">
+          <h1 className="text-lg font-semibold text-slate-900">{t('landing.tagline')}</h1>
+          <div className="mt-4 h-px w-full bg-slate-200" />
+
+          <h2 className="mb-1 mt-6 text-base font-semibold text-slate-900">
+            {t('landing.pick_user')}
           </h2>
+          <p className="mb-4 text-sm text-slate-500">{t('landing.poc_note')}</p>
 
-          <ul className="hidden space-y-4 lg:block">
-            {VALUE_BULLETS.map(({ Icon, key }) => (
-              <li key={key} className="flex items-start gap-3 text-navy-100">
-                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 ring-1 ring-white/15">
-                  <Icon className="h-5 w-5" strokeWidth={1.75} aria-hidden="true" />
-                </span>
-                <span className="text-[15px] leading-6">{t(key)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="absolute bottom-6 left-8 text-xs text-navy-200/70 lg:left-16">
-          {t('landing.footer')}
-        </div>
-      </section>
-
-      {/* Login card */}
-      <section className="flex items-center justify-center bg-white px-6 py-12">
-        <div className="w-full max-w-md">
-          <h2 className="mb-1 text-xl font-semibold text-slate-900">{t('landing.pick_user')}</h2>
-          <p className="mb-6 text-sm text-slate-500">{t('landing.poc_note')}</p>
-
-          <div className="grid grid-cols-1 gap-3">
+          <div className="divide-y divide-slate-200 overflow-hidden rounded-md border border-slate-200 bg-white">
             {DEMO_USERS.map((u) => {
               const isBusy = busy === u.id;
               const disabled = busy !== null;
@@ -114,33 +102,32 @@ export default function Login({ onLogin }) {
                   disabled={disabled}
                   aria-busy={isBusy}
                   className={[
-                    'group rounded-lg border border-slate-200 p-4 text-left',
-                    'transition-all duration-150 ease-out',
-                    'hover:scale-[1.02] hover:border-navy-400 hover:shadow-md',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-700 focus-visible:ring-offset-2',
-                    disabled
-                      ? 'cursor-wait opacity-60 hover:scale-100 hover:shadow-none'
-                      : 'cursor-pointer',
+                    'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors',
+                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-700',
+                    disabled ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-navy-50',
                   ].join(' ')}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-navy-900 font-bold text-white">
-                      {u.initial}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-900">{u.name}</span>
-                        <span className="truncate text-xs text-slate-500">{u.role}</span>
-                      </div>
-                      <div className="mt-0.5 text-xs text-slate-500">{u.desc}</div>
-                    </div>
-                    {isBusy && (
-                      <Loader2
-                        className="h-5 w-5 shrink-0 animate-spin text-navy-700"
-                        aria-hidden="true"
-                      />
-                    )}
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-navy-900 text-sm font-bold text-white">
+                    {u.initial}
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-900">{u.name}</span>
+                      <span className="truncate text-xs text-slate-500">{u.role}</span>
+                    </div>
+                    <div className="mt-0.5 text-xs text-slate-500">{u.desc}</div>
+                  </div>
+                  {isBusy ? (
+                    <Loader2
+                      className="h-5 w-5 shrink-0 animate-spin text-navy-700"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <ChevronRight
+                      className="h-4 w-4 shrink-0 text-slate-300"
+                      aria-hidden="true"
+                    />
+                  )}
                 </button>
               );
             })}
@@ -149,13 +136,17 @@ export default function Login({ onLogin }) {
           {err && (
             <div
               role="alert"
-              className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
+              className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
             >
               {err}
             </div>
           )}
         </div>
-      </section>
+      </main>
+
+      <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-400">
+        {t('landing.footer')}
+      </footer>
     </div>
   );
 }

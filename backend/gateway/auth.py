@@ -434,14 +434,16 @@ def _user_from_upstream_headers(request: Request) -> Optional[User]:
         # an upstream bug or attacker from demoting alice from attorney
         # to paralegal — or from promoting bob to it_admin.
         role = known.role
-        # Cross-tenant audit signal: if upstream claims a different tenant
-        # for a known user than what we have on file, log a warning. We
-        # don't *block* (that would break legitimate cross-tenant projects
-        # if those ever get added) but we do want a trail.
+        # H-1 fix: an upstream-supplied tenant is NEVER honoured for a known
+        # user — the on-file tenant is authoritative, exactly like role above.
+        # Otherwise a bug or an attacker on a trusted IP could re-scope alice
+        # into tenant_b's cache namespace, audit rows and masking dictionary
+        # under her known identity. Legitimate cross-tenant projects (if ever
+        # added) must go through an explicit allow-list, not an arbitrary header.
         if tenant_id != known.tenant_id:
             logger.warning(
-                "upstream-auth: tenant mismatch for known user_id=%s "
-                "(upstream=%s, _USERS=%s) — honouring upstream tenant",
+                "upstream-auth: SECURITY tenant mismatch for known user_id=%s "
+                "(upstream=%s, _USERS=%s) — IGNORING upstream tenant, pinning on-file",
                 user_id, tenant_id, known.tenant_id,
             )
     elif role_header:
@@ -459,12 +461,15 @@ def _user_from_upstream_headers(request: Request) -> Optional[User]:
     else:
         role = _UPSTREAM_DEFAULT_ROLE
 
+    # H-1: for a known user the on-file tenant wins; unknown users (already
+    # forced to least-privilege role above) keep their upstream-supplied tenant.
+    effective_tenant_id = known.tenant_id if known is not None else tenant_id
     display_name = known.display_name if known is not None else user_id
     daily_quota = known.daily_token_quota if known is not None else 100_000
 
     user = User(
         user_id=user_id,
-        tenant_id=tenant_id,
+        tenant_id=effective_tenant_id,
         role=role,
         display_name=display_name,
         daily_token_quota=daily_quota,

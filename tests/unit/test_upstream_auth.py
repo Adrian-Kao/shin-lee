@@ -10,8 +10,9 @@ Invariants under test:
     3. Missing x-user-id even from a trusted IP -> fallback to JWT path.
     4. Unknown x-user-id with no x-user-role -> role defaults to the lowest-
        privilege UserRole (PARALEGAL); display_name = the raw user_id.
-    5. Known x-user-id -> display_name + daily_token_quota lifted from the
-       _USERS demo table even when overridden by upstream tenant_id.
+    5. Known x-user-id -> display_name + daily_token_quota + tenant lifted
+       from the _USERS demo table; an upstream-supplied tenant for a known
+       user is IGNORED (H-1), while an unknown user keeps the upstream tenant.
     6. Existing JWT path remains intact (regression guard).
 
 TestClient's request.client.host defaults to the string ``testclient``. To
@@ -579,11 +580,12 @@ def test_shared_secret_required_when_configured(monkeypatch) -> None:
     assert user.user_id == "alice"
 
 
-def test_tenant_mismatch_for_known_user_emits_warning(monkeypatch, caplog) -> None:
-    """When upstream claims tenant_b for alice (who is in _USERS as
-    tenant_a), we honour the upstream claim BUT log a warning. The
-    warning is the audit signal — silent cross-tenant routing is the
-    failure mode we want to catch."""
+def test_tenant_mismatch_for_known_user_pins_on_file_tenant(monkeypatch, caplog) -> None:
+    """H-1: when upstream claims tenant_b for alice (who is in _USERS as
+    tenant_a), the on-file tenant MUST win — the upstream tenant is ignored,
+    not honoured. Otherwise a trusted-IP bug/attacker could re-scope alice
+    into another tenant's cache/audit/masking namespace under her identity.
+    A warning is still logged as the audit signal for the spoof attempt."""
     import logging
 
     monkeypatch.setattr(settings, "TRUSTED_UPSTREAM_IPS", ("10.0.0.5",))
@@ -595,10 +597,25 @@ def test_tenant_mismatch_for_known_user_emits_warning(monkeypatch, caplog) -> No
     )
     user = auth_mod._user_from_upstream_headers(request)
     assert user is not None
-    assert user.tenant_id == "tenant_b"  # upstream wins, by design
+    # H-1 fix: pinned to the _USERS tenant, NOT the spoofed upstream one.
+    assert user.tenant_id == auth_mod._USERS["alice"].tenant_id == "tenant_a"
     assert any("tenant mismatch" in rec.message for rec in caplog.records), (
         f"expected tenant-mismatch warning; got: {[r.message for r in caplog.records]}"
     )
+
+
+def test_unknown_user_keeps_upstream_tenant(monkeypatch) -> None:
+    """An UNKNOWN user has no on-file tenant to pin to, so the upstream tenant
+    still stands (they are already forced to least-privilege role elsewhere).
+    This guards the H-1 fix from over-reaching into the unknown-user path."""
+    monkeypatch.setattr(settings, "TRUSTED_UPSTREAM_IPS", ("10.0.0.5",))
+    request = _fake_request(
+        client_host="10.0.0.5",
+        headers={"x-user-id": "ext-user-7", "x-tenant-id": "tenant_partner"},
+    )
+    user = auth_mod._user_from_upstream_headers(request)
+    assert user is not None
+    assert user.tenant_id == "tenant_partner"
 
 
 # Local imports at module top kept minimal — pull `Path` lazily here so the

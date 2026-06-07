@@ -260,22 +260,78 @@ class Embedder:
         only path where we can cheaply add a tenant salt without lying
         about embedding quality.
         """
+        cache_key = _embedding_cache_key(self.backend, tenant_id, text)
+        cached = _EMBEDDING_CACHE.get(cache_key)
+        if cached is not None:
+            _EMBEDDING_CACHE_STATS["hits"] += 1
+            return cached
+        _EMBEDDING_CACHE_STATS["misses"] += 1
         if self.backend == "bge-m3":
             v = self._st_model.encode(text, normalize_embeddings=True, show_progress_bar=False)
-            return v.tolist()
-        # mock: SHA-256 → padded float vec, unit-normalised.
-        # H-3 fix: salt with tenant_id so different tenants get different
-        # vectors for the same input text. ``tenant_id=""`` (the default,
-        # used by callers that have no tenant context — e.g. unit tests of
-        # the chunker) reproduces the old behaviour exactly.
-        seed = f"{tenant_id}:{text}" if tenant_id else text
-        h = hashlib.sha256(seed.encode()).digest()
-        raw = list(h) * (settings.EMBEDDING_DIM // len(h) + 1)
-        vec = np.array(raw[: settings.EMBEDDING_DIM], dtype=np.float32) / 255.0
-        n = np.linalg.norm(vec)
-        if n > 0:
-            vec = vec / n
-        return vec.tolist()
+            vec_list = v.tolist()
+        else:
+            # mock: SHA-256 → padded float vec, unit-normalised.
+            # H-3 fix: salt with tenant_id so different tenants get different
+            # vectors for the same input text. ``tenant_id=""`` (the default,
+            # used by callers that have no tenant context — e.g. unit tests of
+            # the chunker) reproduces the old behaviour exactly.
+            seed = f"{tenant_id}:{text}" if tenant_id else text
+            h = hashlib.sha256(seed.encode()).digest()
+            raw = list(h) * (settings.EMBEDDING_DIM // len(h) + 1)
+            vec = np.array(raw[: settings.EMBEDDING_DIM], dtype=np.float32) / 255.0
+            n = np.linalg.norm(vec)
+            if n > 0:
+                vec = vec / n
+            vec_list = vec.tolist()
+        _EMBEDDING_CACHE[cache_key] = vec_list
+        return vec_list
+
+
+# ---------- Embedding cache (Q9) ----------
+# Q9 caches embeddings permanently — patents don't change post-publication, and
+# recomputing the same vector on every retrieve/index is pure waste. The gateway
+# owns the production cache (backend/gateway/cache.py, Redis-bound), but the AI
+# Engine MUST NOT import gateway business state (CLAUDE.md §4 invariant: "AI
+# Engine holds no business state"). So we keep a small, self-contained, in-process
+# memo HERE, keyed identically in spirit to gateway/cache.py's tenant-namespaced
+# emb: key. Production swaps this dict for Redis using the SAME tenant-aware key
+# scheme so the two layers can't disagree about isolation.
+#
+# H-3 / CRITICAL: the key folds in tenant_id, so tenant_a and tenant_b NEVER
+# share an entry. In mock mode their vectors genuinely differ (per-tenant salt);
+# caching across tenants would serve tenant_a's vector to tenant_b and silently
+# break the isolation that test_cross_tenant.py protects. bge-m3 is content-only
+# and would be safe to share, but we always namespace by tenant for simplicity
+# and correctness. tenant_id="" is its own ("") namespace (standalone chunker
+# tests), so it never collides with a real tenant.
+_EMBEDDING_CACHE: dict[str, list[float]] = {}
+_EMBEDDING_CACHE_STATS = {"hits": 0, "misses": 0}
+
+
+def _embedding_cache_key(backend: str, tenant_id: str, text: str) -> str:
+    h = hashlib.sha256(f"{tenant_id}|{text}".encode()).hexdigest()
+    return f"{backend}:{h}"
+
+
+def clear_embedding_cache() -> None:
+    """Reset the in-process embedding cache and its hit/miss counters.
+
+    Test hygiene: lets unit tests assert hit/miss behaviour from a known
+    empty state. Production never calls this (the memo is process-lifetime;
+    Redis handles eviction)."""
+    _EMBEDDING_CACHE.clear()
+    _EMBEDDING_CACHE_STATS["hits"] = 0
+    _EMBEDDING_CACHE_STATS["misses"] = 0
+
+
+def embedding_cache_stats() -> dict:
+    """Observable hit/miss counters + entry count, so the cache is demonstrably
+    working (the Q9 hit test asserts against this)."""
+    return {
+        "hits": _EMBEDDING_CACHE_STATS["hits"],
+        "misses": _EMBEDDING_CACHE_STATS["misses"],
+        "entries": len(_EMBEDDING_CACHE),
+    }
 
 
 _embedder = Embedder()
@@ -286,7 +342,11 @@ def embed(text: str, tenant_id: str = "") -> list[float]:
     mock backend so per-tenant salting (H-3 fix) takes effect; bge-m3
     ignores it. Callers that have a tenant context (``index_patent``,
     ``retrieve``) MUST pass it — leaving the default empty string is
-    only safe in standalone chunker tests."""
+    only safe in standalone chunker tests.
+
+    Q9: results are memoised in a tenant-namespaced in-process cache (see
+    ``_EMBEDDING_CACHE``); repeated embeds of the same (tenant, text) are
+    served from cache, and cross-tenant reads never hit."""
     return _embedder.embed_one(text, tenant_id=tenant_id)
 
 
@@ -294,16 +354,77 @@ def embed(text: str, tenant_id: str = "") -> list[float]:
 # Two backends behind one interface (settings.VECTOR_BACKEND = memory | qdrant).
 # Q5 + Q7: production runs Qdrant with one collection per tenant.
 
+import abc
+import logging
 import uuid
 
 _QDRANT_NS = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+logger = logging.getLogger(__name__)
 
 
 def _chunk_point_id(chunk_id: str) -> str:
     return str(uuid.uuid5(_QDRANT_NS, chunk_id))
 
 
-class MemoryVectorStore:
+class VectorStore(abc.ABC):
+    """Formal contract for a swappable tenant-scoped vector store (Q7).
+
+    The Q7 decision is "Milvus/Qdrant self-host, interface abstraction so the
+    backend is swappable". This ABC makes that swappability *provable*: every
+    concrete backend (MemoryVectorStore, QdrantVectorStore) must implement the
+    exact same surface, so they cannot silently drift apart. The shared
+    contract test suite (tests/unit/test_vector_store_contract.py) runs the
+    same assertions against any subclass.
+
+    All operations are tenant-scoped: a tenant never sees another tenant's
+    chunks. In Qdrant this maps to one collection per tenant.
+    """
+
+    @abc.abstractmethod
+    def upsert(
+        self, tenant_id: str, chunks: list[Chunk], vectors: list[list[float]]
+    ) -> None:
+        """Insert or update `chunks` (with parallel `vectors`) for `tenant_id`.
+
+        `chunks` and `vectors` are positionally aligned (zip). Re-upserting a
+        chunk with the same `chunk_id` overwrites it.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def search(
+        self,
+        tenant_id: str,
+        query_vec: list[float],
+        top_k: int = 5,
+        metadata_filter: Optional[dict] = None,
+    ) -> list[tuple[Chunk, float]]:
+        """Return up to `top_k` nearest chunks for `tenant_id`.
+
+        Return contract: ``list[tuple[Chunk, float]]`` — each tuple is
+        ``(chunk, score)``, sorted by descending score (highest first).
+        `metadata_filter`, when given, is an AND over field/value pairs matched
+        against either a top-level Chunk attribute or the chunk's `metadata`
+        dict. Returns ``[]`` when the tenant has no indexed chunks.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def stats(self) -> dict:
+        """Return a backend-tagged summary dict (chunk counts per tenant)."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def list_claim_chunks(self, tenant_id: str, patent_no: str) -> list[Chunk]:
+        """Return only the claim-section chunks (claim_no is not None) for one
+        patent, sorted ascending by `claim_no`. Returns ``[]`` if the patent
+        wasn't indexed for this tenant.
+        """
+        raise NotImplementedError
+
+
+class MemoryVectorStore(VectorStore):
     def __init__(self):
         self._chunks: dict[str, Chunk] = {}
         self._vectors: dict[str, np.ndarray] = {}
@@ -361,7 +482,31 @@ class MemoryVectorStore:
         return out
 
 
-class QdrantVectorStore:
+def _should_drop_for_dim(existing_dim: int, new_dim: int, allow_reindex: bool) -> bool:
+    """Decide whether a dim-mismatched Qdrant collection may be dropped.
+
+    Pure helper so the data-loss guard is unit-testable without a real Qdrant.
+
+    - dims match            → return False (no drop needed).
+    - dims differ, no opt-in → raise RuntimeError (REFUSE: dropping would
+      silently destroy the tenant's whole index).
+    - dims differ, opt-in    → return True (caller drops+recreates; logs WARNING).
+    """
+    if existing_dim == new_dim:
+        return False
+    if not allow_reindex:
+        raise RuntimeError(
+            f"Qdrant collection vector dim mismatch: stored={existing_dim} "
+            f"current_embedder={new_dim}. Refusing to drop the existing index "
+            f"(this would destroy all stored vectors for this tenant). "
+            f"If this dim change is deliberate, re-index explicitly by setting "
+            f"QDRANT_ALLOW_REINDEX=true (env) — and only after confirming the "
+            f"tenant's data can be safely rebuilt."
+        )
+    return True
+
+
+class QdrantVectorStore(VectorStore):
     """Q7: Qdrant per-tenant collection, payload-stored chunk fields."""
 
     def __init__(self, url: str, dim: int):
@@ -382,10 +527,19 @@ class QdrantVectorStore:
             return
         existing = {c.name for c in self._client.get_collections().collections}
         if name in existing:
-            # Drop+recreate if dim drifted (e.g. switched mock 384 ↔ bge-m3 1024)
+            # Dim drift (e.g. switched mock 384 ↔ bge-m3 1024). Dropping the
+            # collection silently destroys the tenant's whole index, so refuse
+            # by default; only drop+recreate when an operator opted in via
+            # QDRANT_ALLOW_REINDEX.
             info = self._client.get_collection(collection_name=name)
             existing_dim = info.config.params.vectors.size
-            if existing_dim != self._dim:
+            if _should_drop_for_dim(existing_dim, self._dim, settings.QDRANT_ALLOW_REINDEX):
+                logger.warning(
+                    "QDRANT_ALLOW_REINDEX=true: dropping collection %s due to "
+                    "vector dim change %s -> %s. All stored vectors for this "
+                    "tenant will be lost and must be re-indexed.",
+                    name, existing_dim, self._dim,
+                )
                 self._client.delete_collection(collection_name=name)
                 existing.discard(name)
         if name not in existing:

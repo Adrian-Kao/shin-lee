@@ -29,11 +29,13 @@ logger = logging.getLogger(__name__)
 # size cap (M-8). The format is set by the helpers below — keep in sync.
 #   resp:<hash24>   — built from [tenant, user, case, prompt_hash]
 #   ret:<hash24>    — built from [tenant, query_hash]
-# Embedding keys (emb:<sha256>) are NOT tenant-scoped (embedding is a function
-# of text only on bge-m3; mock is tenant-salted via rag.embed but the cache
-# key still doesn't carry tenant), so they live in a shared bucket and never
-# count against any tenant's quota — matches the "permanent + cross-tenant
-# reusable" intent of `set_embedding`.
+# Embedding keys (emb:<sha256(tenant|text)>) ARE tenant-namespaced in the KEY
+# (H-3: rag.embed salts mock vectors per tenant, so a non-namespaced key would
+# leak tenant_a's vector to tenant_b). They still live in the shared, uncapped
+# SIZE bucket — they're permanent and deterministic, so no tenant should be
+# charged for them and they never need eviction. Namespacing the key while
+# keeping the shared bucket gives both: cross-tenant reads miss, but the
+# accounting stays simple.
 _TENANT_SCOPED_PREFIXES = ("resp:", "ret:")
 _SHARED_BUCKET = "__shared__"
 
@@ -233,20 +235,28 @@ def set_response(tenant_id: str, user_id: str, case_id: str, prompt_hash: str, v
     )
 
 
-def embedding_cache_key(text_hash: str) -> str:
-    return "emb:" + text_hash
+def embedding_cache_key(text: str, tenant_id: str = "") -> str:
+    # H-3: the mock embedding backend (rag.embed) salts vectors with tenant_id,
+    # so the cache KEY must namespace by tenant — otherwise tenant_a's vector
+    # would be served to tenant_b for the same text, silently undoing the
+    # tenant isolation that test_cross_tenant.py protects. We fold tenant_id
+    # INTO the hashed payload (not just a prefix) so it can't collide with a
+    # text that happens to contain the delimiter. bge-m3 is content-only and
+    # would be safe to share, but we always namespace for simplicity+safety.
+    h = hashlib.sha256(f"{tenant_id}|{text}".encode()).hexdigest()
+    return "emb:" + h
 
 
-def get_embedding(text: str) -> Optional[list[float]]:
-    h = hashlib.sha256(text.encode()).hexdigest()
-    return _cache.get(embedding_cache_key(h))
+def get_embedding(text: str, tenant_id: str = "") -> Optional[list[float]]:
+    return _cache.get(embedding_cache_key(text, tenant_id))
 
 
-def set_embedding(text: str, vec: list[float]):
-    h = hashlib.sha256(text.encode()).hexdigest()
-    # Embedding cache is intentionally shared (no tenant kwarg) — see the
-    # _SHARED_BUCKET docstring in cache.py for why this is safe.
-    _safe_set(embedding_cache_key(h), vec, ttl_sec=0)  # permanent
+def set_embedding(text: str, vec: list[float], tenant_id: str = ""):
+    # Embedding entries live in the shared (uncapped) size bucket — they are
+    # permanent and deterministic — but the KEY is tenant-namespaced (H-3).
+    # The shared-bucket accounting (no tenant= kwarg) is therefore preserved
+    # while cross-tenant reads still MISS.
+    _safe_set(embedding_cache_key(text, tenant_id), vec, ttl_sec=0)  # permanent
 
 
 def retrieval_cache_key(tenant_id: str, query_hash: str) -> str:

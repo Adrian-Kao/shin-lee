@@ -20,6 +20,8 @@ MAPPING_DB_PATH = DATA_DIR / "redaction_mapping.db"  # Q10: 不上雲的 mapping
 # replay_outbox() drains it back into the audit DB once the DB recovers.
 # Kept beside the audit DB so an on-prem operator can back both up together.
 AUDIT_OUTBOX_PATH = DATA_DIR / "audit_outbox.jsonl"
+# Q13 WORM archive: sealed, immutable audit segments (POC of S3 Object Lock).
+AUDIT_ARCHIVE_DIR = DATA_DIR / "audit_archive"
 # Q10: per-tenant uploadable masking dictionaries live here as
 # <tenant_id>.json (white-glove onboarding = file drop + reload, no deploy).
 TENANT_DICTS_DIR = DATA_DIR / "tenant_dicts"

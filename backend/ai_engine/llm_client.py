@@ -371,16 +371,126 @@ class MockLLM:
             "confidence": 0.82,
         })
 
-    @staticmethod
-    def _mock_verify(user: str) -> str:
-        # Pretend verifier checked all citations against grounded_set and found them OK.
+    # Statute / regulatory refs that come from the OA itself and are publicly
+    # verifiable — mirrors oa_analyzer._STATUTE_WHITELIST. Kept local (not
+    # imported) because oa_analyzer imports this module, so reaching back would
+    # create a circular import. Anchored to .fullmatch a single extracted token.
+    _STATUTE_WHITELIST = (
+        re.compile(r"專利法第\d+條(?:第\d+項)?"),
+        re.compile(r"35\s?U\.?S\.?C\.?\s?§\s?\d+"),
+        re.compile(r"§\s?\d+(?:\.\d+)*"),
+    )
+
+    # Tokens the second-stage verifier extracts from the (already regex-cleaned)
+    # draft and re-checks against the listed grounded keys. Mirrors the citation
+    # families oa_analyzer._CITATION_PATTERNS knows about so the verifier is a
+    # genuine independent second opinion, not a rubber stamp.
+    _DRAFT_CITATION_PATTERNS = (
+        re.compile(r"\[GROUNDED_REF_\d+\]"),
+        re.compile(r"\bUS\s?\d{6,8}[A-Z]?\d?\b"),
+        re.compile(r"\bTW\s?\d{6,9}[A-Z]?\b"),
+        re.compile(r"\bEP\s?\d{6,8}\b"),
+        re.compile(r"專利法第\d+條(?:第\d+項)?"),
+        re.compile(r"35\s?U\.?S\.?C\.?\s?§\s?\d+"),
+        re.compile(r"§\s?\d+(?:\.\d+)*"),
+    )
+
+    @classmethod
+    def _mock_verify(cls, user: str) -> str:
+        """Q14 second-stage verifier — REAL deterministic check (no network).
+
+        The verifier `user` message is built by oa_analyzer.verify_citations as:
+
+            DRAFT:
+            <untrusted_input>
+            ...cleaned draft text...
+            </untrusted_input>
+
+            GROUNDED_SET keys: ['[GROUNDED_REF_1]', '[GROUNDED_REF_2]']
+
+            Confirm cleaned draft only references the keys above.
+
+        We parse out (a) the listed grounded keys and (b) the draft body, then
+        independently re-extract every citation in the draft and check each one:
+
+          * a [GROUNDED_REF_N] that is in the listed keys      → valid
+          * a [GROUNDED_REF_N] NOT in the listed keys          → invalid
+            (references a grounded slot that was never retrieved — a fabrication)
+          * a statute ref (專利法第N條 / 35 U.S.C. § N / § N)   → valid (from the OA,
+            publicly verifiable; mirrors oa_analyzer's statute whitelist)
+          * any other patent number (US/TW/EP) without grounding → invalid
+
+        verifier_confidence starts high and drops when invalids are found, so a
+        downstream caller (orchestrator does min(draft.conf, verifier.conf)) is
+        penalised for shipping ungrounded citations. The legit demo draft cites
+        only grounded slots + statutes, so it still verifies clean.
+        """
+        keys = cls._parse_grounded_keys(user)
+        draft_body = cls._parse_draft_body(user)
+        citations = cls._extract_draft_citations(draft_body)
+
+        valid: list[str] = []
+        invalid: list[str] = []
+        for c in citations:
+            if re.fullmatch(r"\[GROUNDED_REF_\d+\]", c):
+                (valid if c in keys else invalid).append(c)
+            elif any(p.fullmatch(c) for p in cls._STATUTE_WHITELIST):
+                valid.append(c)  # statute — publicly verifiable, allowed
+            else:
+                invalid.append(c)  # ungrounded external patent number
+
+        is_valid = len(invalid) == 0
+        # Confidence: high when clean; drops sharply once any fabrication is seen.
+        confidence = 0.92 if is_valid else max(0.2, 0.92 - 0.25 * len(invalid))
+
         return json.dumps({
-            "valid": True,
-            "valid_citations": ["[GROUNDED_REF_1]", "[GROUNDED_REF_2]"],
-            "invalid_citations": [],
-            "verifier_confidence": 0.9,
-            "cleaned_draft_text": None,  # filler — replaced by oa_analyzer
+            "valid": is_valid,
+            "valid_citations": valid,
+            "invalid_citations": invalid,
+            "verifier_confidence": round(confidence, 2),
+            "cleaned_draft_text": None,  # filler — oa_analyzer owns the cleaned text
         })
+
+    @staticmethod
+    def _parse_grounded_keys(user: str) -> set[str]:
+        """Pull the `[GROUNDED_REF_N]` tokens out of the 'GROUNDED_SET keys:' line.
+
+        Conservative: only reads the explicit key line oa_analyzer emits, then
+        scoops every [GROUNDED_REF_N] token on it. If the line is missing/empty
+        we return an empty set (→ any grounded ref in the draft is treated as
+        ungrounded, which is the safe direction).
+        """
+        m = re.search(r"GROUNDED_SET keys:\s*(.*)", user)
+        if not m:
+            return set()
+        return set(re.findall(r"\[GROUNDED_REF_\d+\]", m.group(1)))
+
+    @staticmethod
+    def _parse_draft_body(user: str) -> str:
+        """Return the text inside the <untrusted_input>...</untrusted_input> block.
+
+        Falls back to everything before the 'GROUNDED_SET keys:' line so we never
+        accidentally scan the key list itself for citations.
+        """
+        m = re.search(
+            r"<untrusted_input>\s*(.*?)\s*</untrusted_input>", user, re.DOTALL
+        )
+        if m:
+            return m.group(1)
+        return user.split("GROUNDED_SET keys:", 1)[0]
+
+    @classmethod
+    def _extract_draft_citations(cls, text: str) -> list[str]:
+        found: list[str] = []
+        for pat in cls._DRAFT_CITATION_PATTERNS:
+            found.extend(pat.findall(text))
+        seen: set[str] = set()
+        out: list[str] = []
+        for c in found:
+            if c not in seen:
+                out.append(c)
+                seen.add(c)
+        return out
 
     async def vision_ocr(
         self, image_bytes: bytes, mime: str = "image/png"

@@ -196,6 +196,12 @@ _CITATION_PATTERNS = [
     re.compile(r"\bEP\s?\d{6,8}\b"),
     re.compile(r"專利法第\d+條(?:第\d+項)?"),    # TW: 專利法第26條第2項
     re.compile(r"35\s?U\.?S\.?C\.?\s?§\s?\d+"), # US: 35 U.S.C. § 103
+    # US case-law reporter citation, e.g. "999 F.3d 1234", "550 U.S. 398".
+    # Case names are the classic LLM fabrication ("Smith v. Jones, 999 F.3d
+    # 1234") — there is no grounded slot for them, so capturing the reporter
+    # cite lets the hard wall strip the fabrication. Statutes (35 U.S.C. § N)
+    # are matched by the line above and whitelisted; bare reporters are not.
+    re.compile(r"\b\d{1,3}\s+(?:F\.\s?(?:2d|3d|4th)|U\.\s?S\.|S\.\s?Ct\.)\s+\d{1,4}\b"),
 ]
 
 

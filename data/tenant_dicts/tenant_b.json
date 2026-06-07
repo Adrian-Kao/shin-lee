@@ -1,0 +1,12 @@
+{
+  "tenant_id": "tenant_b",
+  "description": "BetaLegal IP Group — customer identifier dictionary (Q10 layer 2). White-glove uploaded.",
+  "rules": [
+    {
+      "rule_id": "beta_proj_code",
+      "pattern": "\\bBL-PRJ-\\d{4}\\b",
+      "placeholder_prefix": "PROJ",
+      "description": "BetaLegal project code"
+    }
+  ]
+}

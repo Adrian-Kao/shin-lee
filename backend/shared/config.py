@@ -20,6 +20,9 @@ MAPPING_DB_PATH = DATA_DIR / "redaction_mapping.db"  # Q10: 不上雲的 mapping
 # replay_outbox() drains it back into the audit DB once the DB recovers.
 # Kept beside the audit DB so an on-prem operator can back both up together.
 AUDIT_OUTBOX_PATH = DATA_DIR / "audit_outbox.jsonl"
+# Q10: per-tenant uploadable masking dictionaries live here as
+# <tenant_id>.json (white-glove onboarding = file drop + reload, no deploy).
+TENANT_DICTS_DIR = DATA_DIR / "tenant_dicts"
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +81,9 @@ class Settings:
     JWT_SECRET: str = os.getenv("JWT_SECRET", "changeme-generate-with-openssl-rand-hex-32")
     JWT_ALGO: str = "HS256"
     JWT_EXPIRES_MIN: int = 30
+    # Q12: magic-link single-use token TTL (small-firm "no IdP, no password"
+    # login path — /v1/auth/magic/request → /v1/auth/magic/consume).
+    MAGIC_LINK_TTL_MIN: int = int(os.getenv("MAGIC_LINK_TTL_MIN", "15"))
 
     # Rate limit / Quota (Q18 全套)
     DEFAULT_RPM: int = 30                   # per-user request/minute
@@ -245,6 +251,13 @@ class Settings:
     # fail-closed technical chokepoint. Kept ON even in mock mode so the demo
     # shows enforcement. Set EGRESS_GUARD_ENABLED=false ONLY for debugging.
     EGRESS_GUARD_ENABLED: bool = os.getenv("EGRESS_GUARD_ENABLED", "true").lower() in ("1", "true", "yes")
+
+    # Q11 prompt-injection layer 5 (canary) + layer 3 (output filter). When
+    # True, oa_analyzer plants a per-call canary in the hardened system prompt
+    # and scans every LLM response for it (and other injection signatures);
+    # a hit FAILS CLOSED (InjectionDetected). Kept ON even in mock mode so the
+    # demo shows enforcement. Set INJECTION_GUARD_ENABLED=false ONLY for debugging.
+    INJECTION_GUARD_ENABLED: bool = os.getenv("INJECTION_GUARD_ENABLED", "true").lower() in ("1", "true", "yes")
 
     # Mapping-table at-rest encryption (Q3/Q10 crown jewel). Master key for
     # the per-tenant HKDF derivation that encrypts the reversible un-redaction

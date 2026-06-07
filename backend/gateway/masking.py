@@ -22,9 +22,16 @@ At-rest confidentiality of the un-redaction table (Q3/Q10 — "crown jewel"):
       deterministic dev key is derived when the env var is unset (a WARNING is
       logged; a real key MUST be configured in production).
 
+Per-tenant uploadable dictionaries (Q10 layer 2):
+    - A firm's customer-identifier rules (case numbers, client codes, project
+      codenames) live in ``data/tenant_dicts/<tenant_id>.json`` and are loaded +
+      compiled + cached at runtime, so white-glove onboarding a new client's
+      patterns is a file drop + ``reload_tenant_dictionary(tenant_id)`` — NOT a
+      code change + gateway restart. The hard-coded ``TENANT_DICTIONARIES``
+      below remains a fallback when no JSON file exists for a tenant.
+
 A real implementation would also:
     - Run an NER model for free-text customer references
-    - Let each tenant upload their own keyword dictionary
     - Hash PII with HMAC-tenant-key so the same email → same placeholder
       (lets LLM reason about co-occurrence without knowing identity)
 """
@@ -32,6 +39,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import logging
 import re
 import sqlite3
@@ -45,7 +53,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from backend.shared.config import settings, MAPPING_DB_PATH
+from backend.shared.config import settings, MAPPING_DB_PATH, TENANT_DICTS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +128,203 @@ TENANT_DICTIONARIES: dict[str, list[MaskRule]] = {
         ),
     ],
 }
+
+
+# --- Per-tenant UPLOADABLE dictionary loader (Q10 — kill the hard-coded one) -
+#
+# The hard-coded ``TENANT_DICTIONARIES`` above used to be the ONLY source of a
+# firm's customer-identifier rules, so onboarding a new client's case-number /
+# client-code patterns meant a Python edit + gateway restart. The real product
+# needs white-glove onboarding: an ops engineer drops a tenant's JSON dictionary
+# at ``data/tenant_dicts/<tenant_id>.json`` and reloads — no deploy.
+#
+# Resolution order for a tenant's layer-2 rules:
+#   1. ``data/tenant_dicts/<tenant_id>.json``  (uploaded — authoritative)
+#   2. ``TENANT_DICTIONARIES[tenant_id]``      (hard-coded fallback — nothing
+#      breaks if the data dir is absent / the file was never shipped)
+#   3. ``[]``                                  (unknown tenant → built-ins only)
+#
+# The built-in ``PII_RULES`` are ALWAYS prepended regardless (layer 1), so the
+# merge order is exactly as before: ``PII_RULES + <tenant layer-2 rules>``.
+#
+# JSON schema (one object per rule under a top-level ``rules`` array):
+#   {"rule_id": str, "pattern": str (regex),
+#    "placeholder_prefix": str, "description": str}
+
+# Safety guard against catastrophic-backtracking / DoS regexes uploaded by a
+# tenant. Python's ``re`` is backtracking (no linear-time guarantee), so a
+# pattern like ``(a+)+$`` against adversarial input can hang the masker — and
+# the masker runs on the hot path of EVERY redact() call. For the POC we apply
+# a simple, documented LENGTH CAP: a pattern longer than this is rejected at
+# load time (skipped + logged), on the heuristic that pathological ReDoS
+# patterns and legitimate identifier patterns differ wildly in length (real
+# case/client-code regexes are short, ~10-40 chars). This is NOT a true ReDoS
+# detector — a short evil pattern can still slip through. Production should add
+# a real timeout-bounded matcher (e.g. the `regex` module's `timeout=`, or run
+# matching in a watchdog thread) and/or a linter that flags nested quantifiers.
+MAX_TENANT_PATTERN_LEN = 200
+
+# Module-level cache of compiled per-tenant dictionaries, keyed by tenant_id.
+# We cache because redact() is hot and re-reading + recompiling a tenant's JSON
+# on every call would be wasteful. ``reload_tenant_dictionary`` invalidates a
+# single tenant; ``_loaded_dicts.clear()`` (or that helper with no arg) clears
+# all. A sentinel distinguishes "loaded, empty" from "not yet loaded".
+_loaded_dicts: dict[str, list[MaskRule]] = {}
+_loaded_dicts_lock = threading.Lock()
+
+
+def _tenant_dict_path(tenant_id: str) -> Path:
+    return TENANT_DICTS_DIR / f"{tenant_id}.json"
+
+
+def _compile_tenant_rules(tenant_id: str, raw_rules: list) -> list[MaskRule]:
+    """Compile a tenant's raw JSON rule list into ``MaskRule`` objects.
+
+    DEFENSIVE: a single malformed / dangerous / regex-invalid rule MUST NOT
+    abort loading the rest of the tenant's dictionary, and MUST NOT crash
+    redaction for everyone. Each rule is validated independently; failures are
+    logged at WARNING and the rule is skipped.
+    """
+    compiled: list[MaskRule] = []
+    seen_ids: set[str] = set()
+    for entry in raw_rules:
+        if not isinstance(entry, dict):
+            logger.warning(
+                "tenant=%s: skipping malformed dictionary entry (not an object): %r",
+                tenant_id,
+                entry,
+            )
+            continue
+        rule_id = entry.get("rule_id")
+        pattern_str = entry.get("pattern")
+        placeholder_prefix = entry.get("placeholder_prefix")
+        description = entry.get("description", "")
+
+        if not rule_id or not pattern_str or not placeholder_prefix:
+            logger.warning(
+                "tenant=%s: skipping dictionary rule missing rule_id/pattern/"
+                "placeholder_prefix: %r",
+                tenant_id,
+                entry,
+            )
+            continue
+        if rule_id in seen_ids:
+            logger.warning(
+                "tenant=%s: duplicate rule_id %r in dictionary; skipping later copy",
+                tenant_id,
+                rule_id,
+            )
+            continue
+        # DoS guard: reject over-long patterns (see MAX_TENANT_PATTERN_LEN note).
+        if len(pattern_str) > MAX_TENANT_PATTERN_LEN:
+            logger.warning(
+                "tenant=%s: skipping rule %r — pattern length %d exceeds the "
+                "%d-char safety cap (possible catastrophic-backtracking risk)",
+                tenant_id,
+                rule_id,
+                len(pattern_str),
+                MAX_TENANT_PATTERN_LEN,
+            )
+            continue
+        # Compile defensively: a bad regex from one tenant must never break
+        # redaction for the other rules / other tenants.
+        try:
+            pattern = re.compile(pattern_str)
+        except re.error as exc:
+            logger.warning(
+                "tenant=%s: skipping rule %r — invalid regex %r: %s",
+                tenant_id,
+                rule_id,
+                pattern_str,
+                exc,
+            )
+            continue
+
+        compiled.append(
+            MaskRule(
+                rule_id=str(rule_id),
+                pattern=pattern,
+                placeholder_prefix=str(placeholder_prefix),
+                description=str(description),
+            )
+        )
+        seen_ids.add(rule_id)
+    return compiled
+
+
+def _read_tenant_dictionary(tenant_id: str) -> list[MaskRule]:
+    """Read + compile a tenant's dictionary from disk, with hard-coded fallback.
+
+    Returns the tenant's layer-2 ``MaskRule`` list (NOT including PII_RULES).
+    Never raises: any IO/JSON failure degrades to the hard-coded
+    ``TENANT_DICTIONARIES`` entry (or ``[]`` for an unknown tenant).
+    """
+    path = _tenant_dict_path(tenant_id)
+    if not path.exists():
+        # No uploaded dict → fall back to the hard-coded demo rules so nothing
+        # breaks when the data dir is absent (e.g. a fresh checkout / CI).
+        return list(TENANT_DICTIONARIES.get(tenant_id, []))
+
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "tenant=%s: failed to read/parse dictionary %s (%s); falling back "
+            "to hard-coded TENANT_DICTIONARIES.",
+            tenant_id,
+            path,
+            exc,
+        )
+        return list(TENANT_DICTIONARIES.get(tenant_id, []))
+
+    raw_rules = doc.get("rules", []) if isinstance(doc, dict) else []
+    if not isinstance(raw_rules, list):
+        logger.warning(
+            "tenant=%s: dictionary %s has a non-list 'rules'; ignoring file, "
+            "falling back to hard-coded TENANT_DICTIONARIES.",
+            tenant_id,
+            path,
+        )
+        return list(TENANT_DICTIONARIES.get(tenant_id, []))
+
+    return _compile_tenant_rules(tenant_id, raw_rules)
+
+
+def get_tenant_rules(tenant_id: str) -> list[MaskRule]:
+    """Return a tenant's compiled layer-2 rules, loading + caching on first use.
+
+    Thread-safe. The compiled list is cached per tenant_id; call
+    ``reload_tenant_dictionary(tenant_id)`` after an upload to pick up changes.
+    """
+    cached = _loaded_dicts.get(tenant_id)
+    if cached is not None:
+        return cached
+    with _loaded_dicts_lock:
+        # Re-check inside the lock (another thread may have populated it).
+        cached = _loaded_dicts.get(tenant_id)
+        if cached is not None:
+            return cached
+        rules = _read_tenant_dictionary(tenant_id)
+        _loaded_dicts[tenant_id] = rules
+        return rules
+
+
+def reload_tenant_dictionary(tenant_id: str | None = None) -> list[MaskRule]:
+    """White-glove "we just uploaded your dict" hook: drop the cache so the next
+    redact() re-reads from disk.
+
+    With a ``tenant_id`` → invalidate + eagerly reload that one tenant, returning
+    its freshly compiled rules. With ``None`` → invalidate ALL tenants (lazy
+    reload on next access) and return an empty list.
+    """
+    with _loaded_dicts_lock:
+        if tenant_id is None:
+            _loaded_dicts.clear()
+            return []
+        _loaded_dicts.pop(tenant_id, None)
+        rules = _read_tenant_dictionary(tenant_id)
+        _loaded_dicts[tenant_id] = rules
+        return rules
 
 
 # --- At-rest encryption of the un-redaction table (Q3/Q10) ---
@@ -308,7 +513,10 @@ def redact(text: str, tenant_id: str) -> tuple[str, list[str]]:
     # round-trip through ``unmask``) work on this canonical form.
     redacted = unicodedata.normalize("NFKC", text)
 
-    rules = list(PII_RULES) + TENANT_DICTIONARIES.get(tenant_id, [])
+    # Layer 1 (built-in PII) + layer 2 (per-tenant uploadable dictionary, with
+    # hard-coded fallback). Same merge order as before; the tenant layer-2 set
+    # is now loaded + cached from data/tenant_dicts/<tenant_id>.json.
+    rules = list(PII_RULES) + get_tenant_rules(tenant_id)
 
     for rule in rules:
         def _sub(match: re.Match) -> str:

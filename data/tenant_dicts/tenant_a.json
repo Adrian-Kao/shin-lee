@@ -1,0 +1,18 @@
+{
+  "tenant_id": "tenant_a",
+  "description": "Apex Patent Law Firm — customer identifier dictionary (Q10 layer 2). White-glove uploaded.",
+  "rules": [
+    {
+      "rule_id": "apex_case_no",
+      "pattern": "\\bAPEX-\\d{4}-\\d{3,5}\\b",
+      "placeholder_prefix": "CASE_REF",
+      "description": "Apex internal case number"
+    },
+    {
+      "rule_id": "apex_client_code",
+      "pattern": "\\bCL-[A-Z]{2,4}\\d{2,4}\\b",
+      "placeholder_prefix": "CLIENT_CODE",
+      "description": "Apex client code"
+    }
+  ]
+}

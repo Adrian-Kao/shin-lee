@@ -30,7 +30,10 @@ from backend.gateway.auth import (
     _verify_password,
     auth_dependency,
     authorize_case_access,
+    consume_magic_token,
+    issue_magic_token,
     issue_token,
+    magic_token_jti,
     require_roles,
 )
 from backend.gateway.orchestrator import orchestrate_analysis
@@ -307,7 +310,7 @@ def login(
       - built-in:    POST /v1/auth/login (this endpoint)
       - OIDC:        /v1/auth/oidc/callback (TODO with Claude Code)
       - SAML:        /v1/auth/saml/acs (TODO)
-      - magic link:  /v1/auth/magic/{token} (TODO)
+      - magic link:  POST /v1/auth/magic/request + /v1/auth/magic/consume
     """
     # Pre-auth brute-force defence (Day 8 post-review Important #1):
     # bucket by client IP, default 10 attempts/min. Runs BEFORE the dummy
@@ -365,6 +368,210 @@ _DUMMY_HASH_FOR_TIMING = (
     "00000000000000000000000000000000:"
     "0000000000000000000000000000000000000000000000000000000000000000"
 )
+
+
+# ---------- Magic-link login (Q12) ----------
+#
+# Small-firm path: no IdP, no password typing. The user requests a link, the
+# link is emailed (PROD) / returned in the response (DEMO-ONLY), and clicking
+# it (a POST to /consume) exchanges the single-use magic token for a real
+# session JWT — the SAME LoginResponse shape as /v1/auth/login.
+#
+# Security parity with /v1/auth/login: pydantic `extra="forbid"` + field caps,
+# per-IP rate limit via rate_limit.check_login_rpm (shares the login bucket so
+# the magic path can't be used to sidestep the brute-force cap), exactly one
+# audit row per call via _safe_audit_write in a try/finally, and the raw token
+# is NEVER written to the audit log — only its jti + outcome.
+
+
+class MagicRequestBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    # user_id cap matches LoginRequest / User.user_id (max 64).
+    user_id: str = Field(..., max_length=64)
+
+
+class MagicRequestResponse(BaseModel):
+    # Generic, user-enumeration-safe shape. `message` is identical for known
+    # and unknown users. `magic_token` is populated ONLY for known users and
+    # ONLY because this is a POC — production emails a link and returns no
+    # token at all (see the DEMO-ONLY warning on the endpoint).
+    message: str
+    magic_token: Optional[str] = None
+
+
+class MagicConsumeBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    # A magic token is a signed JWT — same byte-length ballpark as a session
+    # token. 4096 is generous headroom while still bounding the body.
+    token: str = Field(..., max_length=4096)
+
+
+# Generic message returned by /v1/auth/magic/request for BOTH known and
+# unknown users — the heart of the user-enumeration defence. Same string,
+# same status, same response model for every input.
+_MAGIC_REQUEST_GENERIC_MESSAGE = (
+    "If that account exists, a magic sign-in link has been sent."
+)
+
+
+def _audit_placeholder_user(user_id: str) -> User:
+    """Build a synthetic, least-privilege User for the audit row on the
+    pre-auth magic endpoints.
+
+    The audit writer is typed against ``User``, but at /request time we must
+    NOT reveal whether ``user_id`` is real, and at /consume time the token may
+    be forged. So we synthesize a PARALEGAL (least-privilege) placeholder in a
+    sentinel tenant. This never grants any access — it only labels the audit
+    row. ``user_id`` is capped by the pydantic body model before reaching here.
+    """
+    return User(
+        user_id=user_id or "_anonymous_",
+        tenant_id="_preauth_",
+        role=UserRole.PARALEGAL,
+        display_name="(pre-auth magic-link request)",
+        daily_token_quota=0,
+    )
+
+
+@app.post("/v1/auth/magic/request", response_model=MagicRequestResponse)
+def magic_request(req: MagicRequestBody, request: Request):
+    """Issue a single-use magic-link token for ``user_id`` (Q12).
+
+    ⚠ DEMO-ONLY token delivery ⚠ — exactly like the ``DEMO_LOGIN_SECRET``
+    bypass on ``/v1/auth/login``, this POC returns the magic token directly in
+    the response body so the demo SPA can complete the flow without a mail
+    server. PRODUCTION MUST email a link (``https://app/...#token=...``) and
+    return NO token in the HTTP response — otherwise anyone who can call this
+    endpoint logs in as the target user. The generic ``message`` field is the
+    production-shaped response; ``magic_token`` is the demo escape hatch.
+
+    User-enumeration defence (mirrors login H-8): the response is byte-shaped
+    identically for known and unknown users — same 200 status, same
+    ``message``. The only difference is that ``magic_token`` is populated for a
+    known user and ``null`` for an unknown one. In production (no token in the
+    body) there is ZERO observable difference. Status and the human-readable
+    message never differ, so a probe learns nothing.
+
+    Per-IP rate limit (shared login bucket) runs first so this endpoint can't
+    be used to brute-force the user roster or to flood token issuance.
+    """
+    client_ip = request.client.host if request.client else ""
+    error: Optional[BaseException] = None
+    issued_jti: Optional[str] = None
+    user_known = False
+    try:
+        # Pre-auth brute-force / enumeration-flood defence — same bucket as
+        # /v1/auth/login so an attacker can't split their budget across the
+        # two pre-auth doors.
+        rate_limit.check_login_rpm(client_ip)
+
+        token: Optional[str] = None
+        try:
+            token = issue_magic_token(req.user_id)
+            user_known = True
+            issued_jti = magic_token_jti(token)
+        except HTTPException as exc:
+            # Unknown user (404 from issue_magic_token). Swallow it and fall
+            # through to the SAME generic 200 response — never leak existence.
+            if exc.status_code != status.HTTP_404_NOT_FOUND:
+                raise
+            token = None
+
+        return MagicRequestResponse(
+            message=_MAGIC_REQUEST_GENERIC_MESSAGE,
+            magic_token=token,  # populated only for known users (DEMO-ONLY)
+        )
+    except BaseException as exc:  # noqa: BLE001 — must reach the finally
+        error = exc
+        raise
+    finally:
+        # Exactly one audit row. NEVER the raw token — only its jti + outcome.
+        if error is not None:
+            response_payload: dict = _error_response_payload(error)
+            outcome = "error"
+        else:
+            outcome = "issued" if user_known else "unknown_user_noop"
+            response_payload = {"outcome": outcome}
+        _safe_audit_write(
+            user=_audit_placeholder_user(req.user_id),
+            case_id=None,
+            endpoint="/v1/auth/magic/request",
+            request_payload={"user_id": req.user_id},
+            response_payload=response_payload,
+            masked_rules=[],
+            model_used=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=0,
+            policy_decisions={
+                "outcome": outcome,
+                "magic_jti": issued_jti,  # safe correlation handle, not the token
+            },
+        )
+
+
+@app.post("/v1/auth/magic/consume", response_model=LoginResponse)
+def magic_consume(req: MagicConsumeBody, request: Request):
+    """Exchange a single-use magic token for a real session JWT (Q12).
+
+    On success returns the SAME ``LoginResponse`` shape as ``/v1/auth/login``
+    (a session JWT minted via ``issue_token``). On ANY failure — bad
+    signature, expired, wrong ``typ``, unknown user, missing jti, or replay —
+    returns a uniform 401 (``consume_magic_token`` raises it).
+
+    The token's ``jti`` is recorded as consumed on first success, so a second
+    POST with the same token 401s (replay defence). Per-IP rate limit (shared
+    login bucket) bounds token-guessing. Exactly one audit row; the raw token
+    is never stored — only its jti + outcome.
+    """
+    client_ip = request.client.host if request.client else ""
+    error: Optional[BaseException] = None
+    consumed_user_id: Optional[str] = None
+    # jti for the audit row — derived WITHOUT trusting signature/expiry, purely
+    # a correlation handle. Never the raw token.
+    jti = magic_token_jti(req.token)
+    try:
+        rate_limit.check_login_rpm(client_ip)
+        consumed_user_id = consume_magic_token(req.token)
+        user = _get_user(consumed_user_id)
+        if user is None:
+            # consume_magic_token already guarantees a known user, but be
+            # defensive — collapse to the same 401 rather than 500.
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "invalid or expired magic link"
+            )
+        return LoginResponse(
+            token=issue_token(user.user_id),
+            user_id=user.user_id,
+            tenant_id=user.tenant_id,
+            role=user.role.value,
+            display_name=user.display_name,
+        )
+    except BaseException as exc:  # noqa: BLE001 — must reach the finally
+        error = exc
+        raise
+    finally:
+        if error is not None:
+            response_payload: dict = _error_response_payload(error)
+            outcome = "rejected"
+        else:
+            response_payload = {"outcome": "consumed"}
+            outcome = "consumed"
+        _safe_audit_write(
+            user=_audit_placeholder_user(consumed_user_id or ""),
+            case_id=None,
+            endpoint="/v1/auth/magic/consume",
+            request_payload={"magic_jti": jti},  # NOT the raw token
+            response_payload=response_payload,
+            masked_rules=[],
+            model_used=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=0,
+            policy_decisions={"outcome": outcome, "magic_jti": jti},
+        )
 
 
 # ---------- Health / Quota dashboard (Q19) ----------

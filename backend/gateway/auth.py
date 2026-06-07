@@ -1,7 +1,10 @@
 """Gateway auth (Q12).
 
 Three IdP modes are supported in production: built-in / OIDC SAML / magic link.
-POC simplifies to JWT — but the **case_id check** is the part that matters
+POC simplifies to JWT — built-in login (`/v1/auth/login`) and the magic-link
+flow (`issue_magic_token` / `consume_magic_token`, wired to
+`/v1/auth/magic/request` + `/v1/auth/magic/consume`) are implemented here;
+OIDC/SAML remain TODO. The **case_id check** is the part that matters
 most and that we keep verbatim:
 
     Every API call must carry case_id.
@@ -287,6 +290,134 @@ def verify_token(token: str) -> User:
     if user_id not in _USERS:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "unknown user")
     return _USERS[user_id]
+
+
+# ---------------------------------------------------------------------------
+# Q12 — Magic-link auth flow (fills the named `/auth/magic` stub).
+#
+# The small-firm path: a <10-person practice with no IdP and no appetite for
+# password management. The user asks for a link, clicks it, and is logged in.
+#
+# Token scheme: we reuse the existing JWT machinery (same HS256 signature with
+# `settings.JWT_SECRET`) so the token is tamper-evident and self-expiring with
+# zero extra crypto. A magic token is distinguished from a session token by a
+# `typ: "magic"` claim — `verify_token` only accepts session tokens (no `typ`
+# claim or `typ != "magic"`), and `consume_magic_token` only accepts magic
+# tokens, so a magic token can NEVER be presented as a Bearer session token and
+# vice-versa. Each magic token carries a unique `jti`; once consumed that `jti`
+# is recorded so a replay (clicking the same link twice, or an attacker who
+# captured it from a log) is rejected.
+#
+# Single-use store: an in-memory set, POC-only. In production this MUST be
+# Redis with a TTL equal to MAGIC_LINK_TTL_MIN (so the consumed-set is bounded
+# and survives a gateway restart / multiple replicas). The in-memory set here
+# is per-process: it is correct for a single-replica POC but would let a replay
+# through on a second replica, which is exactly why prod needs the shared store.
+# ---------------------------------------------------------------------------
+_MAGIC_TOKEN_TYP = "magic"
+
+# Consumed magic-token jtis. POC: in-memory, unbounded (entries are short-lived
+# in practice because a jti is only useful until its token expires). Production:
+# Redis SET with `EXPIRE jti <MAGIC_LINK_TTL_MIN*60>` so it self-prunes and is
+# shared across replicas.
+_CONSUMED_MAGIC_JTIS: set[str] = set()
+
+
+def issue_magic_token(user_id: str) -> str:
+    """Issue a short-TTL, single-use signed magic-link token for ``user_id``.
+
+    Reuses the JWT machinery (HS256 over ``settings.JWT_SECRET``) with a
+    distinct ``typ: "magic"`` claim and a unique ``jti``. TTL is
+    ``settings.MAGIC_LINK_TTL_MIN`` minutes.
+
+    Unknown ``user_id`` is handled exactly like ``issue_token`` /
+    ``/v1/auth/login`` — it raises so the caller never mints a usable token for
+    a non-existent user. The caller (``/v1/auth/magic/request``) catches this
+    and returns the SAME generic 200 shape it returns for known users, so the
+    endpoint is not a user-enumeration oracle (see H-8 handling on the login
+    endpoint).
+    """
+    if user_id not in _USERS:
+        # Mirror issue_token's contract: refuse unknown users. The request
+        # endpoint converts this into a uniform "if the user exists…" response
+        # so existence is never leaked.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"unknown user: {user_id}")
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": user_id,
+        "typ": _MAGIC_TOKEN_TYP,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=settings.MAGIC_LINK_TTL_MIN)).timestamp()),
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGO)
+
+
+def magic_token_jti(token: str) -> Optional[str]:
+    """Best-effort extract the ``jti`` of a magic token for AUDIT use only.
+
+    Returns the ``jti`` claim without verifying signature/expiry (we only want
+    a stable, non-secret correlation id for the audit row). Returns ``None`` if
+    the token can't be parsed. NEVER pass the raw token to the audit writer —
+    the jti is the safe correlation handle; the token itself is a credential.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGO],
+            options={"verify_exp": False},
+        )
+    except jwt.InvalidTokenError:
+        return None
+    jti = payload.get("jti")
+    return str(jti) if jti else None
+
+
+def consume_magic_token(token: str) -> str:
+    """Validate + single-use-consume a magic token; return its ``user_id``.
+
+    Checks, in order: signature + expiry (via ``jwt.decode``), ``typ`` claim,
+    known ``sub``, presence of ``jti``, and that the ``jti`` has not already
+    been consumed. On the first successful consume the ``jti`` is recorded so a
+    second attempt with the same token raises 401 (replay defence).
+
+    Raises ``HTTPException(401)`` with a UNIFORM message on ANY failure
+    (bad signature, expired, wrong typ, unknown user, missing jti, replay) so
+    the caller cannot use the failure reason as an oracle.
+    """
+    uniform_401 = HTTPException(
+        status.HTTP_401_UNAUTHORIZED, "invalid or expired magic link"
+    )
+    try:
+        payload = jwt.decode(
+            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGO]
+        )
+    except jwt.InvalidTokenError:
+        # Covers ExpiredSignatureError (subclass) + tamper/bad-signature.
+        raise uniform_401
+
+    if payload.get("typ") != _MAGIC_TOKEN_TYP:
+        # A session token (or any non-magic token) must not be consumable here.
+        raise uniform_401
+
+    user_id = payload.get("sub")
+    if user_id not in _USERS:
+        raise uniform_401
+
+    jti = payload.get("jti")
+    if not jti:
+        # A magic token with no jti has no single-use identity — refuse it
+        # rather than allow an un-revocable, infinitely-replayable token.
+        raise uniform_401
+
+    # Single-use check + claim. Not atomic in this in-memory POC; production's
+    # Redis store would use `SET jti 1 NX EX <ttl>` so the check-and-set is a
+    # single atomic op immune to the consume-twice race.
+    if jti in _CONSUMED_MAGIC_JTIS:
+        raise uniform_401
+    _CONSUMED_MAGIC_JTIS.add(jti)
+    return user_id
 
 
 def authorize_case_access(user: User, case_id: Optional[str]) -> None:

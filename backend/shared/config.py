@@ -181,6 +181,12 @@ class Settings:
     MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "30"))
     MIN_CHARS_PER_PAGE_FOR_TEXT: int = int(os.getenv("MIN_CHARS_PER_PAGE_FOR_TEXT", "30"))
     OCR_PARALLELISM: int = int(os.getenv("OCR_PARALLELISM", "4"))
+    # OCR backend (Q8 / invariant #7). mock = deterministic placeholder (tests/
+    # demo); tesseract = on-prem local OCR (the ONLY path allowed for
+    # confidential scanned PDFs — cloud is forbidden for them); vision = cloud
+    # Claude Vision. Default mock keeps the suite hermetic.
+    OCR_BACKEND: str = os.getenv("OCR_BACKEND", "mock")  # mock | tesseract | vision
+    OCR_TESSERACT_LANG: str = os.getenv("OCR_TESSERACT_LANG", "chi_tra+eng")
 
     # AI Engine prompt introspection (Compat Refactor 1)
     # When false, GET /v1/prompts and GET /v1/prompts/{intent} return 404 so

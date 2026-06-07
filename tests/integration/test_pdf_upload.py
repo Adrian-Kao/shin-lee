@@ -185,3 +185,104 @@ def test_upload_confidential_case_returns_403(
     assert resp.status_code == 403, resp.text
     assert "Confidential" in resp.text or "confidential" in resp.text
     assert "cloud OCR" in resp.text or "manual text" in resp.text
+
+
+# ---------- REAL extraction (proves it is not the mock OCR path) ------------
+
+
+def test_real_text_layer_pdf_round_trips_inserted_text(
+    gateway_client, alice_token, patched_ai_engine
+):
+    """Build a text-layer PDF in the test, upload it, and assert the EXACT
+    inserted strings come back — proving PyMuPDF text extraction is real and
+    no OCR (mock or otherwise) was involved."""
+    marker = "ELECTROCHEMICAL CAPACITOR ZX9931 unique-token-7788"
+    pdf_bytes = _make_text_pdf(marker, "Second page with claim 1 detail.")
+    resp = gateway_client.post(
+        "/v1/oa/upload",
+        headers={
+            "Authorization": f"Bearer {alice_token}",
+            "X-Case-Id": "CASE-2025-001",
+        },
+        files={"file": ("real.pdf", pdf_bytes, _PDF_MIME)},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # Real text layer → no OCR pages, exact marker present.
+    assert body["ocr_pages_used"] == [], body
+    assert marker in body["extracted_text"], body
+    # MockLLM OCR placeholder must NOT appear — confirms the text path ran.
+    assert "MOCK OCR" not in body["extracted_text"], body
+
+
+def test_real_docx_round_trips_inserted_text(
+    gateway_client, alice_token, patched_ai_engine
+):
+    marker = "DOCX-REAL-PARAGRAPH unique-token-4455 substrate"
+    docx_bytes = _make_docx(marker, "Another paragraph.")
+    resp = gateway_client.post(
+        "/v1/oa/upload",
+        headers={
+            "Authorization": f"Bearer {alice_token}",
+            "X-Case-Id": "CASE-2025-001",
+        },
+        files={"file": ("real.docx", docx_bytes, _DOCX_MIME)},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert marker in body["extracted_text"], body
+
+
+# ---------- Q8 element table surfaced through the upload response -----------
+
+
+def test_upload_surfaces_element_table(
+    gateway_client, alice_token, patched_ai_engine
+):
+    """A PDF whose text carries reference numerals must surface a
+    numeral→description element table in the upload response."""
+    pdf_bytes = _make_text_pdf(
+        "The apparatus comprises a heat sink 200 mounted on a substrate 10. "
+        "A first electrode 102 is disposed on the substrate 10.",
+    )
+    resp = gateway_client.post(
+        "/v1/oa/upload",
+        headers={
+            "Authorization": f"Bearer {alice_token}",
+            "X-Case-Id": "CASE-2025-001",
+        },
+        files={"file": ("fig.pdf", pdf_bytes, _PDF_MIME)},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "element_table" in body, body
+    et = body["element_table"]
+    # JSON-serialised keys are strings over the wire (TestClient json()).
+    keyed = {str(k): v for k, v in et.items()}
+    assert "200" in keyed, keyed
+    assert "10" in keyed, keyed
+    assert "102" in keyed, keyed
+    assert "heat sink" in keyed["200"].lower(), keyed
+    assert "substrate" in keyed["10"].lower(), keyed
+    assert "electrode" in keyed["102"].lower(), keyed
+
+
+def test_upload_element_table_empty_when_no_numerals(
+    gateway_client, alice_token, patched_ai_engine
+):
+    """Prose with no drawing numerals → empty element table, never a failure."""
+    pdf_bytes = _make_text_pdf(
+        "This office action rejects the application as obvious over prior art. "
+        "The applicant respectfully traverses the rejection.",
+    )
+    resp = gateway_client.post(
+        "/v1/oa/upload",
+        headers={
+            "Authorization": f"Bearer {alice_token}",
+            "X-Case-Id": "CASE-2025-001",
+        },
+        files={"file": ("prose.pdf", pdf_bytes, _PDF_MIME)},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body.get("element_table") == {}, body

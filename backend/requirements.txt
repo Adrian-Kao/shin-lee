@@ -51,6 +51,17 @@ python-docx==1.1.2
 python-multipart==0.0.12
 
 # ---------------------------------------------------------------------------
+# on-prem OCR (optional — only when OCR_BACKEND=tesseract; Q8 / invariant #7)
+# Required to OCR *confidential* scanned PDFs, which must never reach cloud
+# Vision OCR. NOT installed in CI: the `tesseract` binary is a separate system
+# package (`apt-get install tesseract-ocr tesseract-ocr-chi-tra` for the
+# chi_tra+eng default). Left COMMENTED so `pip install -r` does not hard-fail
+# without the binary; backend/ai_engine/ocr_local.py lazy-imports pytesseract
+# and raises a clear RuntimeError if either the binding or the engine is absent.
+# pytesseract==0.3.13   # OCR_BACKEND=tesseract
+# Pillow>=10.4.0        # image decode for pytesseract (often pulled in already)
+
+# ---------------------------------------------------------------------------
 # observability (Day 5 — no-op when SENTRY_DSN env var is unset)
 # ---------------------------------------------------------------------------
 sentry-sdk[fastapi]==2.18.0

@@ -987,6 +987,18 @@ async def upload_oa(
 
         extracted_text = _PAGE_SEPARATOR.join(body.get("pages", []) or [])
 
+        # Q8 element table (reference numeral -> description). The AI engine
+        # returns it with int keys, but JSON-over-HTTP stringifies them; re-key
+        # to ints for a stable downstream contract. Defensive: any malformed
+        # entry is skipped rather than failing the upload.
+        raw_element_table = body.get("element_table") or {}
+        element_table: dict[int, str] = {}
+        for k, v in raw_element_table.items():
+            try:
+                element_table[int(k)] = str(v)
+            except (TypeError, ValueError):
+                continue
+
         # Account for cost + quota. Cost counts toward the daily circuit
         # breaker.
         prompt_tokens = int(usage.get("input_tokens", 0) or 0)
@@ -1012,6 +1024,9 @@ async def upload_oa(
             "ocr_pages_used": ocr_pages_used,
             "char_count": int(body.get("char_count", 0) or 0),
             "warnings": body.get("warnings", []) or [],
+            # Q8: surface the reference-numeral element table so the SPA /
+            # downstream analysis can resolve "element 200" in figures.
+            "element_table": element_table,
             "cost_meta": {
                 "estimated_cost_usd": cost_usd,
                 "input_tokens": prompt_tokens,

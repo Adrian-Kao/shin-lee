@@ -329,6 +329,10 @@ async def extract_text_endpoint(req: ExtractTextRequest):
         "char_count": result["char_count"],
         "warnings": result["warnings"],
         "usage": result["usage"],
+        # Q8: reference-numeral → description map ("heat sink": 200 → {200: ...}).
+        # Always present (possibly empty); JSON-serialised int keys become
+        # strings on the wire — the gateway re-keys defensively.
+        "element_table": result.get("element_table", {}),
     }
 
 

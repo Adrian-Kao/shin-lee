@@ -24,11 +24,66 @@ from typing import TypedDict
 
 import fitz  # PyMuPDF
 
-from backend.ai_engine import llm_client
+from backend.ai_engine import llm_client, ocr_local
 from backend.shared.config import settings
 
 
 logger = logging.getLogger(__name__)
+
+
+# ---------- OCR backend dispatch (Q8 / invariant #7) ------------------------
+
+
+def _is_confidential(security_level: str) -> bool:
+    return security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS
+
+
+def _resolve_ocr_backend(security_level: str) -> str:
+    """Decide which OCR backend a page should use, enforcing the Q15/invariant
+    #7 rule that confidential docs MUST stay on-prem.
+
+    Returns one of: "tesseract" | "vision" | "mock".
+
+    Raises RuntimeError (defense-in-depth) if a confidential/top_secret doc is
+    configured for anything other than the local tesseract backend — rather
+    than silently leaking privileged pages to cloud OCR. The gateway already
+    blocks -CONF uploads at the edge; this is the OCR-layer backstop.
+    """
+    backend = settings.OCR_BACKEND
+    if _is_confidential(security_level):
+        if backend != "tesseract":
+            raise RuntimeError(
+                f"confidential document (security_level={security_level!r}) "
+                f"requires OCR_BACKEND=tesseract (on-prem); got "
+                f"OCR_BACKEND={backend!r}. Cloud/mock OCR is forbidden for "
+                "confidential cases (invariant #7 / Q15)."
+            )
+        return "tesseract"
+    return backend
+
+
+async def _ocr_page(
+    png_bytes: bytes, *, security_level: str
+) -> tuple[str, dict]:
+    """Route one rendered page through the configured OCR backend.
+
+    - tesseract → on-prem Tesseract (threadpool; cost-free).
+    - vision    → cloud Claude Vision via llm_client.vision_ocr.
+    - mock      → deterministic MockLLM placeholder (default; tests/demo).
+
+    Confidential docs are forced to tesseract by `_resolve_ocr_backend`.
+    """
+    backend = _resolve_ocr_backend(security_level)
+    if backend == "tesseract":
+        return await ocr_local.ocr_image(image_bytes=png_bytes, mime="image/png")
+    # Both "vision" and "mock" go through llm_client.vision_ocr, which itself
+    # dispatches on LLM_MODE (anthropic→cloud, mock→placeholder) and refuses
+    # confidential levels — a second backstop we never reach for -CONF here.
+    return await llm_client.vision_ocr(
+        image_bytes=png_bytes,
+        mime="image/png",
+        security_level=security_level,
+    )
 
 
 class ExtractResult(TypedDict):
@@ -40,6 +95,11 @@ class ExtractResult(TypedDict):
     # Aggregate OCR usage so the gateway can record cost in the audit row.
     # All zeros when no page hit the OCR fallback.
     usage: dict
+    # Q8 element table: {reference_numeral: best description phrase}, extracted
+    # from the joined page text (the "OCR 必跑 → element table" chain). Empty
+    # dict when the doc carries no drawing reference numerals or extraction
+    # failed — never breaks the upload.
+    element_table: dict[int, str]
 
 
 # ---------- PDF -------------------------------------------------------------
@@ -68,6 +128,14 @@ async def extract_pdf_text(
     warnings: list[str] = []
     pages_text: list[str] = []
     ocr_page_indices: list[int] = []
+
+    # Defense-in-depth (invariant #7 / Q15): for a confidential/top_secret doc
+    # we must guarantee on-prem OCR. Validate the backend choice up-front —
+    # before reading any page — so a misconfigured caller is refused even if
+    # the PDF happens to have a full text layer (the policy is about *capability*
+    # to keep the doc local, not just the pages that need OCR today).
+    if _is_confidential(security_level):
+        _resolve_ocr_backend(security_level)  # raises if not tesseract
 
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -127,10 +195,8 @@ async def extract_pdf_text(
 
             async def _ocr_one(page_idx: int, png: bytes) -> tuple[int, str, dict]:
                 async with sem:
-                    text, usage = await llm_client.vision_ocr(
-                        image_bytes=png,
-                        mime="image/png",
-                        security_level=security_level,
+                    text, usage = await _ocr_page(
+                        png, security_level=security_level
                     )
                     return page_idx, text, usage
 
@@ -158,6 +224,7 @@ async def extract_pdf_text(
         warnings=warnings,
         char_count=char_count,
         usage=usage_totals,
+        element_table=_safe_element_table(pages_text),
     )
 
 
@@ -215,7 +282,32 @@ async def extract_docx_text(docx_bytes: bytes) -> ExtractResult:
         warnings=[],
         char_count=char_count,
         usage=_zero_usage(),
+        element_table=_safe_element_table(paragraphs),
     )
+
+
+# ---------- Q8 element table -----------------------------------------------
+
+
+def _safe_element_table(pages: list[str]) -> dict[int, str]:
+    """Run the Q8 reference-numeral extractor over the joined page text.
+
+    Defensive by contract: a failed or empty extraction returns {} and never
+    propagates — the element table is a value-add over the extracted text, not
+    a hard dependency of the upload. Numerals are stringified would-be-int keys
+    so the result is JSON-clean (FastAPI serialises int keys to strings anyway,
+    but we keep the int→str mapping explicit so the gateway field is stable).
+    """
+    try:
+        from backend.ai_engine.element_table import extract_element_table
+
+        joined = "\n".join(p for p in pages if p)
+        if not joined.strip():
+            return {}
+        return extract_element_table(joined)
+    except Exception as exc:  # never let element-table extraction break upload
+        logger.warning("element-table extraction failed; returning empty: %s", exc)
+        return {}
 
 
 # ---------- usage aggregation helpers --------------------------------------

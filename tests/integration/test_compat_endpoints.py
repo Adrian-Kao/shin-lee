@@ -12,7 +12,6 @@ All tests reuse the shared `gateway_client` + `alice_token` fixtures from
 """
 from __future__ import annotations
 
-
 _ALICE_CASE = "CASE-2025-001"   # Alice has ACL for this case (see auth._CASE_ACL)
 
 

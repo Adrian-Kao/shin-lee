@@ -15,11 +15,9 @@ These tests are the load-bearing assertions that close H-3 and H-4.
 """
 from __future__ import annotations
 
-import sqlite3
 import uuid
 
 import numpy as np
-import pytest
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +166,7 @@ def test_verify_global_chain_detects_fabricated_unknown_tenant(tmp_path, monkeyp
         for (tid, aid) in broken_pairs
     ), (
         "ghost row in unknown tenant was NOT flagged in global broken list — "
-        "H-4 fix regressed. broken=%r" % broken_pairs
+        f"H-4 fix regressed. broken={broken_pairs!r}"
     )
 
 
@@ -210,7 +208,7 @@ def test_verify_global_chain_detects_fabricated_prev_hash(tmp_path):
     result = writer.verify_global_chain()
     broken_pairs = result["broken"]
     assert any(aid == ghost_id for (_tid, aid) in broken_pairs), (
-        "row with dangling prev_row_hash was NOT flagged. broken=%r" % broken_pairs
+        f"row with dangling prev_row_hash was NOT flagged. broken={broken_pairs!r}"
     )
 
 

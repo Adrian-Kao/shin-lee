@@ -31,7 +31,6 @@ from fastapi.testclient import TestClient
 
 from backend.shared.config import settings
 
-
 # ---------------------------------------------------------------------------
 # C-1 / H-8 — /v1/auth/login credential checks
 # ---------------------------------------------------------------------------

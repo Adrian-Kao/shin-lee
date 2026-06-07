@@ -19,7 +19,6 @@ tests assert on the visible HTTP wire.
 """
 from __future__ import annotations
 
-
 # The six headers we set unconditionally. Names match the literal HTTP
 # header (case-insensitive in HTTP/1.1, but starlette preserves the
 # original case so we use the canonical capitalisation).

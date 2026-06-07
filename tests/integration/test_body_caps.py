@@ -21,10 +21,7 @@ breaks these tests (and not in surprising downstream ways).
 """
 from __future__ import annotations
 
-import pytest
-
 from backend.shared import config as cfg
-
 
 _ALICE_CASE = "CASE-2025-001"
 

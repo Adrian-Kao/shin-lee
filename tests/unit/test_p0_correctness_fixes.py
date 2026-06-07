@@ -10,7 +10,7 @@ Covers:
   #4 confidential routing: parse_oa / draft_response route to the local model,
      and oa_analyzer.parse_oa actually forwards security_level to the LLM.
 """
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -29,7 +29,7 @@ def _iso_date(s: str):
 
 @pytest.mark.parametrize("offset_days", list(range(0, 40)))
 def test_recommended_internal_is_strictly_before_statutory(offset_days):
-    received = datetime(2024, 12, 1, 9, 0, tzinfo=timezone.utc) + timedelta(days=offset_days)
+    received = datetime(2024, 12, 1, 9, 0, tzinfo=UTC) + timedelta(days=offset_days)
     r = dl.calculate_deadline(received, "TW", "2025.1")
     stat = _iso_date(r["statutory_deadline"])
     rec = _iso_date(r["recommended_internal_deadline"])

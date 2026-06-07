@@ -18,10 +18,7 @@ from __future__ import annotations
 
 import re
 
-import pytest
-
 from backend.gateway.masking import redact, unmask
-
 
 _PLACEHOLDER_RE = re.compile(r"\[[A-Z_]+_[0-9A-F]{8}\]")
 
@@ -80,7 +77,7 @@ def test_nfd_decomposed_email_is_redacted():
     # Fullwidth @ pre-fix lets the address through unredacted; post-fix
     # NFKC turns ＠ into the ASCII @ before the regex runs.
     assert "alice" not in masked or "@" not in masked, (
-        "alice@apex-ip.com leaked through redaction. Masked: %r" % masked
+        f"alice@apex-ip.com leaked through redaction. Masked: {masked!r}"
     )
     assert "@apex-ip.com" not in masked
     assert "email" in rules, rules
@@ -115,7 +112,7 @@ def test_mixed_script_homoglyph_phone_still_normalises():
     # Phone rule MUST NOT have fired — Hangul isn't a digit.
     assert "[PHONE_" not in masked, (
         "Hangul homoglyph was misclassified as a Taiwan phone — NFKC "
-        "must NOT fold Hangul to ASCII digits. Masked: %r" % masked
+        f"must NOT fold Hangul to ASCII digits. Masked: {masked!r}"
     )
 
 

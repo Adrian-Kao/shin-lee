@@ -41,7 +41,10 @@ jobs:
             pip install -r requirements.txt || \
               echo "WARN: some optional deps (paddleocr/paddlepaddle) skipped on CI" >&2
           fi
-          pip install pytest pytest-asyncio ruff
+          # Pin ruff — an unpinned ruff silently enables new lint rules on
+          # each release, which can red the lint step on untouched code. Bump
+          # deliberately, fixing any new findings in the same PR.
+          pip install pytest pytest-asyncio ruff==0.15.15
 
       - name: Ruff lint
         run: ruff check .
@@ -187,15 +190,28 @@ jobs:
         # already on disk.
         run: npx playwright install --with-deps chromium
 
-      - name: Playwright (desktop)
-        run: npx playwright test --project=chromium-desktop
+      # Functional e2e is the BLOCKING gate — deterministic DOM assertions
+      # (login, analyze, audit, trust band, upload) that are stable cross-OS.
+      - name: Playwright functional (desktop)
+        run: npx playwright test --project=chromium-desktop --grep-invert "Visual regression"
 
-      - name: Playwright (mobile)
+      - name: Playwright functional (mobile)
         # Don't short-circuit on desktop failure — the mobile project covers
         # different selectors (tab strip, single-pane, ≤sm breakpoint) and
         # we want both signals in the same CI run.
         if: always()
-        run: npx playwright test --project=chromium-mobile
+        run: npx playwright test --project=chromium-mobile --grep-invert "Visual regression"
+
+      # Visual regression is NON-BLOCKING: baselines are generated on the
+      # developer's OS (Windows) but CI runs on Linux, where font rendering
+      # differs enough to exceed the 5% tolerance. Diff images are still
+      # uploaded as artifacts and surfaced as a PR comment below. To make this
+      # blocking, generate Linux baselines (run `--update-snapshots` inside a
+      # Linux container, commit them) and drop continue-on-error.
+      - name: Playwright visual regression (non-blocking — platform-specific baselines)
+        if: always()
+        continue-on-error: true
+        run: npx playwright test --grep "Visual regression"
 
       - name: Upload Playwright traces + screenshots on failure
         if: failure()

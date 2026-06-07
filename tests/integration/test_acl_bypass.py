@@ -25,9 +25,6 @@ hardening for C-3 has regressed.
 """
 from __future__ import annotations
 
-import pytest
-
-
 # Cases alice does NOT have ACL on. Both are valid case_id strings — the
 # point is that they're outside ``_CASE_ACL["alice"]``.
 _FOREIGN_CASE = "CASE-DEMO-099"

@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import pytest
 
-
 _FOREIGN_CASE = "CASE-DEMO-099"   # alice has no ACL on this
 _ALICE_CASE = "CASE-2025-001"     # alice has ACL
 

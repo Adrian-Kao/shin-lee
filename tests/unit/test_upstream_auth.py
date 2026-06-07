@@ -377,7 +377,7 @@ def test_upstream_known_alice_role_comes_from_USERS_not_header(monkeypatch) -> N
     assert user is not None
     assert user.role == UserRole.ATTORNEY, (
         "known user role MUST come from _USERS, not from the upstream "
-        "header — got role={!r}".format(user.role)
+        f"header — got role={user.role!r}"
     )
 
 

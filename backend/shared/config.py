@@ -14,6 +14,12 @@ DATA_DIR = ROOT / "data"
 PATENT_DB_PATH = DATA_DIR / "patentmind.db"
 AUDIT_DB_PATH = DATA_DIR / "audit.db"
 MAPPING_DB_PATH = DATA_DIR / "redaction_mapping.db"  # Q10: 不上雲的 mapping table
+# Q13 — durable write-ahead outbox for audit rows whose primary SQLite write
+# failed (disk full / locked / trigger refusal). Appending to a flat JSONL is
+# far more robust than the SQLite write that just failed; a separate
+# replay_outbox() drains it back into the audit DB once the DB recovers.
+# Kept beside the audit DB so an on-prem operator can back both up together.
+AUDIT_OUTBOX_PATH = DATA_DIR / "audit_outbox.jsonl"
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +229,23 @@ class Settings:
     # disable the cap (NOT recommended in production — one tenant's
     # bursty traffic will starve another).
     MAX_CACHE_ENTRIES_PER_TENANT: int = int(os.getenv("MAX_CACHE_ENTRIES_PER_TENANT", "1000"))
+
+    # Egress guard (Q3 / invariant #3 enforcement). When True, the gateway's
+    # single egress point to the AI Engine (AIEngineClient.call) recursively
+    # scans every outbound string value for raw PII patterns (the same
+    # PII_RULES used by the masking layer). A hit means redaction escaped —
+    # the call is BLOCKED (EgressGuardError) and an error-level alert logged.
+    # This turns invariant #3 from a grep-by-convention into a hard,
+    # fail-closed technical chokepoint. Kept ON even in mock mode so the demo
+    # shows enforcement. Set EGRESS_GUARD_ENABLED=false ONLY for debugging.
+    EGRESS_GUARD_ENABLED: bool = os.getenv("EGRESS_GUARD_ENABLED", "true").lower() in ("1", "true", "yes")
+
+    # Mapping-table at-rest encryption (Q3/Q10 crown jewel). Master key for
+    # the per-tenant HKDF derivation that encrypts the reversible un-redaction
+    # map. Empty = POC derives a deterministic dev key (logs a WARNING).
+    # Production MUST set this to a real secret (env / secret manager); the key
+    # lives OUTSIDE the DB so theft of redaction_mapping.db alone is useless.
+    MAPPING_ENCRYPTION_KEY: str = os.getenv("MAPPING_ENCRYPTION_KEY", "")
 
     # Redaction ruleset version (M-7). Embedded in the cache prompt hash
     # so a ruleset change (new PII rule, tenant dictionary refresh)

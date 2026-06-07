@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from backend.gateway import audit, cache, masking, rate_limit
+from backend.gateway import audit, audit_outbox, cache, masking, rate_limit
 from backend.gateway.auth import (
     _get_password_hash,
     _get_user,
@@ -53,17 +53,28 @@ def _safe_audit_write(**kwargs: Any) -> None:
 
     The failure is logged at error level (Sentry / log scraper will surface
     it) but never re-raised.
+
+    Durability backstop (invariant #4): swallowing the failure outright would
+    lose the audit row forever, which silently breaks the "exactly one row
+    even on errors" contract. So on failure we ALSO hand the full payload to
+    the durable outbox (``audit_outbox.enqueue``) — a fsync'd append-only
+    JSONL file that survives the SQLite outage. ``replay_outbox()`` drains it
+    back into the audit DB once the primary store recovers. The enqueue itself
+    never re-raises, so the caller's response/error is still never masked.
     """
     try:
         audit.writer.write(**kwargs)
     except Exception:  # noqa: BLE001 — deliberately broad: see docstring
         logger.exception(
             "audit write failed for endpoint=%s user=%s case=%s — "
-            "response/error returned to caller anyway",
+            "row queued to durable outbox; response/error returned to caller anyway",
             kwargs.get("endpoint"),
             getattr(kwargs.get("user"), "user_id", None),
             kwargs.get("case_id"),
         )
+        # Write-ahead the row to the durable outbox so it is never lost.
+        # enqueue() never re-raises, preserving the no-masking guarantee.
+        audit_outbox.enqueue(**kwargs)
 
 
 def _error_response_payload(error: BaseException) -> dict:
@@ -365,6 +376,10 @@ def health():
         "service": "gateway",
         "circuit_breaker": rate_limit.cost_circuit_state(),
         "cache_stats": cache.stats(),
+        # Q13 durability backstop: number of audit rows whose primary write
+        # failed and are queued in the durable outbox awaiting replay. >0 is
+        # an ops signal that the audit DB is (or was) unhealthy.
+        "audit_outbox_depth": audit_outbox.outbox_depth(),
     }
 
 

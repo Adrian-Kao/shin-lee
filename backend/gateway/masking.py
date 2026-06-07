@@ -7,6 +7,21 @@ Key invariants (per Q3 hybrid):
     - Outbound LLM payload only sees placeholders.
     - Response un-masking happens server-side before showing the attorney.
 
+At-rest confidentiality of the un-redaction table (Q3/Q10 — "crown jewel"):
+    - The `original` column is the reversible map back to real PII / client
+      identifiers. It is ENCRYPTED AT REST with authenticated encryption
+      (Fernet / AES-128-CBC + HMAC-SHA256). The on-disk SQLite file holds only
+      ciphertext, so copying `redaction_mapping.db` alone is NOT enough to
+      un-redact anything.
+    - Encryption keys are PER-TENANT: each tenant's subkey is derived from a
+      single master key (`settings.MAPPING_ENCRYPTION_KEY`) via HKDF-SHA256 with
+      the tenant_id as the info parameter. A leaked tenant_a table therefore
+      cannot be decrypted with tenant_b's key.
+    - The master key lives OUTSIDE the database (env / secret manager), so DB
+      theft alone is insufficient — you also need the master key. For the POC a
+      deterministic dev key is derived when the env var is unset (a WARNING is
+      logged; a real key MUST be configured in production).
+
 A real implementation would also:
     - Run an NER model for free-text customer references
     - Let each tenant upload their own keyword dictionary
@@ -15,7 +30,9 @@ A real implementation would also:
 """
 from __future__ import annotations
 
+import base64
 import hashlib
+import logging
 import re
 import sqlite3
 import threading
@@ -24,7 +41,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Pattern
 
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
 from backend.shared.config import settings, MAPPING_DB_PATH
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -99,10 +122,70 @@ TENANT_DICTIONARIES: dict[str, list[MaskRule]] = {
 }
 
 
-# --- Mapping table (LOCAL ONLY, never uploaded) ---
+# --- At-rest encryption of the un-redaction table (Q3/Q10) ---
+
+# Domain-separation constants for key derivation.
+_HKDF_INFO_PREFIX = b"patentmind/mapping-encryption/v1/tenant="
+_HKDF_SALT = b"patentmind-mapping-store"
+
+# Emit the "no master key" boot guard once per process, not per derivation.
+_dev_key_warned = False
+
+
+def _master_key_bytes() -> bytes:
+    """Resolve the master key for mapping-table encryption.
+
+    Mirrors the JWT_SECRET boot-guard style: production MUST provide a real
+    secret via ``MAPPING_ENCRYPTION_KEY``. For the POC / pytest / demo we derive
+    a deterministic dev key so the system runs out of the box, but we log a
+    WARNING (once) so the gap is visible. We DO NOT hard-fail (the demo must run).
+    """
+    global _dev_key_warned
+    configured = (settings.MAPPING_ENCRYPTION_KEY or "").strip()
+    if configured:
+        return configured.encode("utf-8")
+
+    if not _dev_key_warned:
+        logger.warning(
+            "MAPPING_ENCRYPTION_KEY is not set — deriving a deterministic DEV "
+            "key for the redaction mapping table. The un-redaction map is the "
+            "crown jewel; set MAPPING_ENCRYPTION_KEY to a real secret in "
+            "production."
+        )
+        _dev_key_warned = True
+    # Deterministic dev fallback so redact/unmask round-trips reproducibly in
+    # the POC. Tied to JWT_SECRET only to vary across local installs; this is
+    # explicitly NOT production-grade.
+    return hashlib.sha256(
+        b"patentmind-dev-mapping-master::" + settings.JWT_SECRET.encode("utf-8")
+    ).digest()
+
+
+def _tenant_fernet(tenant_id: str) -> Fernet:
+    """Derive a per-tenant Fernet key from the master key via HKDF-SHA256.
+
+    A tenant's ciphertext is only decryptable with that tenant's derived key, so
+    a leaked single-tenant table cannot be cross-decrypted with another tenant's
+    key (tenant isolation at rest).
+    """
+    hkdf = HKDF(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=_HKDF_SALT,
+        info=_HKDF_INFO_PREFIX + tenant_id.encode("utf-8"),
+    )
+    raw = hkdf.derive(_master_key_bytes())
+    return Fernet(base64.urlsafe_b64encode(raw))
+
+
+# --- Mapping table (LOCAL ONLY, never uploaded; `original` encrypted at rest) ---
 
 class MaskingStore:
-    """Append-only local mapping table.  Reversible un-mask for inbound responses."""
+    """Append-only local mapping table.  Reversible un-mask for inbound responses.
+
+    The `original` column stores per-tenant-encrypted ciphertext (urlsafe-b64
+    Fernet token), never plaintext PII.
+    """
 
     def __init__(self, path: Path = MAPPING_DB_PATH):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -123,10 +206,13 @@ class MaskingStore:
         self._conn.commit()
 
     def remember(self, tenant_id: str, placeholder: str, original: str, rule_id: str):
+        # Encrypt the original under the tenant-derived key BEFORE it touches disk.
+        token = _tenant_fernet(tenant_id).encrypt(original.encode("utf-8"))
+        ciphertext = token.decode("ascii")  # urlsafe-b64 Fernet token, TEXT-safe
         with self._lock:
             self._conn.execute(
                 "INSERT OR IGNORE INTO mappings(tenant_id, placeholder, original, rule_id) VALUES (?, ?, ?, ?)",
-                (tenant_id, placeholder, original, rule_id),
+                (tenant_id, placeholder, ciphertext, rule_id),
             )
             self._conn.commit()
 
@@ -136,7 +222,24 @@ class MaskingStore:
             (tenant_id, placeholder),
         )
         row = cur.fetchone()
-        return row[0] if row else None
+        if not row:
+            return None
+        stored = row[0]
+        try:
+            plaintext = _tenant_fernet(tenant_id).decrypt(stored.encode("ascii"))
+            return plaintext.decode("utf-8")
+        except (InvalidToken, ValueError, UnicodeDecodeError):
+            # Wrong tenant key, tampered/corrupt ciphertext, or a stray legacy
+            # plaintext row. Degrade gracefully: never crash un-redaction, and
+            # never leak an undecryptable original. The caller (unmask) keeps the
+            # placeholder when None is returned.
+            logger.warning(
+                "Failed to decrypt mapping for tenant=%s placeholder=%s; "
+                "returning placeholder unchanged.",
+                tenant_id,
+                placeholder,
+            )
+            return None
 
 
 _store = MaskingStore()

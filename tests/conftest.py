@@ -58,6 +58,7 @@ _TEST_ENV_DEFAULTS = {
 _TEST_DATA_DIR = Path(tempfile.mkdtemp(prefix="patentmind-tests-"))
 _TEST_ENV_DEFAULTS.setdefault("AUDIT_DB_PATH", str(_TEST_DATA_DIR / "audit.db"))
 _TEST_ENV_DEFAULTS.setdefault("MAPPING_DB_PATH", str(_TEST_DATA_DIR / "mapping.db"))
+_TEST_ENV_DEFAULTS.setdefault("AUDIT_OUTBOX_PATH", str(_TEST_DATA_DIR / "audit_outbox.jsonl"))
 for _k, _v in _TEST_ENV_DEFAULTS.items():
     os.environ.setdefault(_k, _v)
 
@@ -87,6 +88,10 @@ from backend.shared import config as _config_mod  # noqa: E402
 
 _config_mod.AUDIT_DB_PATH = Path(os.environ["AUDIT_DB_PATH"])
 _config_mod.MAPPING_DB_PATH = Path(os.environ["MAPPING_DB_PATH"])
+# Audit outbox (Q13 durability backstop): redirect the durable JSONL outbox
+# into the per-session scratch dir too, so a forced audit-writer failure in
+# any test enqueues there instead of polluting the developer's data/ tree.
+_config_mod.AUDIT_OUTBOX_PATH = Path(os.environ["AUDIT_OUTBOX_PATH"])
 
 import pytest  # noqa: E402  (must come after sys.path + env setup)
 from fastapi.testclient import TestClient  # noqa: E402

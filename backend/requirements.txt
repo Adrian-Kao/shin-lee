@@ -16,6 +16,12 @@ numpy==2.1.1
 PyJWT==2.9.0
 
 # ---------------------------------------------------------------------------
+# crypto (Q3/Q10 — at-rest encryption of the reversible redaction mapping
+# table via per-tenant Fernet keys derived with HKDF-SHA256)
+# ---------------------------------------------------------------------------
+cryptography>=42.0.2
+
+# ---------------------------------------------------------------------------
 # llm clients (optional — pick per LLM_MODE)
 # ---------------------------------------------------------------------------
 anthropic==0.39.0        # LLM_MODE=anthropic

@@ -15,6 +15,7 @@ and lets us swap AI providers without touching orchestration.
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from typing import Any
@@ -39,6 +40,90 @@ from backend.shared.models import (
     User,
 )
 
+logger = logging.getLogger("patentmind.gateway.egress")
+
+
+class EgressGuardError(Exception):
+    """Raised when the egress guard detects raw (un-redacted) PII in an
+    outbound payload to the AI Engine.
+
+    Invariant #3 (Q3 + Q10): redaction is mandatory before any LLM call.
+    Hitting this means the masking layer was bypassed for some field — we
+    FAIL CLOSED (block the call) rather than leak PII to the AI Engine.
+    """
+
+    def __init__(self, rule_id: str, path: str):
+        self.rule_id = rule_id
+        self.path = path
+        super().__init__(
+            f"EGRESS GUARD: unredacted PII pattern {rule_id!r} detected in "
+            f"outbound payload to {path!r}"
+        )
+
+
+def _scan_value_for_pii(value: Any) -> str | None:
+    """Recursively scan a JSON-serialisable value for raw PII patterns.
+
+    Reuses the *already-compiled* `masking.PII_RULES` patterns (compiled once
+    at import time in masking.py) — no per-call recompile / re-import.
+
+    Returns the first matching `rule_id` (so the caller can name it in the
+    alert), or None if the value is clean.
+
+    Placeholders like ``[EMAIL_A1B2C3D4]`` are *expected* to pass: the email
+    regex requires an ``@`` and the bracketed-hex placeholder shape has none,
+    and the SSN/ID/phone patterns are anchored on digit runs the placeholder
+    doesn't contain. We never strip placeholders before scanning — defence in
+    depth means we scan the literal outbound bytes.
+    """
+    if isinstance(value, str):
+        for rule in masking.PII_RULES:
+            if rule.pattern.search(value):
+                return rule.rule_id
+        return None
+    if isinstance(value, dict):
+        for k, v in value.items():
+            # Keys are usually field names (no PII), but scan them too —
+            # cheap and closes the "PII smuggled as a dict key" hole.
+            if isinstance(k, str):
+                for rule in masking.PII_RULES:
+                    if rule.pattern.search(k):
+                        return rule.rule_id
+            hit = _scan_value_for_pii(v)
+            if hit is not None:
+                return hit
+        return None
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            hit = _scan_value_for_pii(item)
+            if hit is not None:
+                return hit
+        return None
+    # int / float / bool / None — no string content to leak.
+    return None
+
+
+def _assert_no_raw_pii(path: str, payload: dict) -> None:
+    """Egress chokepoint enforcing invariant #3.
+
+    If `EGRESS_GUARD_ENABLED` is on (default) and the outbound `payload`
+    contains a raw PII pattern, log an error-level alert and raise
+    `EgressGuardError` (fail closed). No-op when the guard is disabled.
+    """
+    if not settings.EGRESS_GUARD_ENABLED:
+        return
+    rule_id = _scan_value_for_pii(payload)
+    if rule_id is not None:
+        # Never log the offending value itself — that would re-leak the PII
+        # into the log sink. Log the rule id + destination path only.
+        logger.error(
+            "EGRESS GUARD: unredacted PII pattern %s detected in outbound "
+            "payload to %s",
+            rule_id,
+            path,
+        )
+        raise EgressGuardError(rule_id, path)
+
 
 class AIEngineClient:
     """Thin client to the Dify-mock service."""
@@ -48,6 +133,11 @@ class AIEngineClient:
 
     async def call(self, path: str, payload: dict) -> dict:
         url = f"{self.base_url}{path}"
+        # ---- Egress guard (Q3 / invariant #3) ----
+        # This is the SINGLE egress point to the AI Engine. Before any bytes
+        # leave the gateway we scan the whole payload for raw PII that should
+        # have been redacted upstream. Fail closed if redaction escaped.
+        _assert_no_raw_pii(path, payload)
         async with httpx.AsyncClient(timeout=60.0) as client:
             # Security Chunk A — C-2. AI Engine's middleware refuses any
             # non-`/v1/health` request that lacks X-Internal-Token. The
@@ -87,7 +177,10 @@ async def orchestrate_analysis(
     parsed = await ai.call("/v1/parse_oa", parse_payload)
     oa_doc = OADocument(**parsed["oa"])
 
-    # ---- Step 2: per-rejection retrieval ----
+    # ---- Step 2: per-rejection retrieval (saga: per-rejection resilient) ----
+    # Q1 + Follow-up: the orchestrator is a saga coordinator. One rejection's
+    # retrieval failing must NOT sink the others — a failed retrieval degrades
+    # to an empty grounded set for that rejection only.
     retrieve_tasks = [
         ai.call("/v1/retrieve_prior_art", {
             "tenant_id": user.tenant_id,
@@ -97,16 +190,25 @@ async def orchestrate_analysis(
         })
         for rej in oa_doc.rejections
     ]
-    retrieval_results = await asyncio.gather(*retrieve_tasks)
+    retrieval_results = await asyncio.gather(*retrieve_tasks, return_exceptions=True)
 
     all_hits: list[RetrievalHit] = []
     hits_by_rejection: dict[str, list[RetrievalHit]] = {}
     for rej, ret in zip(oa_doc.rejections, retrieval_results):
+        if isinstance(ret, BaseException):
+            logger.warning(
+                "saga: retrieval failed for rejection %s (%s) — proceeding "
+                "with empty grounded set",
+                rej.rejection_id,
+                ret.__class__.__name__,
+            )
+            hits_by_rejection[rej.rejection_id] = []
+            continue
         hits = [RetrievalHit(**h) for h in ret["hits"]]
         all_hits.extend(hits)
         hits_by_rejection[rej.rejection_id] = hits
 
-    # ---- Step 3: per-rejection draft ----
+    # ---- Step 3: per-rejection draft (saga: per-rejection resilient) ----
     # NB: we send the *grounded set* (retrieval hits) so LLM can only cite from there (Q14).
     draft_tasks = [
         ai.call("/v1/draft_response", {
@@ -121,19 +223,68 @@ async def orchestrate_analysis(
         })
         for rej in oa_doc.rejections
     ]
-    draft_results = await asyncio.gather(*draft_tasks)
-    drafts = [DraftResponse(**d["draft"]) for d in draft_results]
+    draft_results = await asyncio.gather(*draft_tasks, return_exceptions=True)
 
-    # ---- Step 4: verifier (Q14 third defence) ----
+    # Build the draft list, substituting a degraded placeholder for any
+    # rejection whose draft call raised. `failed_rejection_ids` tracks those
+    # so the verify step can skip them (no point verifying a placeholder).
+    drafts: list[DraftResponse] = []
+    failed_rejection_ids: set[str] = set()
+    for rej, dr in zip(oa_doc.rejections, draft_results):
+        if isinstance(dr, BaseException):
+            logger.warning(
+                "saga: draft generation failed for rejection %s (%s) — "
+                "emitting degraded placeholder",
+                rej.rejection_id,
+                dr.__class__.__name__,
+            )
+            failed_rejection_ids.add(rej.rejection_id)
+            drafts.append(_degraded_draft(rej.rejection_id))
+            continue
+        try:
+            drafts.append(DraftResponse(**dr["draft"]))
+        except (KeyError, TypeError, ValueError) as exc:
+            # Malformed AI Engine response for this rejection — treat as a
+            # per-rejection failure, not a whole-request crash.
+            logger.warning(
+                "saga: malformed draft payload for rejection %s (%s) — "
+                "emitting degraded placeholder",
+                rej.rejection_id,
+                exc.__class__.__name__,
+            )
+            failed_rejection_ids.add(rej.rejection_id)
+            drafts.append(_degraded_draft(rej.rejection_id))
+
+    # ---- Step 4: verifier (Q14 third defence; saga: per-rejection resilient) ----
+    # Only verify drafts that actually generated. Placeholders carry no
+    # citations and must never reach the verifier (nothing to ground).
+    verifiable = [d for d in drafts if d.rejection_id not in failed_rejection_ids]
     verify_tasks = [
         ai.call("/v1/verify_citations", {
             "draft": d.model_dump(),
-            "grounded_set": [h.model_dump() for h in hits_by_rejection[d.rejection_id]],
+            "grounded_set": [h.model_dump() for h in hits_by_rejection.get(d.rejection_id, [])],
         })
-        for d in drafts
+        for d in verifiable
     ]
-    verifications = await asyncio.gather(*verify_tasks)
-    for d, v in zip(drafts, verifications):
+    verifications = await asyncio.gather(*verify_tasks, return_exceptions=True)
+    for d, v in zip(verifiable, verifications):
+        if isinstance(v, BaseException):
+            # Verifier failed for this rejection. Q14 is a hard wall: an
+            # unverified draft must NOT be served with its (unvalidated)
+            # citations. Degrade to a placeholder rather than leak ungrounded
+            # citations or crash the whole request.
+            logger.warning(
+                "saga: citation verification failed for rejection %s (%s) — "
+                "emitting degraded placeholder",
+                d.rejection_id,
+                v.__class__.__name__,
+            )
+            failed_rejection_ids.add(d.rejection_id)
+            for idx, existing in enumerate(drafts):
+                if existing.rejection_id == d.rejection_id:
+                    drafts[idx] = _degraded_draft(d.rejection_id)
+                    break
+            continue
         # Replace the draft with the verifier-cleaned version
         d.draft_text = v["cleaned_draft_text"]
         d.grounded_citations = v["valid_citations"]
@@ -176,12 +327,19 @@ async def orchestrate_analysis(
     # call, run estimate_cost() per call against its own model_used (parse
     # and draft are typically the reasoning model; verify is the cheap
     # verifier), then sum. This keeps cache-discount accuracy intact.
-    all_call_meta = (
-        [parsed]
-        + list(retrieval_results)
-        + list(draft_results)
-        + list(verifications)
-    )
+    # Saga: some entries may be Exception objects (a sub-call failed). Filter
+    # them out — a failed call produced no billable usage and exposes no
+    # `.get`, so including it would crash the aggregation.
+    all_call_meta = [
+        r
+        for r in (
+            [parsed]
+            + list(retrieval_results)
+            + list(draft_results)
+            + list(verifications)
+        )
+        if isinstance(r, dict)
+    ]
     total_prompt_tokens = sum(r.get("usage", {}).get("prompt_tokens", 0) for r in all_call_meta)
     total_completion_tokens = sum(r.get("usage", {}).get("completion_tokens", 0) for r in all_call_meta)
 
@@ -244,6 +402,28 @@ async def orchestrate_analysis(
         "estimated_cost_usd": cost_meta.estimated_cost_usd,
     }
     return response, obs
+
+
+def _degraded_draft(rejection_id: str) -> DraftResponse:
+    """Saga fallback (Q1 + Follow-up): a placeholder draft for a rejection
+    whose draft / verify step failed.
+
+    Confidence is pinned to 0.0 and citations are empty so the front-end and
+    the attorney treat it as "AI could not help here — draft manually". The
+    rest of the analysis (other rejections, deadline, claim tree) is unaffected.
+    """
+    note = (
+        "[draft generation failed for this rejection — "
+        "manual attorney drafting required]"
+    )
+    return DraftResponse(
+        rejection_id=rejection_id,
+        strategy=note,
+        draft_text=note,
+        grounded_citations=[],
+        confidence=0.0,
+        requires_attorney_review=True,
+    )
 
 
 def _jurisdiction_for_patent(patent_no: str) -> str:

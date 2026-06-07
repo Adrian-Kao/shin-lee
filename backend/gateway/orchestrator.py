@@ -60,10 +60,14 @@ class AIEngineClient:
 async def orchestrate_analysis(
     user: User,
     req: AnalysisRequest,
+    circuit_open: bool = False,
 ) -> tuple[AnalysisResponse, dict[str, Any]]:
     """Main flow.  Returns (response, observability_meta).
 
     observability_meta is fed into audit + metrics.
+
+    `circuit_open` is forwarded from the gateway cost circuit breaker (Q18):
+    when True the AI Engine degrades the draft model to the cheap tier.
     """
     started = time.monotonic()
     request_id = str(uuid.uuid4())
@@ -113,6 +117,7 @@ async def orchestrate_analysis(
             "grounded_set": [h.model_dump() for h in hits_by_rejection[rej.rejection_id]],
             "user_hint": req.user_hint,
             "security_level": _security_level_for_case(req.case_id),
+            "circuit_open": circuit_open,
         })
         for rej in oa_doc.rejections
     ]
@@ -137,7 +142,7 @@ async def orchestrate_analysis(
     # ---- Step 5: deadline (Q17) ----
     deadline_resp = await ai.call("/v1/deadline", {
         "received_date_iso": oa_doc.received_date.isoformat(),
-        "jurisdiction": "TW",  # POC: derive from case metadata in production
+        "jurisdiction": _jurisdiction_for_patent(req.target_patent_no),
         "calendar_version": settings.HOLIDAY_CALENDAR_VERSION,
     })
     deadline = DeadlineInfo(**deadline_resp)
@@ -239,6 +244,22 @@ async def orchestrate_analysis(
         "estimated_cost_usd": cost_meta.estimated_cost_usd,
     }
     return response, obs
+
+
+def _jurisdiction_for_patent(patent_no: str) -> str:
+    """Q17: the answer period + holiday calendar differ per jurisdiction, so
+    a US patent must NOT be scored against TW's 60-day rule (and vice versa).
+
+    POC: derive from the patent-number country prefix (US…, TW…, EP…, JP…,
+    CN…). Production: read jurisdiction from the case-management record.
+    Unknown / missing prefix falls back to TW (this firm's home office) — the
+    deadline module additionally warns for any jurisdiction it can't compute.
+    """
+    if not patent_no:
+        return "TW"
+    prefix = patent_no.strip().upper()[:2]
+    known = {"US", "TW", "EP", "JP", "CN", "KR"}
+    return prefix if prefix in known else "TW"
 
 
 def _security_level_for_case(case_id: str) -> str:

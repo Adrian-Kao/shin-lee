@@ -48,7 +48,11 @@ def _wrap_untrusted(payload: str) -> str:
 
 # ---------- parse_oa ----------
 
-def parse_oa(oa_text: str, target_patent_no: str) -> tuple[list[Rejection], dict]:
+def parse_oa(
+    oa_text: str,
+    target_patent_no: str,
+    security_level: str = "public",
+) -> tuple[list[Rejection], dict]:
     user_msg = (
         f"Target patent under prosecution: {target_patent_no}\n\n"
         f"Office action text:\n{_wrap_untrusted(oa_text)}\n\n"
@@ -58,7 +62,9 @@ def parse_oa(oa_text: str, target_patent_no: str) -> tuple[list[Rejection], dict
         system=_PARSE_OA_SYSTEM,
         user=user_msg,
         intent="parse_oa",
-        security_level="public",  # parsing OA itself doesn't trip confidential
+        # Invariant #7: confidential cases route to the local model even for
+        # the parse step — the OA text reaches the LLM here too.
+        security_level=security_level,
     )
     data = _safe_json(resp.text)
     rejections = []

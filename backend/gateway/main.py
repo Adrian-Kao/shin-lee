@@ -492,8 +492,12 @@ async def analyze_oa(
             # POC behavior: still serve, but the LLM router will degrade to cheap model.
             # In production: optionally 503 here for graceful shedding.
 
-        # 6. Orchestrate
-        response, obs = await orchestrate_analysis(user, body)
+        # 6. Orchestrate — forward the circuit-breaker state so the AI Engine
+        # degrades the draft model to the cheap tier when the cost breaker
+        # has tripped (Q18 / invariant #8).
+        response, obs = await orchestrate_analysis(
+            user, body, circuit_open=policy_decisions.get("circuit_open", False)
+        )
 
         # 7. Record usage
         rate_limit.record_usage(

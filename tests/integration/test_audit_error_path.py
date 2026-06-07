@@ -142,7 +142,7 @@ def test_analyze_orchestrate_exception_writes_audit_row(
     write an audit row tagged with policy_decisions.error=True."""
     from backend.gateway import main as gw_main
 
-    async def _boom(_user, _body):
+    async def _boom(_user, _body, **_kwargs):
         raise RuntimeError("orchestrator simulated crash")
 
     monkeypatch.setattr(gw_main, "orchestrate_analysis", _boom)

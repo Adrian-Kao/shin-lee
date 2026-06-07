@@ -123,6 +123,7 @@ class DraftRequest(BaseModel):
     grounded_set: list[dict]
     user_hint: Optional[str] = None
     security_level: str = "public"
+    circuit_open: bool = False
 
 
 class VerifyRequest(BaseModel):
@@ -200,7 +201,11 @@ def get_prompt(intent: str):
 
 @app.post("/v1/parse_oa")
 def parse_oa(req: ParseOARequest):
-    rejections, meta = oa_analyzer.parse_oa(req.oa_text, req.target_patent_no)
+    # Invariant #7: confidential cases must never reach the cloud model — even
+    # for the parse step, which sends the (redacted) OA text to the LLM.
+    rejections, meta = oa_analyzer.parse_oa(
+        req.oa_text, req.target_patent_no, security_level=req.security_level
+    )
     oa_doc = oa_analyzer.make_oa_document(
         tenant_id=req.tenant_id,
         case_id=req.case_id,
@@ -216,7 +221,11 @@ def retrieve_prior_art(req: RetrieveRequest):
     rej = Rejection(**req.rejection)
     # Build query from examiner argument + cited art numbers
     query = rej.examiner_argument + " " + " ".join(rej.cited_prior_art)
-    hits = rag.retrieve(req.tenant_id, query, top_k=req.top_k)
+    # Boost the case's own target patent in ranking (rag.retrieve implements
+    # the preference) so the grounded set fed to the drafter is relevant.
+    hits = rag.retrieve(
+        req.tenant_id, query, top_k=req.top_k, prefer_patent_no=req.target_patent_no
+    )
     return {"hits": [h.model_dump(mode="json") for h in hits],
             "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
 
@@ -226,7 +235,7 @@ def draft_response_endpoint(req: DraftRequest):
     rej = Rejection(**req.rejection)
     grounded = [RetrievalHit(**g) for g in req.grounded_set]
     draft, meta = oa_analyzer.draft_response(
-        rej, grounded, req.user_hint, req.security_level
+        rej, grounded, req.user_hint, req.security_level, circuit_open=req.circuit_open
     )
     return {"draft": draft.model_dump(mode="json"), **meta}
 

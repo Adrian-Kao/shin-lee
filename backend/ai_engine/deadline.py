@@ -90,10 +90,25 @@ RULES: dict[str, JurisdictionRule] = {
 }
 
 
+_MAX_ROLL_DAYS = 30  # termination guard against a malformed holiday calendar
+
+
 def _next_business_day(d: date, holidays: dict[date, str]) -> date:
-    while d.weekday() >= 5 or d in holidays:
+    for _ in range(_MAX_ROLL_DAYS):
+        if d.weekday() < 5 and d not in holidays:
+            return d
         d += timedelta(days=1)
-    return d
+    raise ValueError(f"no business day within {_MAX_ROLL_DAYS} days — bad holiday calendar")
+
+
+def _prev_business_day(d: date, holidays: dict[date, str]) -> date:
+    """Roll BACKWARD to the nearest business day (for the internal-warning
+    date, which must never land on/after the statutory deadline)."""
+    for _ in range(_MAX_ROLL_DAYS):
+        if d.weekday() < 5 and d not in holidays:
+            return d
+        d -= timedelta(days=1)
+    raise ValueError(f"no business day within {_MAX_ROLL_DAYS} days — bad holiday calendar")
 
 
 def calculate_deadline(
@@ -131,9 +146,15 @@ def calculate_deadline(
     final_deadline_date = _next_business_day(raw_deadline_date, holidays)
     rolled = final_deadline_date != raw_deadline_date
 
-    # Recommended internal deadline = 7 days earlier, also rolled
+    # Recommended internal deadline = ~7 days earlier. Roll BACKWARD to the
+    # previous business day — rolling forward (the old behaviour) could land
+    # the "earlier" internal warning ON or AFTER the statutory date whenever
+    # those 7 days span a long weekend/holiday block. Then hard-guarantee it
+    # is strictly before the statutory deadline.
     recommended_raw = final_deadline_date - timedelta(days=7)
-    recommended = _next_business_day(recommended_raw, holidays)
+    recommended = _prev_business_day(recommended_raw, holidays)
+    while recommended >= final_deadline_date:
+        recommended = _prev_business_day(recommended - timedelta(days=1), holidays)
 
     # Express deadlines as 23:59 case-local time
     statutory_dt = datetime.combine(final_deadline_date, time(23, 59), tzinfo=case_tz)

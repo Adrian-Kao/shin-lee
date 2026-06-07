@@ -218,7 +218,7 @@ const resources = {
         value_deadline: 'Auto-compute statutory deadlines (TW + US, holiday roll-forward)',
         value_compliance: 'Auto redaction + audit chain (law firm compliance)',
         pick_user: 'Select an identity',
-        poc_note: 'No password by default. Production wires OIDC / SAML / magic link (Q12)',
+        poc_note: 'Internal test environment — select an identity below to continue.',
         footer: 'v0.3 · internal use',
       },
       placeholder: {

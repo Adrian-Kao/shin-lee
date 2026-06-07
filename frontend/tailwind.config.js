@@ -15,13 +15,13 @@ export default {
   //
   // Dynamic call sites (grep `bg-\${`):
   //   • Analyze.jsx ResultSummaryBar: tone ∈ {rose, amber, emerald} → 100/700
-  //   • DraftsPane.jsx tab chips: typeColor ∈ {rose, amber, purple, slate}
-  //     → 100/800
+  //   • DraftsPane.jsx tab chips: typeColor ∈ {rose, orange, amber, purple, slate}
+  //     → 100/800  (orange = §103 obviousness, the most common rejection type)
   // Keep the regex tight; relaxing it later is cheap, shipping a +200 kB
   // CSS bundle to attorneys on 4G is not.
   safelist: [
     {
-      pattern: /(bg|text)-(rose|amber|emerald|purple|slate)-(100|700|800)/,
+      pattern: /(bg|text)-(rose|orange|amber|emerald|purple|slate)-(100|700|800)/,
     },
   ],
   theme: {

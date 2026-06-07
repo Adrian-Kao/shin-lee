@@ -79,7 +79,7 @@ test.describe('Trust band (Day 9C CHUNK-8)', () => {
     await caseInput.fill('CASE-2025-001-CONF');
 
     // Wait one tick for the trust context push to land.
-    await expect(page.getByTestId('trust-routing')).toContainText(/Local LLM|本地 LLM/);
+    await expect(page.getByTestId('trust-routing')).toContainText(/本地處理|機密案件/);
   });
 
   test('chain-verify chip is present in the top bar', async ({ page }) => {

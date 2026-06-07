@@ -98,8 +98,8 @@ test.describe('Audit flow', () => {
     // either "立即驗證鏈" (idle) or "驗證中…" (in-flight).
     await page.getByTestId('audit-verify-now').click();
 
-    // i18n key audit.verify_passed: "{{rows}} 列全部通過 hash 驗證，無 tampering 痕跡。"
-    await expect(page.getByText(/全部通過 hash 驗證/)).toBeVisible({ timeout: 5000 });
+    // i18n key audit.verify_passed: "{{rows}} 筆紀錄全部驗證通過，未發現竄改。"
+    await expect(page.getByText(/全部驗證通過/)).toBeVisible({ timeout: 5000 });
   });
 
   test('verify chain reports broken rows', async ({ page }) => {
@@ -120,8 +120,8 @@ test.describe('Audit flow', () => {
 
     await page.getByTestId('audit-verify-now').click();
 
-    // i18n key audit.verify_failed: "發現 {{count}} 列被竄改：{{rows}}"
-    await expect(page.getByText(/發現 2 列被竄改/)).toBeVisible({ timeout: 5000 });
+    // i18n key audit.verify_failed: "發現 {{count}} 筆紀錄遭竄改：{{rows}}"
+    await expect(page.getByText(/發現 2 筆紀錄遭竄改/)).toBeVisible({ timeout: 5000 });
   });
 
   test('alice (attorney) can also view the audit page', async ({ page }) => {

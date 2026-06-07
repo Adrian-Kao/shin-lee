@@ -4,6 +4,9 @@ data/redaction_mapping.db
 data/patentmind.db
 data/*.db
 
+# Generated test PDFs (regenerable via scripts/generate_oa_pdfs.py)
+data/oa_samples/pdf/
+
 # Python
 __pycache__/
 *.pyc

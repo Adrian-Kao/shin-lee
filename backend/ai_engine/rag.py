@@ -120,10 +120,61 @@ def chunk_patent(patent: Patent, spec_text: str = "") -> list[Chunk]:
                               "pub_date": patent.publication_date.isoformat()},
                 ))
 
-    # Claims → claim-tree
-    # POC: each claim text is one chunk; in production we attach dependency tree.
+    # Claims → claim-tree (Q6: "每 claim 一 chunk 帶依附項").
+    #
+    # Two chunk families are emitted, kept deliberately separate:
+    #
+    #   1. Per-claim `claim_N` chunks (claim_no=N) — ONE claim text each.
+    #      These are the source of truth for the claim-tree UI: `get_claim_tree`
+    #      pulls them via `list_claim_chunks` (which filters claim_no is not
+    #      None) and re-runs `parse_claim_dependencies` over their `.text`.
+    #      They MUST stay single-claim or the tree parser mis-parses, so they
+    #      are emitted verbatim below, exactly as before.
+    #
+    #   2. Bundle `claim_N_tree` chunks (claim_no=None) — for each INDEPENDENT
+    #      claim, the independent claim text PLUS the text of all its
+    #      transitively-dependent claims, concatenated. This is what retrieval
+    #      should embed: querying a limitation that lives only in a dependent
+    #      claim ("...further comprising temperature sensors") should still
+    #      surface the independent claim's family. claim_no=None keeps these
+    #      out of `list_claim_chunks`, so the tree path never sees them.
+    #
+    # Dependency edges come from `parse_claim_dependencies` (parser-derived,
+    # more reliable than the `_looks_independent` heuristic). We still record
+    # the heuristic flag on per-claim chunks for backwards compatibility, but
+    # independence for bundling is decided by the parser (a node with
+    # depends_on is None is independent).
+    from backend.ai_engine.claim_tree import parse_claim_dependencies
+
+    tree_nodes = parse_claim_dependencies(list(patent.claims))
+    # Map: parent claim_no -> list of direct child claim_nos.
+    children: dict[int, list[int]] = {}
+    for node in tree_nodes:
+        parent = node["depends_on"]
+        if parent is not None:
+            children.setdefault(parent, []).append(node["claim_no"])
+
+    def _transitive_dependents(root: int) -> list[int]:
+        """BFS over the child graph; returns dependent claim_nos in claim
+        order, excluding the root. Cycle-safe via a visited set (the parser
+        forbids forward refs so cycles shouldn't occur, but be defensive)."""
+        seen: set[int] = set()
+        out: list[int] = []
+        queue = list(children.get(root, []))
+        while queue:
+            c = queue.pop(0)
+            if c in seen or c == root:
+                continue
+            seen.add(c)
+            out.append(c)
+            queue.extend(children.get(c, []))
+        return sorted(out)
+
+    claim_text_by_no = {node["claim_no"]: node["text"] for node in tree_nodes}
+
     for i, claim in enumerate(patent.claims):
         cno = i + 1
+        # (1) Per-claim chunk — UNCHANGED. Single claim text, claim_no=cno.
         chunks.append(Chunk(
             chunk_id=f"{patent.patent_no}#claim_{cno}",
             patent_no=patent.patent_no,
@@ -133,6 +184,33 @@ def chunk_patent(patent: Patent, spec_text: str = "") -> list[Chunk]:
             jurisdiction=patent.jurisdiction,
             metadata={"pub_date": patent.publication_date.isoformat(),
                       "is_independent": _looks_independent(claim)},
+        ))
+
+    # (2) Bundle chunks — one per independent claim, carrying its dependents.
+    for node in tree_nodes:
+        if not node["is_independent"]:
+            continue
+        cno = node["claim_no"]
+        dependents = _transitive_dependents(cno)
+        if not dependents:
+            # No dependents → the bundle would equal the per-claim chunk; the
+            # per-claim `claim_N` chunk already covers retrieval, so skip to
+            # avoid a redundant near-duplicate vector. (Pure independent claim.)
+            continue
+        parts = [claim_text_by_no.get(cno, "")]
+        parts.extend(claim_text_by_no.get(d, "") for d in dependents)
+        bundle_text = "\n\n".join(p for p in parts if p)
+        chunks.append(Chunk(
+            chunk_id=f"{patent.patent_no}#claim_{cno}_tree",
+            patent_no=patent.patent_no,
+            section=f"claim_{cno}_tree",
+            claim_no=None,  # excluded from list_claim_chunks → tree path safe
+            text=bundle_text,
+            jurisdiction=patent.jurisdiction,
+            metadata={"pub_date": patent.publication_date.isoformat(),
+                      "is_independent": True,
+                      "root_claim_no": cno,
+                      "dependent_claims": dependents},
         ))
 
     return chunks

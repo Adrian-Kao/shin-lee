@@ -210,6 +210,14 @@ def _reset_module_state():
     except (ImportError, AttributeError):
         pass
     try:
+        # Q19 metrics registry — counters/histograms accumulate across the
+        # session-scoped app just like the rate-limit dicts. Reset so a test
+        # asserting on absolute metric values isn't polluted by earlier tests.
+        from backend.shared import metrics as _metrics_mod
+        _metrics_mod.REGISTRY.reset()
+    except (ImportError, AttributeError):
+        pass
+    try:
         from backend.gateway import cache as _cache_mod
         # The cache module exposes a private `_MemoryCache` instance bound to
         # `_cache`; clearing its internal `_data` dict is the canonical reset.

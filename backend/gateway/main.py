@@ -46,6 +46,7 @@ from backend.shared.models import (
     User,
     UserRole,
 )
+from backend.shared import metrics
 from backend.shared.observability import init_sentry
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,12 @@ def _safe_audit_write(**kwargs: Any) -> None:
     back into the audit DB once the primary store recovers. The enqueue itself
     never re-raises, so the caller's response/error is still never masked.
     """
+    # Q19 系統 metric: audit-write latency. The decision flags this as an SLO
+    # (must stay <100ms or the frontend stalls). Timed around the primary
+    # write; the durable-outbox fallback below is intentionally NOT counted
+    # toward the SLO histogram (it's the degraded path, separately alarmed via
+    # audit_outbox_depth in /v1/health).
+    _audit_started = time.monotonic()
     try:
         audit.writer.write(**kwargs)
     except Exception:  # noqa: BLE001 — deliberately broad: see docstring
@@ -85,6 +92,8 @@ def _safe_audit_write(**kwargs: Any) -> None:
         # Write-ahead the row to the durable outbox so it is never lost.
         # enqueue() never re-raises, preserving the no-masking guarantee.
         audit_outbox.enqueue(**kwargs)
+    finally:
+        metrics.AUDIT_WRITE_DURATION.observe(time.monotonic() - _audit_started)
 
 
 def _error_response_payload(error: BaseException) -> dict:
@@ -597,6 +606,32 @@ def health():
     }
 
 
+@app.get("/metrics")
+def metrics_endpoint():
+    """Prometheus scrape target (Q19 — four-layer dashboard).
+
+    Returns the in-process registry in Prometheus text exposition format
+    (v0.0.4). The cost gauge folds rate_limit's per-tenant/per-model
+    month-to-date spend in *read-only* at scrape time, so the 成本 layer stays
+    a single source of truth.
+
+    SECURITY NOTE (POC posture): this endpoint is intentionally LEFT UNGATED.
+    The four metric layers carry tenant IDs and dollar figures, which is
+    operationally sensitive — but Prometheus scrapers authenticate at the
+    network layer, not via app JWTs. For the POC the gateway runs behind
+    digiRunner / nginx, so the standard production hardening is:
+      * bind /metrics to an internal-only interface / listener, OR
+      * front it with a scrape-credential check in the reverse proxy, OR
+      * role-gate it to IT_ADMIN if it must share the public listener.
+    We do NOT auth it here so a stock Prometheus job (which can't mint a JWT)
+    can scrape it in the demo; productionising this is tracked in CLAUDE.md §3.
+    """
+    return Response(
+        content=metrics.render_prometheus(),
+        media_type=metrics.content_type(),
+    )
+
+
 @app.get("/v1/quota")
 def quota(user: User = Depends(auth_dependency)):
     return rate_limit.get_quota_snapshot(user)
@@ -745,7 +780,23 @@ async def analyze_oa(
         policy_decisions["error"] = True
         raise
     finally:
-        latency_ms = int((time.monotonic() - started) * 1000)
+        elapsed = time.monotonic() - started
+        latency_ms = int(elapsed * 1000)
+        # Q19 系統 metric: per-endpoint request duration (feeds p50/p95/p99).
+        # status derives from the error (HTTPException carries status_code;
+        # anything else is a 500); success/cache-hit are 200.
+        if error is not None:
+            status_code = getattr(error, "status_code", 500)
+        else:
+            status_code = 200
+        metrics.HTTP_REQUEST_DURATION.observe(
+            elapsed,
+            {"endpoint": "/v1/oa/analyze", "method": "POST", "status": str(status_code)},
+        )
+        # Q19 業務 metric: count a successfully-analyzed OA (not cache hits,
+        # not errors — cache hits already counted on their original analyze).
+        if error is None and cached_payload is None:
+            metrics.OA_ANALYZED.inc({"tenant": user.tenant_id})
         # Pick the right audit shape based on which path the request took.
         if error is not None:
             response_payload = _error_response_payload(error)
@@ -1399,8 +1450,30 @@ def export_draft(
         policy_decisions["error"] = True
         raise
     finally:
-        latency_ms = int((time.monotonic() - started) * 1000)
+        elapsed = time.monotonic() - started
+        latency_ms = int(elapsed * 1000)
         signed_off = response is not None  # True only on the success path
+        # Q19 系統 + 業務 metrics for the export path.
+        export_status = 200 if error is None else getattr(error, "status_code", 500)
+        metrics.HTTP_REQUEST_DURATION.observe(
+            elapsed,
+            {"endpoint": "/v1/oa/export", "method": "POST", "status": str(export_status)},
+        )
+        # exports_total is labelled by whether sign-off passed, so the dashboard
+        # can chart accepted vs refused. A refused sign-off (the 409 hard gate)
+        # additionally bumps signoff_refused_total. The ACL-403 / mismatch-400
+        # paths are export attempts too but are NOT sign-off refusals, so they
+        # count under exports_total{signed_off="false"} without touching
+        # signoff_refused_total.
+        metrics.EXPORTS.inc(
+            {"tenant": user.tenant_id, "signed_off": "true" if signed_off else "false"}
+        )
+        if (
+            error is not None
+            and getattr(error, "status_code", None) == status.HTTP_409_CONFLICT
+            and not policy_decisions.get("signoff_passed", False)
+        ):
+            metrics.SIGNOFF_REFUSED.inc()
         # policy_decisions carries the booleans (typed dict[str, bool] on the
         # writer); the responsibility-boundary COUNTS go alongside as integer
         # entries so an auditor reading /v1/audit/recent sees them directly.

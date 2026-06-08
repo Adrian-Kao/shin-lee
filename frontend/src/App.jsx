@@ -7,6 +7,26 @@ import Login from './components/Login.jsx';
 import Analyze from './components/Analyze.jsx';
 import AuditView from './components/AuditView.jsx';
 import AppShell from './components/AppShell.jsx';
+import { Button } from './components/ui/button.jsx';
+
+/**
+ * Role-aware landing route. After login each role lands on the page it can
+ * actually use, instead of everyone defaulting to /analyze:
+ *   • auditor   → /audit   (read-only audit log is the auditor's home)
+ *   • it_admin  → /analyze (no dedicated home in the POC; /cases is a
+ *                           placeholder and /audit 403s for non-tenant_a, so
+ *                           the gentler default is the analyze input form)
+ *   • attorney
+ *   • paralegal → /analyze (the core working surface)
+ */
+function landingPathForRole(role) {
+  switch (role) {
+    case 'auditor':
+      return '/audit';
+    default:
+      return '/analyze';
+  }
+}
 
 /**
  * Slice B + Day 9C: router-based shell with persistent chrome.
@@ -43,10 +63,12 @@ export default function App() {
     );
   }
 
+  const landingPath = landingPathForRole(session.role);
+
   return (
     <AppShell session={session} onLogout={handleLogout} trustContext={trustContext}>
       <Routes>
-        <Route path="/login" element={<Navigate to="/analyze" replace />} />
+        <Route path="/login" element={<Navigate to={landingPath} replace />} />
         <Route
           path="/analyze"
           element={
@@ -62,7 +84,7 @@ export default function App() {
           element={<AuditRoute session={session} onLogout={handleLogout} />}
         />
         <Route path="/cases" element={<CasesPlaceholder />} />
-        <Route path="*" element={<Navigate to="/analyze" replace />} />
+        <Route path="*" element={<Navigate to={landingPath} replace />} />
       </Routes>
     </AppShell>
   );
@@ -71,11 +93,12 @@ export default function App() {
 function LoginRoute({ onLogin }) {
   const navigate = useNavigate();
   // Login expects a single onLogin(session) callback; preserve that contract.
+  // Route to the role-appropriate landing page (auditor/it_admin → /audit).
   return (
     <Login
       onLogin={(s) => {
         onLogin(s);
-        navigate('/analyze', { replace: true });
+        navigate(landingPathForRole(s?.role), { replace: true });
       }}
     />
   );
@@ -134,25 +157,25 @@ function CasesPlaceholderInner() {
   const { t } = useTranslation();
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-6 py-12">
-      <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm md:p-12">
+      <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm md:p-12 dark:border-slate-700 dark:bg-slate-900">
         <Folder
-          className="mx-auto mb-3 h-12 w-12 text-navy-700"
+          className="mx-auto mb-3 h-12 w-12 text-navy-700 dark:text-navy-200"
           strokeWidth={1.5}
           aria-hidden="true"
         />
-        <h1 className="mb-1 text-xl font-semibold text-slate-900">
+        <h1 className="mb-1 text-xl font-semibold text-slate-900 dark:text-slate-100">
           {t('placeholder.cases_title')}
         </h1>
-        <p className="mb-6 text-sm text-slate-500">{t('placeholder.cases_subtitle')}</p>
+        <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">{t('placeholder.cases_subtitle')}</p>
 
-        <ul className="mb-6 space-y-2 text-left text-sm text-slate-600">
+        <ul className="mb-6 space-y-2 text-left text-sm text-slate-600 dark:text-slate-300">
           {[
             t('placeholder.cases_bullet_1'),
             t('placeholder.cases_bullet_2'),
             t('placeholder.cases_bullet_3'),
           ].map((bullet, i) => (
             <li key={i} className="flex items-start gap-2">
-              <span className="mt-0.5 text-navy-700" aria-hidden="true">
+              <span className="mt-0.5 text-navy-700 dark:text-navy-200" aria-hidden="true">
                 •
               </span>
               <span>{bullet}</span>
@@ -160,13 +183,9 @@ function CasesPlaceholderInner() {
           ))}
         </ul>
 
-        <button
-          type="button"
-          onClick={() => navigate('/analyze')}
-          className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white hover:bg-navy-700"
-        >
+        <Button type="button" variant="primary" onClick={() => navigate('/analyze')}>
           {t('placeholder.back_to_analyze')}
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -59,15 +59,23 @@ export function ToastViewport() {
 
   if (!mounted || typeof document === 'undefined') return null;
 
+  // a11y: errors interrupt (assertive), everything else is non-interrupting
+  // (polite). Two separate live regions so screen readers route correctly.
+  const assertive = list.filter((it) => it.kind === 'error');
+  const polite = list.filter((it) => it.kind !== 'error');
+
   return createPortal(
-    <div
-      aria-live="polite"
-      aria-atomic="true"
-      className="pointer-events-none fixed right-4 top-4 z-[1000] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2 sm:w-auto"
-    >
-      {list.map((it) => (
-        <ToastItem key={it.id} item={it} onDismiss={() => drop(it.id)} />
-      ))}
+    <div className="pointer-events-none fixed right-4 top-4 z-[1000] flex w-[calc(100%-2rem)] max-w-sm flex-col gap-2 sm:w-auto">
+      <div aria-live="assertive" aria-atomic="false" className="flex flex-col gap-2">
+        {assertive.map((it) => (
+          <ToastItem key={it.id} item={it} onDismiss={() => drop(it.id)} />
+        ))}
+      </div>
+      <div aria-live="polite" aria-atomic="false" className="flex flex-col gap-2">
+        {polite.map((it) => (
+          <ToastItem key={it.id} item={it} onDismiss={() => drop(it.id)} />
+        ))}
+      </div>
     </div>,
     document.body
   );
@@ -85,8 +93,9 @@ function ToastItem({ item, onDismiss }) {
   const icon = KIND_ICON[item.kind] || KIND_ICON.info;
 
   return (
+    // No per-item role: the surrounding aria-live region (assertive/polite)
+    // owns the announcement. A nested role=alert here would double-announce.
     <div
-      role={item.kind === 'error' ? 'alert' : 'status'}
       className={`${klass} pointer-events-auto flex items-start gap-2 rounded-md border px-3 py-2 text-sm shadow-lg`}
       style={{
         opacity: shown ? 1 : 0,

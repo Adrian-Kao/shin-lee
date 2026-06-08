@@ -63,9 +63,12 @@ test.describe('Visual regression', () => {
     await mockAnalyze(page);
     await page.getByRole('button', { name: /^分析 OA/ }).filter({ visible: true }).click();
     // Wait until the strategy text from the fixture is visible (drafts pane).
-    // Two mains render (mobile + desktop, one hidden); .first() picks the
-    // first match regardless of which one is painted.
-    await expect(page.getByText('答辯策略').first()).toBeVisible({ timeout: 10_000 });
+    // Two mains render (mobile xl:hidden + desktop); after a successful analyze
+    // the mobile main auto-switches to its drafts tab too, so it also contains
+    // 答辯策略 — but hidden on desktop. Target the visible (desktop) copy.
+    await expect(
+      page.getByText('答辯策略').filter({ visible: true }).first()
+    ).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveScreenshot('analyze_result_desktop.png', screenshotOpts(page));
   });
 

@@ -40,28 +40,28 @@ export default function ReferenceModal({ hit, onClose }) {
     <dialog
       ref={dialogRef}
       onClick={onBackdropClick}
-      className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-900/40"
+      className="w-full max-w-2xl rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-0 shadow-2xl backdrop:bg-slate-900/40"
     >
-      <div className="flex items-baseline justify-between gap-3 border-b px-5 py-3">
+      <div className="flex items-baseline justify-between gap-3 border-b dark:border-slate-700 px-5 py-3">
         <div className="min-w-0">
-          <div className="truncate font-mono text-sm font-semibold text-slate-800">
+          <div className="truncate font-mono text-sm font-semibold text-slate-800 dark:text-slate-200">
             {hit.patent_no}
           </div>
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-slate-500 dark:text-slate-400">
             {hit.section} · score {hit.score.toFixed(3)}
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="rounded bg-slate-100 px-2 py-1 text-xs text-slate-600 hover:bg-slate-200"
+          className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200"
           aria-label="Close"
         >
           ✕
         </button>
       </div>
       <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{hit.text}</p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">{hit.text}</p>
       </div>
     </dialog>
   );

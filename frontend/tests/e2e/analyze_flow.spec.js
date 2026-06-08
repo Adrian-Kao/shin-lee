@@ -74,6 +74,109 @@ test.describe('Analyze flow — desktop', () => {
     await expect(visibleMain.getByText('US7654321').first()).toBeVisible();
   });
 
+  test('verification banner surfaces stripped citations + verifier model', async ({ page }) => {
+    // ★3 hallucination-defense panel, rich path: the backend (orchestrator)
+    // now passes the verifier's invalid_citations + verifier_model through, so
+    // the attorney sees exactly what the AI tried to cite (and got stripped)
+    // and which model vetted it — not just an anonymous [CITATION_REMOVED].
+    await loginAsAlice(page);
+    await mockAnalyze(
+      page,
+      defaultAnalysisResponse({
+        drafts: [
+          {
+            rejection_id: 'REJ-1',
+            strategy: '主張 cited prior art 並未揭露非均勻截面。 [GROUNDED_REF_1]',
+            draft_text:
+              'Applicant respectfully traverses. [GROUNDED_REF_1] does not teach the ' +
+              'limitation. The examiner cited [CITATION_REMOVED] which is unsupported.',
+            grounded_citations: ['[GROUNDED_REF_1]'],
+            confidence: 0.82,
+            requires_attorney_review: true,
+            // Q14 verifier transparency fields surfaced by the orchestrator.
+            invalid_citations: ['US9999999', 'Smith v. Jones, 999 F.3d 1234'],
+            verifier_confidence: 0.91,
+            verifier_model: 'mock-haiku-verifier',
+          },
+        ],
+      })
+    );
+
+    const analyzeBtn = page.getByRole('button', { name: /^分析 OA/ }).filter({ visible: true });
+    await analyzeBtn.click();
+
+    const banner = page.getByTestId('verification-banner').filter({ visible: true }).first();
+    await expect(banner).toBeVisible({ timeout: 10_000 });
+    // Real invalid_citations count (2), not a placeholder-derived guess.
+    await expect(banner).toContainText('2 citation(s) removed');
+    // The actual stripped citation strings are listed for the attorney.
+    await expect(banner).toContainText('US9999999');
+    await expect(banner).toContainText('Smith v. Jones, 999 F.3d 1234');
+    // The verifier model is named — the trust signal ChatGPT can't offer.
+    await expect(banner).toContainText('mock-haiku-verifier');
+  });
+
+  test('deadline summary explains the calculation basis on demand', async ({ page }) => {
+    // ★ deadline 可解釋：the backend returns the roll-forward reason, the
+    // recommended internal deadline and the holiday-calendar version; the
+    // summary bar must let the attorney see WHY a date is what it is (a wrong
+    // deadline = lost patent rights).
+    await loginAsAlice(page);
+    await mockAnalyze(
+      page,
+      defaultAnalysisResponse({
+        deadline_summary: {
+          received_date: '2025-04-15T00:00:00Z',
+          statutory_deadline: '2025-07-15T00:00:00Z',
+          recommended_internal_deadline: '2025-07-08T00:00:00Z',
+          days_remaining: 42,
+          holiday_calendar_version: '2025.1',
+          warnings: ['截止日落在週六，依規則順延至下一個工作日'],
+        },
+      })
+    );
+
+    const analyzeBtn = page.getByRole('button', { name: /^分析 OA/ }).filter({ visible: true });
+    await analyzeBtn.click();
+
+    // Wait for the result, then reveal the deadline calculation basis.
+    const whyBtn = page.getByRole('button', { name: /計算依據 \/ Why/ }).filter({ visible: true });
+    await expect(whyBtn.first()).toBeVisible({ timeout: 10_000 });
+    await whyBtn.first().click();
+
+    const details = page.getByTestId('deadline-details').filter({ visible: true }).first();
+    await expect(details).toBeVisible();
+    // The recommended internal deadline + holiday-calendar version are surfaced.
+    await expect(details).toContainText('建議內部完成');
+    await expect(details).toContainText('2025.1');
+    // The roll-forward reason (warning) is shown verbatim.
+    await expect(details).toContainText('順延至下一個工作日');
+  });
+
+  test('language switch to EN translates the analyze surface', async ({ page }) => {
+    // The AppShell language toggle now drives the whole analyze flow, not just
+    // the shell: InputPane + DraftsPane strings were migrated into i18n.
+    await loginAsAlice(page);
+    await mockAnalyze(page);
+
+    // Switch UI language to English.
+    await page
+      .getByRole('group', { name: 'Language' })
+      .getByRole('button', { name: 'EN' })
+      .click();
+
+    // InputPane: the analyze button is now English ("Analyze OA", not "分析 OA").
+    const analyzeBtn = page.getByRole('button', { name: /^Analyze OA/ }).filter({ visible: true });
+    await expect(analyzeBtn.first()).toBeVisible();
+    await analyzeBtn.first().click();
+
+    // DraftsPane: the strategy label is translated ("Response strategy").
+    const visibleMain = page.locator('main').filter({ visible: true }).last();
+    await expect(visibleMain.getByText('Response strategy').first()).toBeVisible({
+      timeout: 10_000,
+    });
+  });
+
   test('error 500 returns ErrorBanner with retry button', async ({ page }) => {
     await loginAsAlice(page);
     await mockAnalyze(page, { status: 500, body: { detail: 'engine timeout' } });

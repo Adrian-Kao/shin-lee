@@ -25,6 +25,22 @@ import {
 const TRUST_CHIPS = ['trust-redaction', 'trust-mapping', 'trust-routing'];
 
 test.describe('Trust band (Day 9C CHUNK-8)', () => {
+  test('theme toggle flips the document into dark mode and back', async ({ page, viewport }) => {
+    // The toggle lives in the AppShell top bar and is sm:+ only.
+    test.skip(viewport && viewport.width < 640, 'theme toggle is sm: only');
+    await loginAsAlice(page);
+
+    const html = page.locator('html');
+    await expect(html).not.toHaveClass(/\bdark\b/);
+
+    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+    await expect(html).toHaveClass(/\bdark\b/);
+
+    // Toggling back returns to light.
+    await page.getByRole('button', { name: 'Switch to light mode' }).click();
+    await expect(html).not.toHaveClass(/\bdark\b/);
+  });
+
   test('three trust chips render on Analyze immediately after login', async ({ page }) => {
     await loginAsAlice(page);
     await mockAuditVerify(page);
@@ -43,8 +59,7 @@ test.describe('Trust band (Day 9C CHUNK-8)', () => {
     await mockAuditVerify(page);
     await page.goto('/');
     await page.getByRole('button', { name: /Dave/ }).click();
-    await page.waitForURL(/\/analyze/);
-    await page.getByRole('button', { name: /^Audit$/ }).click();
+    // Auditor lands directly on /audit (role-aware landing).
     await page.waitForURL(/\/audit/);
 
     const band = page.getByTestId('trust-band');

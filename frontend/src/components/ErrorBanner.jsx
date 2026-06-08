@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle } from 'lucide-react';
 
+import { Button } from './ui/button.jsx';
+
 const RATE_LIMIT_COUNTDOWN_SEC = 30;
 
 function classifyError(err, t) {
@@ -60,14 +62,14 @@ export default function ErrorBanner({ error, onRetry, onDismiss, onLogin }) {
   return (
     <div
       role="alert"
-      className="flex flex-col gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-700 sm:flex-row sm:items-start sm:gap-3"
+      className="flex flex-col gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-700 sm:flex-row sm:items-start sm:gap-3 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
     >
       <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" aria-hidden="true" />
 
       <div className="min-w-0 flex-1">
         <p className="break-words text-sm leading-5">{info.message}</p>
         {info.showDetails && rawMessage && (
-          <details className="mt-1 text-xs text-rose-600/80">
+          <details className="mt-1 text-xs text-rose-600/80 dark:text-rose-300/80">
             <summary className="cursor-pointer select-none">
               {t('errors.technical_details')}
             </summary>
@@ -80,32 +82,32 @@ export default function ErrorBanner({ error, onRetry, onDismiss, onLogin }) {
 
       <div className="flex flex-shrink-0 flex-wrap gap-2 self-start sm:self-auto">
         {showLogin && (
-          <button
-            type="button"
-            onClick={onLogin}
-            className="rounded bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-700"
-          >
+          <Button type="button" variant="destructive" size="xs" onClick={onLogin}>
             {t('errors.login_again')}
-          </button>
+          </Button>
         )}
         {showRetry && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="xs"
             onClick={onRetry}
             disabled={retryDisabled}
-            className="rounded border border-rose-300 bg-white px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="border-rose-300 text-rose-700 hover:bg-rose-100 hover:text-rose-700 disabled:cursor-not-allowed dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-900/40 dark:hover:text-rose-300"
           >
             {retryDisabled ? t('errors.retry_in', { seconds: countdown }) : t('errors.retry')}
-          </button>
+          </Button>
         )}
         {typeof onDismiss === 'function' && (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="xs"
             onClick={onDismiss}
-            className="rounded border border-rose-200 bg-white px-2.5 py-1 text-xs font-medium text-rose-600 hover:bg-rose-100"
+            className="border-rose-200 text-rose-600 hover:bg-rose-100 hover:text-rose-600 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-900/40 dark:hover:text-rose-300"
           >
             {t('errors.dismiss')}
-          </button>
+          </Button>
         )}
       </div>
     </div>

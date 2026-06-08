@@ -205,7 +205,7 @@ export default function OAUpload({ caseId, token, onExtractSuccess, onError }) {
       )}
 
       {status === 'error' && errorMsg && (
-        <div className="rounded border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
+        <div className="rounded border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
           {errorMsg}
         </div>
       )}
@@ -237,22 +237,22 @@ function ElementTable({ table, t }) {
     return na - nb;
   });
   return (
-    <div className="rounded border border-slate-200 bg-white p-2" data-testid="element-table">
-      <div className="mb-1 text-xs font-semibold text-slate-600">
+    <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900" data-testid="element-table">
+      <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
         {t('upload.element_table_title')}
       </div>
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-left text-slate-400">
+          <tr className="text-left text-slate-400 dark:text-slate-500">
             <th className="w-16 font-normal">{t('upload.element_table_numeral')}</th>
             <th className="font-normal">{t('upload.element_table_desc')}</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(([numeral, desc]) => (
-            <tr key={numeral} className="border-t border-slate-100">
-              <td className="py-1 pr-2 font-mono text-slate-700">{numeral}</td>
-              <td className="py-1 text-slate-700">{String(desc)}</td>
+            <tr key={numeral} className="border-t border-slate-100 dark:border-slate-800">
+              <td className="py-1 pr-2 font-mono text-slate-700 dark:text-slate-200">{numeral}</td>
+              <td className="py-1 text-slate-700 dark:text-slate-200">{String(desc)}</td>
             </tr>
           ))}
         </tbody>
@@ -266,8 +266,8 @@ function DropZone({ dragOver, onDragOver, onDragLeave, onDrop, onBrowseClick, t 
   const base =
     'h-48 border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition-colors cursor-pointer select-none';
   const tone = dragOver
-    ? 'border-indigo-400 bg-indigo-50 text-indigo-700'
-    : 'border-slate-300 text-slate-500 hover:border-slate-400';
+    ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
+    : 'border-slate-300 text-slate-500 hover:border-slate-400 dark:border-slate-600 dark:text-slate-400';
   return (
     <div
       className={`${base} ${tone}`}
@@ -283,15 +283,15 @@ function DropZone({ dragOver, onDragOver, onDragLeave, onDrop, onBrowseClick, t 
       }}
     >
       <UploadCloud
-        className="mx-auto mb-2 h-10 w-10 text-slate-400"
+        className="mx-auto mb-2 h-10 w-10 text-slate-400 dark:text-slate-500"
         strokeWidth={1.5}
         aria-hidden="true"
       />
       <div className="text-sm">
         {t('upload.drop_zone')}{' '}
-        <span className="text-navy-700 underline">{t('upload.browse')}</span>
+        <span className="text-navy-700 underline dark:text-navy-200">{t('upload.browse')}</span>
       </div>
-      <div className="mt-2 text-xs text-slate-400">PDF / DOCX · ≤ 30MB</div>
+      <div className="mt-2 text-xs text-slate-400 dark:text-slate-500">PDF / DOCX · ≤ 30MB</div>
     </div>
   );
 }
@@ -303,16 +303,16 @@ function PreviewPane({ file, blobUrl, t }) {
       <embed
         type="application/pdf"
         src={blobUrl}
-        className="h-96 w-full rounded border"
+        className="h-96 w-full rounded border dark:border-slate-700"
         title={file.name}
       />
     );
   }
   return (
-    <div className="flex h-96 w-full flex-col items-center justify-center rounded border bg-slate-50 px-6 text-center">
+    <div className="flex h-96 w-full flex-col items-center justify-center rounded border bg-slate-50 px-6 text-center dark:border-slate-700 dark:bg-slate-800/50">
       <div className="mb-2 text-4xl">📄</div>
-      <div className="text-sm text-slate-600">{t('upload.docx_no_preview')}</div>
-      <div className="mt-2 break-all font-mono text-xs text-slate-400">{file.name}</div>
+      <div className="text-sm text-slate-600 dark:text-slate-300">{t('upload.docx_no_preview')}</div>
+      <div className="mt-2 break-all font-mono text-xs text-slate-400 dark:text-slate-500">{file.name}</div>
     </div>
   );
 }
@@ -331,13 +331,13 @@ function StatusPane({
   t,
 }) {
   return (
-    <div className="space-y-3 rounded border bg-white p-4">
+    <div className="space-y-3 rounded border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <div>
-        <div className="text-xs uppercase tracking-wider text-slate-500">
+        <div className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
           {t('upload.file_selected')}
         </div>
         <div className="mt-0.5 break-all font-mono text-sm">{file?.name}</div>
-        <div className="text-xs text-slate-500">{file ? fmtSize(file.size) : ''}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">{file ? fmtSize(file.size) : ''}</div>
       </div>
 
       {status === 'file-selected' && (
@@ -350,7 +350,7 @@ function StatusPane({
           </button>
           <button
             onClick={onChange}
-            className="rounded bg-slate-200 px-3 py-2 text-sm hover:bg-slate-300"
+            className="rounded bg-slate-200 px-3 py-2 text-sm hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
           >
             {t('upload.change_file')}
           </button>
@@ -359,10 +359,10 @@ function StatusPane({
 
       {status === 'uploading' && (
         <div>
-          <div className="mb-1 text-xs text-slate-500">
+          <div className="mb-1 text-xs text-slate-500 dark:text-slate-400">
             {t('upload.uploading')} {Math.round(progress * 100)}%
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
             <div
               className="h-full bg-indigo-500 transition-[width] duration-150"
               style={{ width: `${Math.round(progress * 100)}%` }}
@@ -370,7 +370,7 @@ function StatusPane({
           </div>
           <button
             onClick={onCancel}
-            className="mt-3 rounded bg-slate-200 px-3 py-1.5 text-sm hover:bg-slate-300"
+            className="mt-3 rounded bg-slate-200 px-3 py-1.5 text-sm hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
           >
             {t('upload.cancel_button')}
           </button>
@@ -380,13 +380,13 @@ function StatusPane({
       {status === 'server-extracting' && (
         <div className="flex items-start gap-2">
           <span className="animate-pulse text-xl">⏳</span>
-          <div className="text-sm text-slate-700">{t('upload.extracting')}</div>
+          <div className="text-sm text-slate-700 dark:text-slate-200">{t('upload.extracting')}</div>
         </div>
       )}
 
       {status === 'success' && extractResult && (
         <div className="space-y-2">
-          <div className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700">
+          <div className="rounded border border-emerald-200 bg-emerald-50 p-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
             <div>
               {t('upload.success', {
                 pages: extractResult.page_count ?? 0,
@@ -394,7 +394,7 @@ function StatusPane({
               })}
             </div>
             {extractResult.ocr_pages_used > 0 && (
-              <div className="mt-1 text-xs text-amber-700">
+              <div className="mt-1 text-xs text-amber-700 dark:text-amber-300">
                 {t('upload.ocr_used', {
                   count: extractResult.ocr_pages_used,
                   cost: Number(extractResult.cost_meta?.estimated_cost_usd ?? 0).toFixed(2),
@@ -423,7 +423,7 @@ function StatusPane({
       {status === 'error' && (
         <div className="space-y-2">
           {errorMsg && (
-            <div className="rounded border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700">
+            <div className="rounded border border-rose-200 bg-rose-50 p-2 text-xs text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
               {errorMsg}
             </div>
           )}

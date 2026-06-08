@@ -22,7 +22,8 @@ test.describe('Audit flow', () => {
     await mockAuditVerify(page);
     await page.goto('/');
     await page.getByRole('button', { name: /Dave/ }).click();
-    await page.waitForURL(/\/analyze/, { timeout: 5000 });
+    // Auditor lands directly on /audit (role-aware landing).
+    await page.waitForURL(/\/audit/, { timeout: 5000 });
 
     // Click the Audit nav link to switch.
     // AppShell nav rail uses i18n key nav.audit (zh-TW resolves to "Audit").
@@ -83,7 +84,7 @@ test.describe('Audit flow', () => {
     await mockAuditVerify(page, [], 2);
     await page.goto('/');
     await page.getByRole('button', { name: /Dave/ }).click();
-    await page.waitForURL(/\/analyze/);
+    await page.waitForURL(/\/audit/);
     // AppShell nav rail uses i18n key nav.audit (zh-TW resolves to "Audit").
     await page
       .locator('nav[aria-label="Primary"]')
@@ -110,7 +111,7 @@ test.describe('Audit flow', () => {
 
     await page.goto('/');
     await page.getByRole('button', { name: /Dave/ }).click();
-    await page.waitForURL(/\/analyze/);
+    await page.waitForURL(/\/audit/);
     // AppShell nav rail uses i18n key nav.audit (zh-TW resolves to "Audit").
     await page
       .locator('nav[aria-label="Primary"]')

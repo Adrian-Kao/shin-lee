@@ -65,7 +65,7 @@ export default function Login({ onLogin }) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900 dark:bg-slate-800/50 dark:text-slate-100">
       {/* Agency header bar — solid navy with an amber accent rule underneath,
           the visual signature of an official government portal. */}
       <header className="border-b-4 border-amber-400 bg-navy-900 text-white">
@@ -82,15 +82,15 @@ export default function Login({ onLogin }) {
 
       <main className="flex flex-1 justify-center px-6 py-10">
         <div className="w-full max-w-2xl">
-          <h1 className="text-lg font-semibold text-slate-900">{t('landing.tagline')}</h1>
-          <div className="mt-4 h-px w-full bg-slate-200" />
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('landing.tagline')}</h1>
+          <div className="mt-4 h-px w-full bg-slate-200 dark:bg-slate-700" />
 
-          <h2 className="mb-1 mt-6 text-base font-semibold text-slate-900">
+          <h2 className="mb-1 mt-6 text-base font-semibold text-slate-900 dark:text-slate-100">
             {t('landing.pick_user')}
           </h2>
-          <p className="mb-4 text-sm text-slate-500">{t('landing.poc_note')}</p>
+          <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">{t('landing.poc_note')}</p>
 
-          <div className="divide-y divide-slate-200 overflow-hidden rounded-md border border-slate-200 bg-white">
+          <div className="divide-y divide-slate-200 overflow-hidden rounded-md border border-slate-200 bg-white dark:divide-slate-700 dark:border-slate-700 dark:bg-slate-900">
             {DEMO_USERS.map((u) => {
               const isBusy = busy === u.id;
               const disabled = busy !== null;
@@ -104,7 +104,7 @@ export default function Login({ onLogin }) {
                   className={[
                     'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors',
                     'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-700',
-                    disabled ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-navy-50',
+                    disabled ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-navy-50 dark:hover:bg-navy-900/40',
                   ].join(' ')}
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-navy-900 text-sm font-bold text-white">
@@ -112,10 +112,10 @@ export default function Login({ onLogin }) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-slate-900">{u.name}</span>
-                      <span className="truncate text-xs text-slate-500">{u.role}</span>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">{u.name}</span>
+                      <span className="truncate text-xs text-slate-500 dark:text-slate-400">{u.role}</span>
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500">{u.desc}</div>
+                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{u.desc}</div>
                   </div>
                   {isBusy ? (
                     <Loader2
@@ -124,7 +124,7 @@ export default function Login({ onLogin }) {
                     />
                   ) : (
                     <ChevronRight
-                      className="h-4 w-4 shrink-0 text-slate-300"
+                      className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600"
                       aria-hidden="true"
                     />
                   )}
@@ -136,7 +136,7 @@ export default function Login({ onLogin }) {
           {err && (
             <div
               role="alert"
-              className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700"
+              className="mt-4 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
             >
               {err}
             </div>
@@ -146,7 +146,7 @@ export default function Login({ onLogin }) {
         </div>
       </main>
 
-      <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-400">
+      <footer className="border-t border-slate-200 bg-white py-3 text-center text-xs text-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500">
         {t('landing.footer')}
       </footer>
     </div>
@@ -204,7 +204,7 @@ function MagicLink({ onLogin, disabled }) {
         type="button"
         onClick={() => setOpen(true)}
         disabled={disabled}
-        className="mt-6 inline-flex items-center gap-2 text-sm text-navy-700 hover:underline disabled:opacity-50"
+        className="mt-6 inline-flex items-center gap-2 text-sm text-navy-700 hover:underline disabled:opacity-50 dark:text-navy-200"
       >
         <Mail className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         {t('magic.link_cta')}
@@ -213,20 +213,20 @@ function MagicLink({ onLogin, disabled }) {
   }
 
   return (
-    <div className="mt-6 rounded-md border border-slate-200 bg-white p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700">
-        <Mail className="h-4 w-4 text-navy-700" strokeWidth={1.75} aria-hidden="true" />
+    <div className="mt-6 rounded-md border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+        <Mail className="h-4 w-4 text-navy-700 dark:text-navy-200" strokeWidth={1.75} aria-hidden="true" />
         {t('magic.link_cta')}
       </div>
 
       <form onSubmit={requestLink} className="space-y-2">
-        <label className="block text-xs text-slate-500">{t('magic.user_label')}</label>
+        <label className="block text-xs text-slate-500 dark:text-slate-400">{t('magic.user_label')}</label>
         <div className="flex gap-2">
           <input
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             placeholder={t('magic.user_placeholder')}
-            className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-700"
+            className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
           />
           <button
             type="submit"
@@ -240,14 +240,14 @@ function MagicLink({ onLogin, disabled }) {
 
       {phase === 'sent' && (
         <div className="mt-3 space-y-2">
-          <div className="text-xs text-slate-500">{t('magic.sent')}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-400">{t('magic.sent')}</div>
           {token && (
-            <div className="rounded border border-amber-300 bg-amber-50 p-2">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+            <div className="rounded border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/40">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
                 {t('magic.demo_label')}
               </div>
               <div
-                className="mb-2 break-all font-mono text-[10px] text-slate-600"
+                className="mb-2 break-all font-mono text-[10px] text-slate-600 dark:text-slate-300"
                 data-testid="magic-token"
               >
                 {token}
@@ -271,7 +271,7 @@ function MagicLink({ onLogin, disabled }) {
       )}
 
       {error && (
-        <div role="alert" className="mt-3 text-sm text-rose-700">
+        <div role="alert" className="mt-3 text-sm text-rose-700 dark:text-rose-300">
           {error}
         </div>
       )}
@@ -284,7 +284,7 @@ function MagicLink({ onLogin, disabled }) {
           setToken(null);
           setError(null);
         }}
-        className="mt-3 text-xs text-slate-500 hover:underline"
+        className="mt-3 text-xs text-slate-500 hover:underline dark:text-slate-400"
       >
         {t('magic.back')}
       </button>

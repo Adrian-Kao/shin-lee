@@ -23,8 +23,16 @@ export default function DraftEditor({
   rejectionId,
   token,
   canExport = false,
+  role,
 }) {
   const { t } = useTranslation();
+  // Multi-person provenance: tag a human edit/add by the CURRENT user's role so
+  // the responsibility chain (paralegal drafts → attorney signs) is visible per
+  // sentence, not collapsed to "attorney". The attorney still owns the export
+  // sign-off gate (canExport).
+  const isParalegal = role === 'paralegal';
+  const editedSource = isParalegal ? 'paralegal_edited' : 'attorney_edited';
+  const addedSource = isParalegal ? 'paralegal_added' : 'attorney_added';
   const [lines, setLines] = useState(() => splitIntoLines(initialDraft));
   const [editingIdx, setEditingIdx] = useState(null);
   const [editValue, setEditValue] = useState('');
@@ -61,10 +69,9 @@ export default function DraftEditor({
         idx === editingIdx
           ? {
               ...l,
-              // An AI sentence the attorney rewrote becomes attorney_edited;
-              // a sentence the attorney added stays attorney_added.
-              source:
-                l.source === 'attorney_added' ? 'attorney_added' : 'attorney_edited',
+              // Re-editing an *_added line keeps its "added" provenance; editing
+              // any other line marks it edited BY THE CURRENT ROLE.
+              source: l.source.endsWith('_added') ? l.source : editedSource,
               edited_from: l.edited_from ?? (l.source === 'ai_generated' ? l.text : undefined),
               text: editValue,
               accepted: true,
@@ -83,7 +90,7 @@ export default function DraftEditor({
       {
         segment_id: `seg-add-${ls.length}-${Date.now()}`,
         text,
-        source: 'attorney_added',
+        source: addedSource,
         accepted: true,
         ts: new Date().toISOString(),
       },
@@ -139,7 +146,7 @@ export default function DraftEditor({
 
   return (
     <div className="space-y-2">
-      <div className="mb-2 flex gap-3 text-xs text-slate-500">
+      <div className="mb-2 flex gap-3 text-xs text-slate-500 dark:text-slate-400">
         <span className="ai-line px-1">{t('signoff.source_ai')}</span>
         <span className="attorney-line px-1">{t('signoff.source_edited')}</span>
         <span className="ml-auto">
@@ -149,13 +156,13 @@ export default function DraftEditor({
 
       {lines.map((l, i) => (
         <div key={l.segment_id} className="group flex items-start gap-2">
-          <div className="w-6 pt-1.5 text-xs text-slate-400">{i + 1}.</div>
+          <div className="w-6 pt-1.5 text-xs text-slate-400 dark:text-slate-500">{i + 1}.</div>
           {editingIdx === i ? (
             <div className="flex-1">
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="w-full rounded border border-emerald-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                className="w-full rounded border border-emerald-300 dark:border-emerald-800 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
                 rows={3}
               />
               <div className="mt-1 flex gap-2">
@@ -167,7 +174,7 @@ export default function DraftEditor({
                 </button>
                 <button
                   onClick={() => setEditingIdx(null)}
-                  className="rounded bg-slate-200 px-2 py-1 text-xs"
+                  className="rounded bg-slate-200 dark:bg-slate-700 px-2 py-1 text-xs"
                 >
                   {t('signoff.cancel')}
                 </button>
@@ -194,7 +201,7 @@ export default function DraftEditor({
                 )}
                 <button
                   onClick={() => startEdit(i)}
-                  className="rounded bg-slate-200 px-2 py-1 text-xs"
+                  className="rounded bg-slate-200 dark:bg-slate-700 px-2 py-1 text-xs"
                 >
                   {t('signoff.edit')}
                 </button>
@@ -212,13 +219,13 @@ export default function DraftEditor({
             value={addingValue}
             onChange={(e) => setAddingValue(e.target.value)}
             placeholder={t('signoff.new_line_placeholder')}
-            className="w-full rounded border border-slate-200 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="w-full rounded border border-slate-200 dark:border-slate-700 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
             rows={2}
           />
           <button
             onClick={addLine}
             disabled={!addingValue.trim()}
-            className="mt-1 rounded bg-slate-200 px-2 py-1 text-xs hover:bg-slate-300 disabled:opacity-50"
+            className="mt-1 rounded bg-slate-200 dark:bg-slate-700 px-2 py-1 text-xs hover:bg-slate-300 disabled:opacity-50"
           >
             {t('signoff.add_line')}
           </button>
@@ -227,20 +234,20 @@ export default function DraftEditor({
 
       {/* Sign-off gate (Q16) */}
       {canExport && (
-        <div className="mt-4 space-y-3 border-t pt-3">
-          <label className="flex items-start gap-2 text-sm text-slate-700">
+        <div className="mt-4 space-y-3 border-t dark:border-slate-700 pt-3">
+          <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
               checked={reviewed}
               onChange={(e) => setReviewed(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 dark:border-slate-600"
               data-testid="signoff-checkbox"
             />
             <span>{t('signoff.review_each')}</span>
           </label>
 
           <div className="flex items-center justify-between">
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-slate-500 dark:text-slate-400">
               {reviewed ? null : t('signoff.export_hint')}
             </div>
             <button
@@ -254,7 +261,7 @@ export default function DraftEditor({
             </button>
           </div>
           {acceptedCount === 0 && (
-            <div className="text-xs text-amber-700">{t('signoff.no_accepted')}</div>
+            <div className="text-xs text-amber-700 dark:text-amber-300">{t('signoff.no_accepted')}</div>
           )}
         </div>
       )}
@@ -275,26 +282,26 @@ function ExportResultPanel({ result, onDownload, onClose, t }) {
   const s = result.provenance_summary || {};
   return (
     <div
-      className="mt-3 space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3"
+      className="mt-3 space-y-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 p-3"
       data-testid="export-result"
     >
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-emerald-800">{t('signoff.result_title')}</h4>
+        <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">{t('signoff.result_title')}</h4>
         <button
           type="button"
           onClick={onClose}
-          className="text-xs text-slate-500 hover:underline"
+          className="text-xs text-slate-500 dark:text-slate-400 hover:underline"
         >
           {t('signoff.close')}
         </button>
       </div>
-      <div className="text-xs text-slate-600">
+      <div className="text-xs text-slate-600 dark:text-slate-300">
         {t('signoff.signed_off_by')}: <span className="font-medium">{result.signed_off_by}</span>
       </div>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800">
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900 p-2 text-xs text-slate-800 dark:text-slate-200">
         {result.document}
       </pre>
-      <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+      <div className="flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
         <span>
           {t('signoff.source_ai')}: {s.ai_generated ?? 0}
         </span>
@@ -304,8 +311,18 @@ function ExportResultPanel({ result, onDownload, onClose, t }) {
         <span>
           {t('signoff.source_added')}: {s.attorney_added ?? 0}
         </span>
+        {(s.paralegal_edited ?? 0) > 0 && (
+          <span>
+            {t('signoff.source_paralegal_edited')}: {s.paralegal_edited}
+          </span>
+        )}
+        {(s.paralegal_added ?? 0) > 0 && (
+          <span>
+            {t('signoff.source_paralegal_added')}: {s.paralegal_added}
+          </span>
+        )}
       </div>
-      <div className="break-all font-mono text-[10px] text-slate-400">
+      <div className="break-all font-mono text-[10px] text-slate-400 dark:text-slate-500">
         {t('signoff.content_hash')}: {result.content_sha256}
       </div>
       <button
@@ -322,6 +339,8 @@ function ExportResultPanel({ result, onDownload, onClose, t }) {
 function sourceLabel(source, t) {
   if (source === 'attorney_added') return t('signoff.source_added');
   if (source === 'attorney_edited') return t('signoff.source_edited');
+  if (source === 'paralegal_added') return t('signoff.source_paralegal_added');
+  if (source === 'paralegal_edited') return t('signoff.source_paralegal_edited');
   return t('signoff.accepted');
 }
 
@@ -355,7 +374,7 @@ function CitationHighlighter({ text, citationLookup }) {
             <span
               key={i}
               title={hit ? `${hit.patent_no} / ${hit.section}\n\n${hit.text}` : p}
-              className="mx-0.5 inline-block cursor-help rounded border border-indigo-300 bg-indigo-100 px-1.5 py-0.5 font-mono text-xs text-indigo-800"
+              className="mx-0.5 inline-block cursor-help rounded border border-indigo-300 dark:border-indigo-700 bg-indigo-100 dark:bg-indigo-900/40 px-1.5 py-0.5 font-mono text-xs text-indigo-800 dark:text-indigo-300"
             >
               {p}
             </span>
@@ -365,7 +384,7 @@ function CitationHighlighter({ text, citationLookup }) {
           return (
             <span
               key={i}
-              className="mx-0.5 inline-block rounded border border-rose-300 bg-rose-100 px-1.5 py-0.5 font-mono text-xs text-rose-800"
+              className="mx-0.5 inline-block rounded border border-rose-300 dark:border-rose-800 bg-rose-100 dark:bg-rose-900/40 px-1.5 py-0.5 font-mono text-xs text-rose-800 dark:text-rose-300"
             >
               CITATION_REMOVED
             </span>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -14,9 +14,16 @@ import {
   ShieldAlert,
   ShieldCheck,
   Cloud,
+  Languages,
+  Sun,
+  Moon,
 } from 'lucide-react';
 
-import { api } from '../api/client.js';
+import { useAuditVerify } from '../api/queries.js';
+import i18n from '../lib/i18n';
+import { useTheme } from '../lib/theme.jsx';
+import { Button } from './ui/button.jsx';
+import { Badge } from './ui/badge.jsx';
 
 /**
  * Day 9C — CHUNK-1 + CHUNK-8 app shell.
@@ -52,40 +59,30 @@ export default function AppShell({ session, onLogout, children, trustContext }) 
   const auditScope = isAuditor ? 'global' : 'tenant';
   const canCallAudit = isAuditor || isItAdmin;
 
-  const [auditState, setAuditState] = useState({
-    status: 'idle',
-    verified: 0,
-    broken: 0,
-    error: null,
+  // CHUNK-8 — poll chain verify so the chip reflects real state. P1③: this is
+  // now a TanStack Query that SHARES its key (['audit','verify',scope]) with
+  // the AuditView page, so the chip + the page no longer issue two separate
+  // verify requests. Polls every 60s; only enabled for audit-capable roles.
+  const verifyQ = useAuditVerify(session?.token, auditScope, {
+    poll: true,
+    enabled: canCallAudit,
   });
-
-  // CHUNK-8 — poll chain verify so the chip reflects real state, not a
-  // demo string. Only roles with audit access can hit the endpoint; for
-  // attorney/paralegal we show an unverified-but-not-failed neutral chip.
-  const refreshChain = useCallback(async () => {
-    if (!session?.token || !canCallAudit) return;
-    try {
-      const r = await api.auditVerify(session.token, null, auditScope);
-      // verify_global_chain returns broken as list[tuple]; verify_chain
-      // returns broken as list[str]. Length is the right signal either way.
-      const brokenCount = Array.isArray(r?.broken) ? r.broken.length : 0;
-      setAuditState({
-        status: brokenCount === 0 ? 'ok' : 'fail',
-        verified: r?.verified ?? 0,
-        broken: brokenCount,
-        error: null,
-      });
-    } catch (e) {
-      setAuditState((prev) => ({ ...prev, status: 'fail', error: e?.message || 'verify failed' }));
+  const auditState = useMemo(() => {
+    if (!canCallAudit) return { status: 'idle', verified: 0, broken: 0, error: null };
+    if (verifyQ.error) {
+      return { status: 'fail', verified: 0, broken: 0, error: verifyQ.error?.message || 'verify failed' };
     }
-  }, [session?.token, canCallAudit, auditScope]);
-
-  useEffect(() => {
-    refreshChain();
-    if (!canCallAudit) return undefined;
-    const id = setInterval(refreshChain, 60_000);
-    return () => clearInterval(id);
-  }, [refreshChain, canCallAudit]);
+    if (!verifyQ.data) return { status: 'idle', verified: 0, broken: 0, error: null };
+    // verify_global_chain returns broken as list[tuple]; verify_chain returns
+    // list[str]. Length is the right signal either way.
+    const brokenCount = Array.isArray(verifyQ.data.broken) ? verifyQ.data.broken.length : 0;
+    return {
+      status: brokenCount === 0 ? 'ok' : 'fail',
+      verified: verifyQ.data.verified ?? 0,
+      broken: brokenCount,
+      error: null,
+    };
+  }, [canCallAudit, verifyQ.data, verifyQ.error]);
 
   const navItems = useMemo(
     () => [
@@ -97,7 +94,7 @@ export default function AppShell({ session, onLogout, children, trustContext }) 
   );
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900">
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <TopBar
         session={session}
         onLogout={onLogout}
@@ -139,6 +136,8 @@ function TopBar({ session, onLogout, auditState, canCallAudit, onNavigateAudit, 
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          <LanguageToggle />
+          <ThemeToggle />
           <ChainChip
             state={auditState}
             canCallAudit={canCallAudit}
@@ -158,18 +157,114 @@ function TopBar({ session, onLogout, auditState, canCallAudit, onNavigateAudit, 
               </span>
             </div>
           )}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={onLogout}
-            className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-2.5 py-1.5 text-xs font-medium text-white ring-1 ring-white/15 transition-colors hover:bg-white/20"
+            className="gap-1.5 bg-white/10 text-white ring-1 ring-white/15 hover:bg-white/20 hover:text-white"
             aria-label={t('buttons.logout')}
           >
             <LogOut className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
             <span className="hidden sm:inline">{t('buttons.logout')}</span>
-          </button>
+          </Button>
         </div>
       </div>
     </header>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Language toggle — zh-TW / EN                                              */
+/* -------------------------------------------------------------------------- */
+
+const LANG_KEY = 'pm.lang';
+
+function applyLanguage(lng) {
+  // i18n.js is owned by another agent; we only drive its public API.
+  i18n.changeLanguage(lng);
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = lng;
+  }
+  try {
+    localStorage.setItem(LANG_KEY, lng);
+  } catch {
+    /* localStorage may be unavailable (private mode) — non-fatal. */
+  }
+}
+
+function LanguageToggle() {
+  const [lang, setLang] = useState(i18n.language || 'zh-TW');
+
+  // Restore persisted choice once on mount.
+  useEffect(() => {
+    let saved = null;
+    try {
+      saved = localStorage.getItem(LANG_KEY);
+    } catch {
+      saved = null;
+    }
+    const initial = saved || i18n.language || 'zh-TW';
+    applyLanguage(initial);
+    setLang(initial);
+  }, []);
+
+  const choose = (lng) => {
+    applyLanguage(lng);
+    setLang(lng);
+  };
+
+  const isZh = (lang || '').startsWith('zh');
+
+  return (
+    <div
+      className="hidden items-center gap-0.5 rounded-md bg-white/10 p-0.5 ring-1 ring-white/15 sm:flex"
+      role="group"
+      aria-label="Language"
+    >
+      <Languages
+        className="ml-1 mr-0.5 h-3.5 w-3.5 text-navy-100"
+        strokeWidth={1.75}
+        aria-hidden="true"
+      />
+      <LangButton active={isZh} onClick={() => choose('zh-TW')} label="繁中" />
+      <LangButton active={!isZh} onClick={() => choose('en')} label="EN" />
+    </div>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme();
+  const isDark = theme === 'dark';
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(isDark ? 'light' : 'dark')}
+      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      title={isDark ? 'Light mode' : 'Dark mode'}
+      className="hidden items-center justify-center rounded-md bg-white/10 p-1.5 text-navy-50 ring-1 ring-white/15 hover:bg-white/20 sm:inline-flex"
+    >
+      {isDark ? (
+        <Sun className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+      ) : (
+        <Moon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+      )}
+    </button>
+  );
+}
+
+function LangButton({ active, onClick, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
+        active ? 'bg-white text-navy-900' : 'text-navy-50 hover:bg-white/15'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -218,7 +313,7 @@ function TrustBand({ session, trustContext, t }) {
   const maskedCount = trustContext?.maskedEntityCount ?? 0;
 
   return (
-    <div className="border-b border-slate-200 bg-white">
+    <div className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
       <div
         data-testid="trust-band"
         className="mx-auto flex max-w-[1920px] flex-wrap items-center gap-2 px-4 py-2 sm:px-6"
@@ -226,7 +321,7 @@ function TrustBand({ session, trustContext, t }) {
         <TrustChip
           testId="trust-redaction"
           Icon={Shield}
-          tone="navy"
+          tone="brand"
           label={
             maskedCount > 0
               ? t('shell.trust.redaction_active', { count: maskedCount })
@@ -237,14 +332,14 @@ function TrustBand({ session, trustContext, t }) {
         <TrustChip
           testId="trust-mapping"
           Icon={Server}
-          tone="slate"
+          tone="neutral"
           label={t('shell.trust.mapping_default')}
           title={t('shell.trust.mapping_tooltip')}
         />
         <TrustChip
           testId="trust-routing"
           Icon={isConfidential ? Lock : Cloud}
-          tone={isConfidential ? 'purple' : 'emerald'}
+          tone={isConfidential ? 'confidential' : 'success'}
           label={
             isConfidential
               ? t('shell.trust.routing_confidential')
@@ -259,7 +354,7 @@ function TrustBand({ session, trustContext, t }) {
         {session?.tenant_id && (
           <div className="ml-auto flex items-center gap-1.5 font-mono text-[11px] text-slate-500">
             <span>tenant</span>
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700">
+            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
               {session.tenant_id}
             </span>
           </div>
@@ -270,25 +365,14 @@ function TrustBand({ session, trustContext, t }) {
 }
 
 function TrustChip({ Icon, label, title, tone, testId }) {
-  // Tone → tailwind classes. Kept explicit (not interpolated) so the JIT
-  // scanner picks every class up at build time.
-  const toneClasses = {
-    navy: 'bg-navy-50 text-navy-900 ring-navy-200',
-    slate: 'bg-slate-100 text-slate-700 ring-slate-200',
-    emerald: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
-    purple: 'bg-purple-50 text-purple-800 ring-purple-200',
-    amber: 'bg-amber-50 text-amber-800 ring-amber-200',
-    rose: 'bg-rose-50 text-rose-700 ring-rose-200',
-  };
+  // Tone is now a semantic STATUS_TONE key (brand/neutral/success/confidential/
+  // warning/error); the Badge component owns the tone→class mapping so it stays
+  // in one place and every class string is static for the JIT scanner.
   return (
-    <span
-      data-testid={testId}
-      title={title}
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ${toneClasses[tone] || toneClasses.slate}`}
-    >
+    <Badge data-testid={testId} title={title} tone={tone}>
       <Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       <span>{label}</span>
-    </span>
+    </Badge>
   );
 }
 
@@ -306,7 +390,7 @@ function NavRail({ items, collapsed, setCollapsed, activePath, onNavigate, t }) 
     <nav
       aria-label="Primary"
       data-testid="nav-rail"
-      className={`flex shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-150 ${
+      className={`flex shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-150 dark:border-slate-700 dark:bg-slate-900 ${
         collapsed ? 'sm:w-16' : 'sm:w-60'
       } w-16`}
     >
@@ -314,18 +398,19 @@ function NavRail({ items, collapsed, setCollapsed, activePath, onNavigate, t }) 
         {items.map(({ id, to, label, Icon }) => {
           const isActive = activePath === to || activePath.startsWith(to + '/');
           return (
-            <button
+            <Button
               key={id}
               type="button"
+              variant="ghost"
               onClick={() => onNavigate(to)}
               aria-current={isActive ? 'page' : undefined}
               aria-label={label}
-              className={`group flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-navy-50 text-navy-900 ring-1 ring-navy-200'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
               title={label}
+              className={`group w-full justify-start gap-3 px-3 py-2 ${
+                isActive
+                  ? 'bg-navy-50 text-navy-900 ring-1 ring-navy-200 hover:bg-navy-50 hover:text-navy-900'
+                  : ''
+              }`}
             >
               <Icon
                 className={`h-5 w-5 shrink-0 ${isActive ? 'text-navy-700' : 'text-slate-500'}`}
@@ -333,23 +418,25 @@ function NavRail({ items, collapsed, setCollapsed, activePath, onNavigate, t }) 
                 aria-hidden="true"
               />
               <span className={`truncate ${collapsed ? 'hidden' : 'hidden sm:inline'}`}>{label}</span>
-            </button>
+            </Button>
           );
         })}
       </div>
       <div className="hidden border-t border-slate-200 p-2 sm:block">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? t('nav.expand') : t('nav.collapse')}
-          className="flex w-full items-center justify-center rounded-md px-2 py-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+          className="w-full text-slate-500 hover:text-slate-700"
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
           ) : (
             <ChevronLeft className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
           )}
-        </button>
+        </Button>
       </div>
     </nav>
   );

@@ -1,6 +1,8 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Badge } from '../ui/badge.jsx';
+
 /**
  * Claim dependency tree (UX_RESEARCH §4.1 + §5 #2 must-have).
  *
@@ -25,10 +27,10 @@ import { useTranslation } from 'react-i18next';
  *                              you separately argue dependent-only
  *                              patentability.
  *   - Green  (emerald-50/700) — clean.
- *   - Independent claims get a thick indigo-500 left border so the eye
+ *   - Independent claims get a thick navy-500 left border so the eye
  *     instantly catches "this is a root".
  *   - The currently-active rejection's affected claims get a subtle
- *     indigo ring so the cross-pane focus is visually connected.
+ *     navy ring so the cross-pane focus is visually connected.
  *
  * Click behaviour: if the row corresponds to a rejected claim, calling
  * `onClaimClick(claim_no)` lets the parent pivot the active rejection.
@@ -107,11 +109,11 @@ export default function ClaimTree({
   //   [#10] independent ─────────────  ▌  charging management system...
   //     [#11] dep. 10   ───────────                  ...                   (cascade)
   return (
-    <div className="rounded-lg border bg-white p-4" data-testid="claim-tree">
+    <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4" data-testid="claim-tree">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold">
           {t('analyze.claim_tree.title', { defaultValue: '請求項依賴樹 / Claim tree' })}{' '}
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
             ({claimTree.length} {t('analyze.claim_tree.claims', { defaultValue: 'claims' })})
           </span>
         </h3>
@@ -146,23 +148,29 @@ function ClaimRow({ node, rejection, cascade, active, onClaimClick }) {
   const indentPx = visualDepth * 12;
 
   // Tone palette — order matters: red beats cascade-yellow beats clean.
-  let toneClasses = 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100';
-  let toneChipClasses = 'bg-emerald-100 text-emerald-700';
+  // `badgeTone` maps to the shared STATUS_TONE keys (Badge component); the
+  // row container keeps its own bg+hover classes because a Badge can't carry
+  // the full-row hover affordance.
+  let toneClasses =
+    'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40';
+  let badgeTone = 'success';
   let toneLabel = 'clean';
   if (rejection) {
-    toneClasses = 'bg-rose-50 text-rose-900 hover:bg-rose-100 cursor-pointer';
-    toneChipClasses = 'bg-rose-200 text-rose-800';
+    toneClasses =
+      'bg-rose-50 dark:bg-rose-950/40 text-rose-900 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/40 cursor-pointer';
+    badgeTone = 'error';
     toneLabel = 'rejected';
   } else if (cascade) {
-    toneClasses = 'bg-amber-50 text-amber-900 hover:bg-amber-100';
-    toneChipClasses = 'bg-amber-200 text-amber-800';
+    toneClasses =
+      'bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40';
+    badgeTone = 'warning';
     toneLabel = 'cascade';
   }
 
   const independentBorder = node.is_independent
-    ? 'border-l-4 border-l-indigo-500'
+    ? 'border-l-4 border-l-navy-500'
     : 'border-l-4 border-l-transparent';
-  const activeRing = active ? 'ring-2 ring-indigo-300 ring-offset-0' : '';
+  const activeRing = active ? 'ring-2 ring-navy-300 ring-offset-0' : '';
 
   const handleClick = () => {
     if (rejection && onClaimClick) {
@@ -190,15 +198,19 @@ function ClaimRow({ node, rejection, cascade, active, onClaimClick }) {
         data-tone={toneLabel}
         data-claim-no={node.claim_no}
       >
-        <span
-          className={`shrink-0 rounded font-mono text-[10px] font-semibold ${toneChipClasses} px-1.5 py-0.5`}
+        <Badge
+          tone={badgeTone}
+          className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ring-0"
         >
           #{node.claim_no}
-        </span>
+        </Badge>
         {node.is_independent && (
-          <span className="shrink-0 rounded bg-indigo-100 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-indigo-700">
+          <Badge
+            tone="brand"
+            className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider ring-0"
+          >
             indep
-          </span>
+          </Badge>
         )}
         <span className="flex-1 truncate font-normal" title={node.text || ''}>
           {preview}
@@ -216,9 +228,13 @@ function RejectionChip({ rejection }) {
   // citation the attorneys use day-to-day.
   const label = SHORT_LABEL[rejection.rejection_type] || rejection.rejection_type;
   return (
-    <span className="shrink-0 rounded bg-rose-700 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-white">
+    <Badge
+      tone="error"
+      variant="solid"
+      className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase ring-0"
+    >
       {label}
-    </span>
+    </Badge>
   );
 }
 
@@ -235,15 +251,15 @@ const SHORT_LABEL = {
 function Legend({ t }) {
   return (
     <div className="flex gap-1.5 text-[10px]">
-      <span className="rounded bg-rose-100 px-1.5 py-0.5 text-rose-700">
+      <Badge tone="error" className="rounded px-1.5 py-0.5 ring-0">
         {t('analyze.claim_tree.legend.rejected', { defaultValue: '駁回 / Rejected' })}
-      </span>
-      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-700">
+      </Badge>
+      <Badge tone="warning" className="rounded px-1.5 py-0.5 ring-0">
         {t('analyze.claim_tree.legend.cascade', { defaultValue: '連帶 / Cascade' })}
-      </span>
-      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-emerald-700">
+      </Badge>
+      <Badge tone="success" className="rounded px-1.5 py-0.5 ring-0">
         {t('analyze.claim_tree.legend.clean', { defaultValue: '無駁回 / Clean' })}
-      </span>
+      </Badge>
     </div>
   );
 }

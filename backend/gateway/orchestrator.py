@@ -285,9 +285,15 @@ async def orchestrate_analysis(
                     drafts[idx] = _degraded_draft(d.rejection_id)
                     break
             continue
-        # Replace the draft with the verifier-cleaned version
+        # Replace the draft with the verifier-cleaned version, and surface the
+        # verifier's transparency fields (Q14) so the front-end can render the
+        # hallucination wall (what was stripped, how confident the verifier
+        # was, which model verified) instead of an anonymous [CITATION_REMOVED].
         d.draft_text = v["cleaned_draft_text"]
         d.grounded_citations = v["valid_citations"]
+        d.invalid_citations = v.get("invalid_citations", [])
+        d.verifier_confidence = v.get("verifier_confidence")
+        d.verifier_model = v.get("model_used")
         d.confidence = min(d.confidence, v["verifier_confidence"])
 
     # ---- Step 5: deadline (Q17) ----

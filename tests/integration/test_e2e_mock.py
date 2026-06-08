@@ -49,6 +49,18 @@ async def test_analyze_oa_end_to_end(gateway_client, alice_token, patched_ai_eng
     assert "drafts" in body, body
     assert len(body["drafts"]) >= 1, body["drafts"]
 
+    # Q14 verifier transparency: the orchestrator surfaces the verifier's output
+    # on each draft so the front-end can render the hallucination wall (what was
+    # stripped + how confident the verifier was), not just an anonymous
+    # [CITATION_REMOVED] marker. These fields default-exist on every draft;
+    # a successfully-verified (non-degraded) draft also carries a verifier_model.
+    for draft in body["drafts"]:
+        assert "invalid_citations" in draft, draft
+        assert isinstance(draft["invalid_citations"], list), draft
+        assert "verifier_confidence" in draft, draft
+        assert "verifier_model" in draft, draft
+    assert any(d.get("verifier_model") for d in body["drafts"]), body["drafts"]
+
     assert "deadline_summary" in body, body
     statutory = body["deadline_summary"].get("statutory_deadline")
     assert isinstance(statutory, str) and statutory, body["deadline_summary"]

@@ -85,6 +85,12 @@ class Settings:
     JWT_SECRET: str = os.getenv("JWT_SECRET", "changeme-generate-with-openssl-rand-hex-32")
     JWT_ALGO: str = "HS256"
     JWT_EXPIRES_MIN: int = 30
+    # H-5: pin issuer + audience on session tokens. Without them a token signed
+    # by ANY other service sharing JWT_SECRET would be accepted here
+    # (confused-deputy). verify_token enforces both; env-overridable per
+    # deployment so a multi-env estate can scope tokens to one environment.
+    JWT_ISS: str = os.getenv("JWT_ISS", "patentmind-gateway")
+    JWT_AUD: str = os.getenv("JWT_AUD", "patentmind-api")
     # Q12: magic-link single-use token TTL (small-firm "no IdP, no password"
     # login path — /v1/auth/magic/request → /v1/auth/magic/consume).
     MAGIC_LINK_TTL_MIN: int = int(os.getenv("MAGIC_LINK_TTL_MIN", "15"))

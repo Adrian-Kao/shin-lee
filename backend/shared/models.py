@@ -155,19 +155,43 @@ class DraftResponse(BaseModel):
     confidence: float
     requires_attorney_review: bool = True  # Q16: 永遠 True
 
+    # ---- Q14 verifier transparency ----
+    # Populated by the gateway orchestrator AFTER the verifier (Q14 layer 3)
+    # runs; the defaults keep the AI-engine draft constructor and the degraded
+    # placeholder valid (they have no verifier output yet). These surface the
+    # "hallucination wall" to the front-end so the attorney can SEE what the
+    # verifier stripped and how confident the (separate) verifier model was —
+    # instead of only an anonymous [CITATION_REMOVED] marker in draft_text.
+    invalid_citations: list[str] = Field(default_factory=list)  # citations stripped by the verifier
+    verifier_confidence: Optional[float] = None                 # standalone verifier confidence (≠ folded `confidence`)
+    verifier_model: Optional[str] = None                        # which model performed verification
+
 
 # ---------- Q16 — Provenance / human-in-the-loop sign-off ----------
 
 # Provenance source labels. These ARE the responsibility boundary (責任界線)
 # the Q16 decision requires: every exported sentence is tagged with who is
 # accountable for it.
-#   ai_generated    — produced by the AI Engine draft, accepted verbatim by
-#                     the attorney (AI is the author; the attorney accepted).
-#   attorney_edited — an AI sentence the attorney rewrote (shared authorship;
-#                     the EDIT is the feedback signal Q16 wants mined later).
-#   attorney_added  — a sentence the attorney wrote from scratch (no AI
-#                     involvement; full attorney authorship).
-ProvenanceSource = Literal["ai_generated", "attorney_edited", "attorney_added"]
+#   ai_generated     — produced by the AI Engine draft, accepted verbatim by
+#                      the reviewer (AI is the author; the human accepted).
+#   attorney_edited  — an AI sentence the ATTORNEY rewrote (shared authorship;
+#                      the EDIT is the feedback signal Q16 wants mined later).
+#   attorney_added   — a sentence the ATTORNEY wrote from scratch.
+#   paralegal_edited — an AI sentence a PARALEGAL rewrote while preparing the
+#                      draft for attorney sign-off (multi-person responsibility
+#                      chain: paralegal drafts → attorney reviews/signs).
+#   paralegal_added  — a sentence a PARALEGAL wrote from scratch.
+# The paralegal_* variants make the human contribution visible PER ROLE so the
+# exported document's responsibility boundary distinguishes "王(助理)擬稿 →
+# 林(律師)改寫 → 陳(合夥人)簽核" rather than collapsing all human edits to
+# "attorney". The attorney still owns final sign-off (the export gate).
+ProvenanceSource = Literal[
+    "ai_generated",
+    "attorney_edited",
+    "attorney_added",
+    "paralegal_edited",
+    "paralegal_added",
+]
 
 
 class ProvenanceSegment(BaseModel):
@@ -229,6 +253,8 @@ class ProvenanceSummary(BaseModel):
     ai_generated: int = 0
     attorney_edited: int = 0
     attorney_added: int = 0
+    paralegal_edited: int = 0
+    paralegal_added: int = 0
 
 
 class ExportResponse(BaseModel):

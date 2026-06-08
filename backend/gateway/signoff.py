@@ -65,6 +65,10 @@ def summarise_provenance(segments: list[ProvenanceSegment]) -> ProvenanceSummary
             summary.attorney_edited += 1
         elif seg.source == "attorney_added":
             summary.attorney_added += 1
+        elif seg.source == "paralegal_edited":
+            summary.paralegal_edited += 1
+        elif seg.source == "paralegal_added":
+            summary.paralegal_added += 1
     return summary
 
 

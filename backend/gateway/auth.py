@@ -261,6 +261,27 @@ _CASE_ACL: dict[str, set[str]] = {
 }
 
 
+# H-5: revoked session-token jti set. A logged-out / killed jti is refused for
+# the rest of its TTL. POC = in-memory set (per-process, lost on restart);
+# production MUST be Redis with TTL = remaining token lifetime so the set stays
+# bounded, survives restart, and spans replicas. Mirrors the magic-token
+# single-use store (`_CONSUMED_MAGIC_JTIS`).
+_REVOKED_SESSION_JTIS: set[str] = set()
+
+
+# H-5 (phase 3): algorithm-aware key selection. HS* is symmetric (one shared
+# secret); RS*/ES*/PS* are asymmetric — sign with the private key, verify with
+# the public key, so a leaked verifier (e.g. another service holding the public
+# key) cannot mint tokens. Default stays HS256 for the POC; set JWT_ALGO=RS256 +
+# JWT_PRIVATE_KEY / JWT_PUBLIC_KEY (PEM) to switch with zero call-site changes.
+def _signing_key() -> str:
+    return settings.JWT_SECRET if settings.JWT_ALGO.startswith("HS") else settings.JWT_PRIVATE_KEY
+
+
+def _verifying_key() -> str:
+    return settings.JWT_SECRET if settings.JWT_ALGO.startswith("HS") else settings.JWT_PUBLIC_KEY
+
+
 def issue_token(user_id: str) -> str:
     """Sign a short-lived JWT for the user."""
     if user_id not in _USERS:
@@ -271,25 +292,74 @@ def issue_token(user_id: str) -> str:
         "sub": user.user_id,
         "tenant_id": user.tenant_id,
         "role": user.role.value,
+        # H-5: issuer + audience pin the token to this service estate.
+        "iss": settings.JWT_ISS,
+        "aud": settings.JWT_AUD,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=settings.JWT_EXPIRES_MIN)).timestamp()),
         "jti": str(uuid.uuid4()),
     }
-    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGO)
+    return jwt.encode(payload, _signing_key(), algorithm=settings.JWT_ALGO)
 
 
 def verify_token(token: str) -> User:
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGO])
+        # H-5: enforce issuer + audience. A token lacking either claim (e.g. a
+        # magic-link token, or one minted by another service sharing the
+        # secret) raises InvalidTokenError → 401.
+        payload = jwt.decode(
+            token,
+            _verifying_key(),
+            algorithms=[settings.JWT_ALGO],
+            audience=settings.JWT_AUD,
+            issuer=settings.JWT_ISS,
+        )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token expired")
     except jwt.InvalidTokenError as e:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"invalid token: {e}")
 
+    # A magic-link token must NEVER be accepted as a Bearer session token even
+    # if it somehow carries the right aud/iss. (The module docstring above
+    # claimed verify_token already rejected magic tokens; it did not — H-5 adds
+    # the guard for real.)
+    if payload.get("typ") == _MAGIC_TOKEN_TYP:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid token: wrong type")
+
+    # H-5: revocation (logout / leaked-token kill switch).
+    jti = payload.get("jti")
+    if jti is not None and jti in _REVOKED_SESSION_JTIS:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token revoked")
+
     user_id = payload.get("sub")
     if user_id not in _USERS:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "unknown user")
     return _USERS[user_id]
+
+
+def revoke_token(token: str) -> bool:
+    """Revoke a session token by recording its jti (H-5: logout / kill switch).
+
+    Best-effort: a token we cannot decode (already expired / tampered / wrong
+    aud-iss) needs no revoking, so we return ``False`` rather than raise — the
+    caller's logout still succeeds idempotently. Returns ``True`` when a live
+    jti was added to the revocation set.
+    """
+    try:
+        payload = jwt.decode(
+            token,
+            _verifying_key(),
+            algorithms=[settings.JWT_ALGO],
+            audience=settings.JWT_AUD,
+            issuer=settings.JWT_ISS,
+        )
+    except jwt.InvalidTokenError:
+        return False
+    jti = payload.get("jti")
+    if not jti:
+        return False
+    _REVOKED_SESSION_JTIS.add(jti)
+    return True
 
 
 # ---------------------------------------------------------------------------

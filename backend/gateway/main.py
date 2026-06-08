@@ -35,6 +35,7 @@ from backend.gateway.auth import (
     issue_token,
     magic_token_jti,
     require_roles,
+    revoke_token,
 )
 from backend.gateway.orchestrator import orchestrate_analysis
 from backend.shared.config import settings
@@ -588,6 +589,40 @@ def magic_consume(req: MagicConsumeBody, request: Request):
             latency_ms=0,
             policy_decisions={"outcome": outcome, "magic_jti": jti},
         )
+
+
+@app.post("/v1/auth/logout")
+async def logout(request: Request, user: User = Depends(auth_dependency)):
+    """Revoke the caller's session token (H-5 — JWT kill switch).
+
+    The token's ``jti`` is added to the revocation set so the token is refused
+    by ``verify_token`` for the remainder of its TTL — closing the window where
+    a leaked/clicked-logout token stays valid for up to ``JWT_EXPIRES_MIN``.
+    Idempotent: a second logout (or an upstream-trust caller with no Bearer
+    token) is a no-op that returns ``revoked=False``.
+
+    POC revocation store is in-memory (``auth._REVOKED_SESSION_JTIS``);
+    production MUST back it with Redis (TTL = remaining token lifetime) so the
+    kill switch survives restart and spans replicas.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    revoked = revoke_token(auth_header[7:]) if auth_header.startswith("Bearer ") else False
+    # Logout is an authenticated, state-changing security event — audit it, the
+    # same way /v1/auth/magic/consume is audited (login, being pre-auth, is not).
+    _safe_audit_write(
+        user=user,
+        case_id=None,
+        endpoint="/v1/auth/logout",
+        request_payload={},
+        response_payload={"revoked": revoked},
+        masked_rules=[],
+        model_used=None,
+        prompt_tokens=0,
+        completion_tokens=0,
+        latency_ms=0,
+        policy_decisions={"revoked": revoked},
+    )
+    return {"ok": True, "revoked": revoked}
 
 
 # ---------- Health / Quota dashboard (Q19) ----------
@@ -1504,6 +1539,8 @@ def export_draft(
             pd["prov_ai_generated"] = summary.ai_generated
             pd["prov_attorney_edited"] = summary.attorney_edited
             pd["prov_attorney_added"] = summary.attorney_added
+            pd["prov_paralegal_edited"] = summary.paralegal_edited
+            pd["prov_paralegal_added"] = summary.paralegal_added
         # response_payload NEVER contains raw draft text — only the content
         # hash (on success) or the error shape (on failure). The writer hashes
         # this into response_hash; even that hashed column stays text-free.

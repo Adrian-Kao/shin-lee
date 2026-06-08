@@ -87,8 +87,14 @@ def test_session_jwt_from_magic_is_a_real_session_not_magic_typ(gateway_client):
     session_jwt = gateway_client.post(
         "/v1/auth/magic/consume", json={"token": token}
     ).json()["token"]
+    # The minted session token carries the H-5 issuer/audience claims, so it
+    # must be decoded with them (a bare decode now raises InvalidAudienceError).
     payload = jwt.decode(
-        session_jwt, settings.JWT_SECRET, algorithms=[settings.JWT_ALGO]
+        session_jwt,
+        settings.JWT_SECRET,
+        algorithms=[settings.JWT_ALGO],
+        audience=settings.JWT_AUD,
+        issuer=settings.JWT_ISS,
     )
     assert payload.get("typ") != "magic"
     assert payload["sub"] == "alice"
@@ -168,10 +174,14 @@ def test_consume_handcrafted_expired_token_is_rejected(gateway_client):
 
 def test_tampered_magic_token_is_rejected(gateway_client):
     token = _request_magic(gateway_client, "alice").json()["magic_token"]
-    # Flip the last char of the signature segment to break the HMAC.
+    # Flip the FIRST char of the signature segment to break the HMAC.
+    # (The last base64url char of a 32-byte HMAC only carries 4 significant
+    # bits — its low 2 bits are unused — so flipping it between 'A' and 'B'
+    # decodes to the SAME signature bytes and does NOT tamper anything; the
+    # first char's bits are all significant.)
     head, _, sig = token.rpartition(".")
-    flipped = "A" if sig[-1] != "A" else "B"
-    tampered = f"{head}.{sig[:-1]}{flipped}"
+    flipped = "A" if sig[0] != "A" else "B"
+    tampered = f"{head}.{flipped}{sig[1:]}"
     c = gateway_client.post("/v1/auth/magic/consume", json={"token": tampered})
     assert c.status_code == 401, c.text
 

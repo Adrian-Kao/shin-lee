@@ -271,13 +271,25 @@ def test_fake_request_surface_matches_real_dependency_usage() -> None:
 # Belt-and-braces: confirm the production default does not include any
 # wildcard or 0.0.0.0 entry that would defeat the whole guard.
 def test_default_trusted_upstream_ips_contains_no_wildcards() -> None:
-    # Pull the env-default rather than whatever the running test session set.
-    import importlib
+    # Read the default from a FRESH Settings instance rather than reloading the
+    # config module. TRUSTED_UPSTREAM_IPS is a class-level attribute computed
+    # from os.getenv at import time, so `Settings().TRUSTED_UPSTREAM_IPS`
+    # returns the same default without touching module state — and is immune to
+    # any sibling test's instance-level monkeypatch on the `settings` singleton.
+    #
+    # The previous implementation did `importlib.reload(config)`, which replaced
+    # the module-level `settings` singleton with a brand-new object. Every other
+    # module (auth.py, main.py, rate_limit.py, orchestrator.py) binds the
+    # ORIGINAL instance via `from ...config import settings` at import, so after
+    # the reload the live app and `config.settings` silently diverged. Any later
+    # test that did `monkeypatch.setattr(config.settings, "DEFAULT_RPM", ...)`
+    # (rate-limit / 413 / upstream-trust tests) was then patching an object the
+    # app no longer used — the classic order-dependent "passes alone, fails in
+    # the suite" pollution. (Reload also reset the conftest-redirected
+    # AUDIT_DB_PATH / MAPPING_DB_PATH back to the data/ tree.)
+    from backend.shared.config import Settings
 
-    from backend.shared import config as _cfg_mod
-
-    importlib.reload(_cfg_mod)
-    default = _cfg_mod.settings.TRUSTED_UPSTREAM_IPS
+    default = Settings().TRUSTED_UPSTREAM_IPS
     for ip in default:
         assert ip not in ("0.0.0.0", "*", "::", "::/0"), (
             f"TRUSTED_UPSTREAM_IPS default leaked a wildcard: {ip!r}"

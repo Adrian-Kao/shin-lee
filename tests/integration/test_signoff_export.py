@@ -171,6 +171,46 @@ def test_export_with_signoff_assembles_and_audits(gateway_client):
     assert pd.get("prov_attorney_added") == 1, pd
 
 
+def test_export_counts_paralegal_provenance(gateway_client):
+    """Multi-person responsibility chain: a draft a PARALEGAL helped prepare
+    (paralegal_edited / paralegal_added segments) is signed off by the ATTORNEY.
+    The export summary + audit row must count the paralegal contribution
+    separately, not collapse it into the attorney counts."""
+    auditor_token = _login(gateway_client, "audit_dave")
+    alice_token = _login(gateway_client, "alice")
+    segments = [
+        {"segment_id": "s1", "text": "AI sentence.", "source": "ai_generated", "accepted": True},
+        {"segment_id": "s2", "text": "Paralegal rewrote this.",
+         "source": "paralegal_edited", "accepted": True},
+        {"segment_id": "s3", "text": "Paralegal drafted this.",
+         "source": "paralegal_added", "accepted": True},
+        {"segment_id": "s4", "text": "Attorney rewrote this.",
+         "source": "attorney_edited", "accepted": True},
+    ]
+    resp = gateway_client.post(
+        "/v1/oa/export",
+        headers={"Authorization": f"Bearer {alice_token}"},
+        json={
+            "case_id": _ALICE_CASE,
+            "rejection_id": "REJ-1",
+            "segments": segments,
+            "attorney_signoff": True,
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    summary = resp.json()["provenance_summary"]
+    assert summary["paralegal_edited"] == 1, summary
+    assert summary["paralegal_added"] == 1, summary
+    assert summary["attorney_edited"] == 1, summary
+    assert summary["ai_generated"] == 1, summary
+
+    # The audit row records the paralegal counts in its policy_decisions.
+    row = _recent_rows(gateway_client, auditor_token)[0]
+    pd = row["policy_decisions"]
+    assert pd.get("prov_paralegal_edited") == 1, pd
+    assert pd.get("prov_paralegal_added") == 1, pd
+
+
 # ---------------------------------------------------------------------------
 # 3. Raw segment text MUST NOT be stored in the audit row.
 # ---------------------------------------------------------------------------

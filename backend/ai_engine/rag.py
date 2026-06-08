@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import sqlite3
+import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -222,9 +224,106 @@ def _looks_independent(claim_text: str) -> bool:
 
 
 # ---------- Embedding ----------
-# Two backends behind one interface (settings.EMBEDDING_BACKEND = mock | bge-m3).
-# - mock:    deterministic SHA-256 → 384 dims (POC reproducibility, mask real RAG quality)
-# - bge-m3:  BAAI/bge-m3 via sentence-transformers, 1024 dims, multilingual
+# Three backends behind one interface (settings.EMBEDDING_BACKEND = mock | lexical | bge-m3).
+# - mock:    deterministic SHA-256 → 384 dims. NOT semantic: cosine between any
+#            two distinct texts is near-random noise. Proves wiring only.
+# - lexical: dependency-free hashing vectorizer (numpy-only). REAL lexical-overlap
+#            semantics — texts sharing terms have higher cosine — so retrieval
+#            actually works in an air-gapped / no-GPU demo without torch/bge-m3.
+# - bge-m3:  BAAI/bge-m3 via sentence-transformers, 1024 dims, multilingual.
+#            Best quality but needs torch (which crashes on some boxes).
+#
+# `lexical` is selected purely by the env var EMBEDDING_BACKEND=lexical; it reads
+# the same free-form settings.EMBEDDING_BACKEND string the other backends do, so
+# no config.py enum change is needed.
+
+
+# ---------- Lexical hashing-vectorizer helpers (numpy-only, stateless) ----------
+# A stateless hashing vectorizer (a.k.a. "hashing trick"): no fitted IDF state,
+# fully deterministic. Tokens are hashed straight into EMBEDDING_DIM buckets via
+# a STABLE hash (zlib.crc32 — Python's builtin hash() is PYTHONHASHSEED-salted
+# and would make vectors non-reproducible across processes). We accumulate
+# sublinear TF (1 + log(count)) per bucket and L2-normalise, so cosine reflects
+# lexical overlap. Two scripts are tokenized:
+#   - English/Latin: lowercase \b\w+\b word tokens.
+#   - CJK (TW/CN/KR/JP patents have no whitespace): character BIGRAMS, which
+#     capture term overlap far better than unigrams (e.g. "充電管理" shares the
+#     bigrams 充電/電管/管理 with "負載管理" only at 管理 — graded overlap).
+# Both token streams are combined into one bag for a single text.
+
+# A "CJK" char here = any non-ASCII letter (covers Han, Hiragana/Katakana, Hangul).
+# We treat the whole non-ASCII-word run as bigram-able. Latin-1 accented letters
+# would also fall in here, but patent corpora that use them still get word tokens
+# from the \w+ pass, so the extra bigrams are harmless redundancy.
+_LATIN_WORD_RE = re.compile(r"[a-z0-9]+")
+_CJK_CHAR_RE = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힣豈-﫿]")
+
+
+def _lexical_tokens(text: str) -> list[str]:
+    """Tokenize for BOTH scripts and return the combined token bag.
+
+    - Latin/ASCII words → lowercased ``[a-z0-9]+`` tokens (prefixed ``w:``).
+    - CJK runs → character BIGRAMS over each contiguous CJK run (prefixed
+      ``b:``); a lone CJK char in its own run yields a single unigram so it is
+      not silently dropped.
+
+    Prefixes keep the two namespaces from colliding in the hash space (a Latin
+    word can never alias a CJK bigram).
+    """
+    tokens: list[str] = []
+    # Latin/ASCII word tokens (lowercased).
+    for m in _LATIN_WORD_RE.finditer(text.lower()):
+        tokens.append("w:" + m.group(0))
+    # CJK bigrams: walk contiguous runs of CJK chars.
+    run: list[str] = []
+
+    def _flush_run():
+        if not run:
+            return
+        if len(run) == 1:
+            tokens.append("b:" + run[0])
+        else:
+            for i in range(len(run) - 1):
+                tokens.append("b:" + run[i] + run[i + 1])
+
+    for ch in text:
+        if _CJK_CHAR_RE.match(ch):
+            run.append(ch)
+        else:
+            _flush_run()
+            run = []
+    _flush_run()
+    return tokens
+
+
+def _lexical_embed(text: str, tenant_id: str, dim: int) -> list[float]:
+    """Hashing vectorizer → L2-normalised dense vector of length ``dim``.
+
+    Deterministic & numpy-only. Per-bucket value = sublinear TF (1+log(count)).
+
+    H-3 tenant isolation: the tenant_id is folded into the bucket hash (like the
+    mock salt), so the SAME text under tenant_a vs tenant_b lands in different
+    buckets → different vectors (defeats the similarity-oracle). Because EVERY
+    token of a given tenant shares the same salt, the permutation of buckets is
+    consistent within a tenant, so pairwise cosines BETWEEN that tenant's texts
+    are unchanged — within-tenant relative similarity (the thing retrieval needs)
+    is preserved. ``tenant_id=""`` is its own namespace (chunker unit tests).
+    """
+    salt = f"{tenant_id}|".encode()
+    counts: dict[int, int] = {}
+    for tok in _lexical_tokens(text):
+        # crc32 is a stable, process-independent 32-bit hash. Fold tenant salt
+        # in so buckets are tenant-specific (H-3) while staying deterministic.
+        bucket = zlib.crc32(tok.encode("utf-8"), zlib.crc32(salt)) % dim
+        counts[bucket] = counts.get(bucket, 0) + 1
+    vec = np.zeros(dim, dtype=np.float32)
+    for bucket, c in counts.items():
+        vec[bucket] = 1.0 + math.log(c)  # sublinear TF
+    n = float(np.linalg.norm(vec))
+    if n > 0:
+        vec = vec / n
+    return vec.tolist()
+
 
 class Embedder:
     def __init__(self):
@@ -269,6 +368,11 @@ class Embedder:
         if self.backend == "bge-m3":
             v = self._st_model.encode(text, normalize_embeddings=True, show_progress_bar=False)
             vec_list = v.tolist()
+        elif self.backend == "lexical":
+            # Dependency-free hashing vectorizer with REAL lexical-overlap
+            # semantics (unlike mock). Tenant-salted for H-3, same contract as
+            # mock (list[float] of length EMBEDDING_DIM). See _lexical_embed.
+            vec_list = _lexical_embed(text, tenant_id, settings.EMBEDDING_DIM)
         else:
             # mock: SHA-256 → padded float vec, unit-normalised.
             # H-3 fix: salt with tenant_id so different tenants get different

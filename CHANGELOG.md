@@ -15,6 +15,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **JWT lifecycle hardening (security H-5)**: issuer/audience (`iss`/`aud`)
   pinning, a `jti` revocation list, and `POST /v1/auth/logout` (kill switch);
   magic-link vs session token separation enforced in `verify_token`.
+  Optional **RS256 asymmetric signing** (`JWT_ALGO=RS256` + PEM key pair) so a
+  verify-only service holds a public key that cannot mint tokens; HS256 stays
+  the default. The revocation store is now **pluggable** (`REVOCATION_BACKEND=
+  memory|redis`): the Redis backend makes the logout kill switch durable across
+  restart and replicas, with each jti auto-expiring at the token's TTL.
 - **Verifier transparency**: `DraftResponse` now carries `invalid_citations`,
   `verifier_confidence`, and `verifier_model`, surfaced in the UI as a
   hallucination-defense panel (what the verifier stripped + which model vetted).

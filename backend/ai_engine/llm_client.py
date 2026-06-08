@@ -507,6 +507,253 @@ class MockLLM:
         return json.dumps({"rejections": rejections})
 
     @staticmethod
+    def _first_grounded_ref(user: str) -> str:
+        """Return the first `[GROUNDED_REF_N]` key the prompt offered.
+
+        oa_analyzer.draft_response renders the grounded set as lines like
+        `[GROUNDED_REF_1] patent=... section=... score=...`. We pick the
+        lowest-numbered ref present so the citation we emit is ALWAYS inside
+        the grounded set the verifier was given. Falls back to
+        `[GROUNDED_REF_1]` when the block is missing/empty (the verifier then
+        treats it as ungrounded and strips it — the safe direction).
+        """
+        refs = re.findall(r"\[GROUNDED_REF_(\d+)\]", user)
+        if refs:
+            n = min(int(x) for x in refs)
+            return f"[GROUNDED_REF_{n}]"
+        return "[GROUNDED_REF_1]"
+
+    @staticmethod
+    def _jurisdiction_draft(user: str, ref: str) -> dict | None:
+        """Emit a native-language response draft for CN/KR/EP/JP/TW rejections.
+
+        Returns None when no jurisdiction cue is recognised, so the caller
+        falls through to the generic English non-obviousness draft (US +
+        fallback, unchanged).
+
+        Detection cues (mirrors _mock_parse_oa so the same OA that produced the
+        rejection also produces a matching-language draft):
+            CN → 简体: 专利法第 / 创造性 / 新颖性 / 审查员
+            KR → 한글: 제29조 / 진보성 / 신규성 / 거절이유
+            EP → Art. ... EPC / inventive step (English EPC practice)
+            TW → 繁體: 專利法第 / 進步性 / 新穎性 / 審查官 (non-antecedent)
+            JP → 日本語: 特許法第 / 進歩性 / 拒絶理由
+        The statute is prose only; `ref` (a grounded [GROUNDED_REF_N]) is the
+        load-bearing, verifier-accepted citation.
+        """
+        user_l = user.lower()
+        is_novelty = '"102_novelty"' in user or "102_novelty" in user
+        is_clarity = '"other"' in user or "other" in user.split("examiner_argument", 1)[0]
+
+        # ----- CN (CNIPA) — 简体 意见陈述书 / 答复 ------------------------
+        if ("创造性" in user or "新颖性" in user or "审查员" in user
+                or re.search(r"专利法第\d+条", user)):
+            if "新颖性" in user:
+                rejection_word, statute = "新颖性", "专利法第22条第2款"
+                body = (
+                    f"审查员认为权利要求相对于对比文件不具备新颖性。申请人不能同意。"
+                    f"如本案说明书所载（参见 {ref}），所请技术方案包含对比文件未公开的"
+                    f"区别技术特征，故对比文件并未完整公开权利要求的全部技术特征，"
+                    f"权利要求相对于对比文件具备新颖性，符合{statute}的规定。"
+                )
+            elif "充分公开" in user or "得到说明书的支持" in user or (
+                    "创造性" not in user and "新颖性" not in user):
+                rejection_word, statute = "说明书记载", "专利法第26条"
+                body = (
+                    f"审查员就说明书记载提出异议。申请人认为，结合 {ref} 所记载的"
+                    f"实施方式与技术效果，本领域技术人员能够清楚理解并实现所请技术方案，"
+                    f"说明书已作出清楚、完整的说明，权利要求亦得到说明书的支持，"
+                    f"符合{statute}的规定。"
+                )
+            else:
+                rejection_word, statute = "创造性", "专利法第22条第3款"
+                body = (
+                    f"审查员认为权利要求不具备创造性。申请人不能同意。如本案说明书所载"
+                    f"（参见 {ref}），所请技术方案相对于对比文件取得了预料不到的技术效果，"
+                    f"该区别技术特征并非本领域的公知常识，对比文件亦未给出相应的技术启示，"
+                    f"故所请技术方案具备突出的实质性特点和显著的进步，"
+                    f"具备创造性，符合{statute}的规定。"
+                )
+            return {
+                "strategy": (
+                    f"针对{rejection_word}的审查意见，以 {ref} 所载区别技术特征"
+                    f"及其技术效果进行答复，主张对比文件未给出相应技术启示。"
+                ),
+                "draft_text": (
+                    "意见陈述书\n\n申请人针对审查意见通知书答复如下：\n\n"
+                    + body
+                    + "\n\n综上所述，申请人恳请审查员重新考虑，对本申请予以授权。"
+                ),
+                "grounded_citations": [ref],
+                "confidence": 0.84,
+            }
+
+        # ----- KR (KIPO) — 한글 의견서 ------------------------------------
+        if ("진보성" in user or "신규성" in user or "심사관" in user
+                or "거절이유" in user or "제29조" in user or "제42조" in user):
+            if "신규성" in user:
+                rejection_word, statute = "신규성", "특허법 제29조제1항"
+                body = (
+                    f"심사관님께서는 청구항이 인용발명에 의하여 신규성이 없다고 "
+                    f"판단하셨으나, 출원인은 이에 동의할 수 없습니다. 본원 명세서에 "
+                    f"기재된 바와 같이（{ref} 참조）, 청구항은 인용발명에 개시되지 "
+                    f"아니한 구성요소를 포함하므로 인용발명과 동일하지 아니하며, "
+                    f"따라서 {statute}에 규정된 신규성을 구비합니다."
+                )
+            elif "기재불비" in user or "제42조" in user or (
+                    "진보성" not in user and "신규성" not in user):
+                rejection_word, statute = "명세서 기재", "특허법 제42조"
+                body = (
+                    f"심사관님께서 지적하신 명세서 기재와 관련하여, 본원 명세서"
+                    f"（{ref} 참조）에 기재된 실시예와 작용효과를 통하여 통상의 "
+                    f"기술자가 청구된 발명을 명확히 이해하고 실시할 수 있으므로, "
+                    f"명세서의 기재는 {statute}의 요건을 충족합니다."
+                )
+            else:
+                rejection_word, statute = "진보성", "특허법 제29조제2항"
+                body = (
+                    f"심사관님께서는 청구항이 인용발명에 비하여 진보성이 없다고 "
+                    f"판단하셨으나, 출원인은 이에 동의할 수 없습니다. 본원 명세서에 "
+                    f"기재된 바와 같이（{ref} 참조）, 청구된 발명은 인용발명으로부터 "
+                    f"예측할 수 없는 현저한 작용효과를 가지며, 인용발명에는 이러한 "
+                    f"구성을 채택할 동기나 시사가 없습니다. 따라서 청구항은 "
+                    f"{statute}에 규정된 진보성을 구비합니다."
+                )
+            return {
+                "strategy": (
+                    f"{rejection_word} 거절이유에 대하여 {ref}에 기재된 구성과 "
+                    f"작용효과를 근거로, 인용발명에 동기·시사가 없음을 주장함."
+                ),
+                "draft_text": (
+                    "의 견 서\n\n출원인은 거절이유통지에 대하여 다음과 같이 "
+                    "의견을 개진합니다.\n\n"
+                    + body
+                    + "\n\n이상과 같으므로, 본원은 거절이유가 해소되었는바, "
+                    "특허결정하여 주시기 바랍니다."
+                ),
+                "grounded_citations": [ref],
+                "confidence": 0.84,
+            }
+
+        # ----- EP (EPO) — English EPC response ----------------------------
+        if (re.search(r"\bArt(?:icle|\.)?\s*\d+\b[^\n]{0,12}?\bEPC\b", user, re.I)
+                or "inventive step" in user_l
+                or "lacks novelty" in user_l
+                or re.search(r"\bEPC\b", user)):
+            if "novelty" in user_l or "lacks novelty" in user_l or "art. 54" in user_l:
+                rejection_word, article = "novelty", "Art. 54 EPC"
+                body = (
+                    f"The Examining Division objects that the claims lack novelty "
+                    f"under {article}. The applicant respectfully disagrees. As set "
+                    f"out in the application as filed (see {ref}), the claims recite "
+                    f"a distinguishing feature that is neither explicitly nor "
+                    f"implicitly disclosed in D1. D1 therefore does not disclose all "
+                    f"features of the claim in combination, and the subject-matter of "
+                    f"the claims is novel within the meaning of {article}."
+                )
+            elif "clarity" in user_l or "art. 84" in user_l or "art. 123" in user_l \
+                    or "added subject" in user_l:
+                rejection_word, article = "clarity / support", "Art. 84 EPC"
+                body = (
+                    f"The objection under {article} is respectfully traversed. As "
+                    f"supported by the description (see {ref}), the claimed features "
+                    f"are clear to the skilled person and are fully supported by the "
+                    f"description; the claims meet the requirements of {article}."
+                )
+            else:
+                rejection_word, article = "inventive step", "Art. 56 EPC"
+                body = (
+                    f"The Examining Division objects that the claims do not involve "
+                    f"an inventive step under {article}. The applicant respectfully "
+                    f"disagrees. Starting from D1 as the closest prior art, the "
+                    f"distinguishing feature (see {ref}) provides an unexpected "
+                    f"technical effect that solves the objective technical problem. "
+                    f"Neither D1 nor D2 contains any pointer towards this solution, "
+                    f"and the skilled person would not have arrived at the claimed "
+                    f"subject-matter without hindsight. The claims therefore involve "
+                    f"an inventive step within the meaning of {article}."
+                )
+            return {
+                "strategy": (
+                    f"Traverse the {rejection_word} objection using the "
+                    f"problem-and-solution approach, relying on the distinguishing "
+                    f"feature and unexpected technical effect shown in {ref}."
+                ),
+                "draft_text": (
+                    "Response to the Communication pursuant to Art. 94(3) EPC\n\n"
+                    "The applicant submits the following observations.\n\n"
+                    + body
+                    + "\n\nReconsideration and grant of a patent are respectfully "
+                    "requested."
+                ),
+                "grounded_citations": [ref],
+                "confidence": 0.85,
+            }
+
+        # ----- TW (TIPO) 繁體 進步性/新穎性 申復書 (non-antecedent) --------
+        if ("進步性" in user or "新穎性" in user or "審查官" in user
+                or re.search(r"專利法第\d+條", user)):
+            if "新穎性" in user:
+                rejection_word, statute = "新穎性", "專利法第22條第1項"
+                body = (
+                    f"審查官認為所請請求項不具新穎性，申請人未敢苟同。如本案說明書"
+                    f"所載（參見 {ref}），所請技術方案包含引證案未揭露之區別技術特徵，"
+                    f"引證案並未揭露請求項之全部技術特徵，故所請發明具新穎性，"
+                    f"符合{statute}之規定。"
+                )
+            else:
+                rejection_word, statute = "進步性", "專利法第22條第2項"
+                body = (
+                    f"審查官認為所請請求項不具進步性，申請人未敢苟同。如本案說明書"
+                    f"所載（參見 {ref}），所請技術方案相較於引證案具有無法預期之"
+                    f"技術功效，且引證案並未給予相應之教示或建議，該領域具通常知識者"
+                    f"並無動機完成所請發明，故所請發明具進步性，符合{statute}之規定。"
+                )
+            return {
+                "strategy": (
+                    f"就{rejection_word}核駁，以 {ref} 所載區別技術特徵及無法預期"
+                    f"之技術功效答辯，主張引證案未給予教示或建議。"
+                ),
+                "draft_text": (
+                    "申復書\n\n申請人謹就審查意見通知函答辯如下：\n\n"
+                    + body
+                    + "\n\n綜上，本案已克服前揭核駁理由，懇請鈞局准予專利。"
+                ),
+                "grounded_citations": [ref],
+                "confidence": 0.84,
+            }
+
+        # ----- JP (JPO) 日本語 意見書 -------------------------------------
+        if ("進歩性" in user or "拒絶理由" in user or "特許法第" in user
+                or "審査官" in user):
+            rejection_word, statute = "進歩性", "特許法第29条第2項"
+            body = (
+                f"審査官殿は、本願請求項が引用文献に基づき進歩性を欠くと判断されました"
+                f"が、出願人はこれに同意できません。本願明細書に記載のとおり"
+                f"（{ref} を参照）、請求項に係る発明は引用文献からは予測し得ない"
+                f"格別の作用効果を奏し、引用文献には当該構成を採用する動機付けが"
+                f"存在しません。したがって、本願発明は{statute}に規定する進歩性を"
+                f"有するものです。"
+            )
+            return {
+                "strategy": (
+                    f"{rejection_word}の拒絶理由に対し、{ref} に記載の構成と格別の"
+                    f"作用効果に基づき、引用文献に動機付けがないことを主張する。"
+                ),
+                "draft_text": (
+                    "意見書\n\n出願人は、拒絶理由通知に対して以下のとおり意見を"
+                    "申し述べます。\n\n"
+                    + body
+                    + "\n\n以上のとおり、本願は拒絶理由が解消されたものと思料します"
+                    "ので、特許査定を賜りますようお願い申し上げます。"
+                ),
+                "grounded_citations": [ref],
+                "confidence": 0.83,
+            }
+
+        return None
+
+    @staticmethod
     def _mock_draft(user: str) -> str:
         # Route TW antecedent_basis rejections to a TIPO申復書 mock draft.
         if "antecedent_basis" in user or "先行詞" in user:
@@ -532,6 +779,27 @@ class MockLLM:
                 "grounded_citations": ["[GROUNDED_REF_1]", "專利法第26條第2項"],
                 "confidence": 0.86,
             })
+
+        # ---- Jurisdiction-aware response drafts (CN/KR/EP/JP/TW) ----------
+        # The `user` message carries the rejection JSON (rejection_type +
+        # examiner_argument, whose LANGUAGE differs per jurisdiction) plus the
+        # GROUNDED_SET block listing [GROUNDED_REF_N] keys. We detect the
+        # jurisdiction from script/clause cues and emit a SHORT, native-language
+        # response that argues against the rejection_type and cites ONLY from
+        # the grounded set (+ the jurisdiction's statute as prose).
+        #
+        # IMPORTANT (verifier safety, Q14): the CN/KR/EP statute forms
+        # (专利法第22条第3款 / 특허법 제29조제2항 / Art. 56 EPC) are NOT in
+        # oa_analyzer._STATUTE_WHITELIST, so the verifier would STRIP them.
+        # We therefore make a [GROUNDED_REF_N] the load-bearing, verifier-safe
+        # citation and treat the statute as inline prose only. We pick the
+        # FIRST grounded ref that the prompt actually offered (default
+        # [GROUNDED_REF_1]) so the cite is always inside the grounded set.
+        ref = MockLLM._first_grounded_ref(user)
+        draft = MockLLM._jurisdiction_draft(user, ref)
+        if draft is not None:
+            return json.dumps(draft)
+
         return json.dumps({
             "strategy": (
                 "Argue non-obviousness by demonstrating an unexpected technical effect "

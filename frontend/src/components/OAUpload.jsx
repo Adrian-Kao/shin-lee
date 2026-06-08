@@ -1,8 +1,14 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UploadCloud, FileText, Loader2 } from 'lucide-react';
+import { UploadCloud, FileText, Loader2, Download } from 'lucide-react';
 import { api } from '../api/client.js';
 import { Button } from './ui/button.jsx';
+import { Badge } from './ui/badge.jsx';
+import { toast } from '../lib/toast.jsx';
+
+// Backend joins per-page extracted text with this exact separator (see
+// backend OA upload handler). We split on it to render per-page blocks.
+const PAGE_BREAK = '\n\n--- page break ---\n\n';
 
 // Day 2: drag-drop PDF / DOCX upload for the Analyze view.
 // State machine:
@@ -59,15 +65,19 @@ export default function OAUpload({ caseId, token, onExtractSuccess, onError }) {
     (f) => {
       if (!f) return;
       if (!isAllowed(f)) {
-        setErrorMsg(t('upload.invalid_type'));
+        const msg = t('upload.invalid_type');
+        toast.error(msg); // toast per spec; inline chip below for in-pane context
+        setErrorMsg(msg);
         setStatus('error');
-        if (onError) onError(new Error(t('upload.invalid_type')));
+        if (onError) onError(new Error(msg));
         return;
       }
       if (f.size > MAX_BYTES) {
-        setErrorMsg(t('upload.too_large'));
+        const msg = t('upload.too_large');
+        toast.error(msg);
+        setErrorMsg(msg);
         setStatus('error');
-        if (onError) onError(new Error(t('upload.too_large')));
+        if (onError) onError(new Error(msg));
         return;
       }
       // Replace any existing blobUrl
@@ -263,7 +273,7 @@ function ElementTable({ table, t }) {
 }
 
 function DropZone({ dragOver, onDragOver, onDragLeave, onDrop, onBrowseClick, t }) {
-  // Three border-color states: idle (slate), dragging-over (indigo + bg).
+  // Two border-color states: idle (slate), dragging-over (navy + bg).
   const base =
     'h-48 border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition-colors cursor-pointer select-none';
   const tone = dragOver
@@ -300,13 +310,36 @@ function DropZone({ dragOver, onDragOver, onDragLeave, onDrop, onBrowseClick, t 
 function PreviewPane({ file, blobUrl, t }) {
   if (!file) return null;
   if (blobUrl) {
+    // Native browser PDF rendering — NO pdf.js dependency. <object> is the
+    // primary renderer; an <iframe> is the first fallback (some browsers honour
+    // one but not the other for blob: URLs), and a download link is the final
+    // fallback for environments that render neither (e.g. some mobile webviews).
     return (
-      <embed
+      <object
         type="application/pdf"
-        src={blobUrl}
+        data={blobUrl}
         className="h-96 w-full rounded border dark:border-slate-700"
-        title={file.name}
-      />
+        aria-label={file.name}
+        data-testid="pdf-preview"
+      >
+        <iframe
+          src={blobUrl}
+          title={file.name}
+          className="h-96 w-full rounded border dark:border-slate-700"
+        />
+        <div className="flex h-96 w-full flex-col items-center justify-center rounded border bg-slate-50 px-6 text-center dark:border-slate-700 dark:bg-slate-800/50">
+          <FileText className="mb-2 h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />
+          <div className="text-sm text-slate-600 dark:text-slate-300">{t('upload.pdf_no_inline')}</div>
+          <a
+            href={blobUrl}
+            download={file.name}
+            className="mt-2 inline-flex items-center gap-1 rounded text-sm text-navy-700 underline hover:text-navy-800 dark:text-navy-200"
+          >
+            <Download className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+            {file.name}
+          </a>
+        </div>
+      </object>
     );
   }
   return (
@@ -314,6 +347,71 @@ function PreviewPane({ file, blobUrl, t }) {
       <FileText className="mb-2 h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />
       <div className="text-sm text-slate-600 dark:text-slate-300">{t('upload.docx_no_preview')}</div>
       <div className="mt-2 break-all font-mono text-xs text-slate-400 dark:text-slate-500">{file.name}</div>
+    </div>
+  );
+}
+
+/**
+ * Extracted-text preview — shown after a successful upload. Splits the
+ * page-joined `extracted_text` on the backend separator into per-page
+ * scrollable blocks, and surfaces page/char counts, an OCR badge, and any
+ * warnings. Defensive: missing/empty text → renders only the meta header.
+ */
+function ExtractedTextPreview({ result, t }) {
+  const pages = useMemo(() => {
+    const raw = typeof result?.extracted_text === 'string' ? result.extracted_text : '';
+    if (!raw) return [];
+    return raw.split(PAGE_BREAK);
+  }, [result]);
+
+  const pageCount = result?.page_count ?? pages.length;
+  const charCount = result?.char_count ?? 0;
+  const ocrPages = result?.ocr_pages_used ?? 0;
+  const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
+
+  return (
+    <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900" data-testid="extracted-text-preview">
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <Badge tone="brand" variant="soft">
+          {t('upload.preview_pages', { count: pageCount })}
+        </Badge>
+        <Badge tone="neutral" variant="soft">
+          {t('upload.preview_chars', { count: (charCount || 0).toLocaleString() })}
+        </Badge>
+        {ocrPages > 0 && (
+          <Badge tone="warning" variant="soft" data-testid="ocr-badge">
+            {t('upload.preview_ocr', { count: ocrPages })}
+          </Badge>
+        )}
+      </div>
+
+      {warnings.length > 0 && (
+        <div className="mb-2 space-y-1">
+          {warnings.map((w, i) => (
+            <div
+              key={i}
+              className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+            >
+              {w}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pages.length > 0 && (
+        <div className="space-y-2" data-testid="extracted-text-pages">
+          {pages.map((pageText, i) => (
+            <div key={i} className="rounded border border-slate-100 dark:border-slate-800">
+              <div className="border-b border-slate-100 bg-slate-50 px-2 py-1 text-3xs uppercase tracking-wider text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500">
+                {t('upload.preview_page_n', { n: i + 1 })}
+              </div>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words px-2 py-1.5 font-mono text-xs text-slate-700 dark:text-slate-200">
+                {pageText}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -394,6 +492,7 @@ function StatusPane({
               </div>
             )}
           </div>
+          <ExtractedTextPreview result={extractResult} t={t} />
           <ElementTable table={extractResult.element_table} t={t} />
           <div className="flex gap-2">
             <Button variant="primary" onClick={onAccept} className="flex-1">

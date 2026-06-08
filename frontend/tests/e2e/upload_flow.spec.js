@@ -114,4 +114,86 @@ test.describe('Upload flow', () => {
     // Ensure clickability — the click delegates to a hidden file input.
     await expect(dz).toBeEnabled();
   });
+
+  test('dragover highlights the drop zone (navy state)', async ({ page }) => {
+    await loginAsAlice(page);
+
+    const dz = visibleMain(page)
+      .getByRole('button', { name: /拖放.*PDF|browse files|瀏覽檔案/ })
+      .first();
+    await expect(dz).toBeVisible();
+
+    // Idle: slate border, no navy background. Dispatch real drag events with a
+    // genuine DataTransfer (constructed in-page) so React's onDragOver fires and
+    // flips the highlight state — a plain-object dataTransfer can't be coerced
+    // into a DragEvent by Playwright's dispatchEvent.
+    await expect(dz).not.toHaveClass(/bg-navy-50/);
+    await dz.evaluate((el) => {
+      const dt = new DataTransfer();
+      el.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    });
+    await expect(dz).toHaveClass(/border-navy-400/);
+    await expect(dz).toHaveClass(/bg-navy-50/);
+
+    // dragleave clears the highlight again.
+    await dz.evaluate((el) => {
+      const dt = new DataTransfer();
+      el.dispatchEvent(new DragEvent('dragleave', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    });
+    await expect(dz).not.toHaveClass(/bg-navy-50/);
+  });
+
+  test('upload renders preview: per-page text, OCR badge, element table, PDF frame', async ({
+    page,
+  }) => {
+    await loginAsAlice(page);
+    await mockUpload(page, {
+      // Two pages joined with the backend separator. The component splits on it.
+      extracted_text:
+        'PAGE ONE BODY — Claim 1 rejected under §103.' +
+        '\n\n--- page break ---\n\n' +
+        'PAGE TWO BODY — see figure element 200.',
+      page_count: 2,
+      char_count: 82,
+      ocr_pages_used: 1,
+      warnings: ['第 2 頁為掃描影像，已使用 OCR'],
+      cost_meta: { estimated_cost_usd: 0.02 },
+      element_table: { 100: 'housing', 200: 'microchannel' },
+    });
+
+    await fileInput(page).setInputFiles({
+      name: 'scanned-oa.pdf',
+      mimeType: 'application/pdf',
+      buffer: Buffer.from('%PDF-1.4 fake pdf bytes for the e2e harness'),
+    });
+
+    const main = visibleMain(page);
+    const uploadBtn = main.getByRole('button', { name: /^上傳$/ });
+    await expect(uploadBtn).toBeVisible();
+    await uploadBtn.click();
+
+    // Preview block appears once extraction succeeds.
+    const preview = main.locator('[data-testid="extracted-text-preview"]');
+    await expect(preview).toBeVisible({ timeout: 5000 });
+
+    // Per-page blocks: both pages rendered as separate scrollable blocks.
+    const pages = main.locator('[data-testid="extracted-text-pages"] > div');
+    await expect(pages).toHaveCount(2);
+    await expect(main.getByText('PAGE ONE BODY')).toBeVisible();
+    await expect(main.getByText('PAGE TWO BODY')).toBeVisible();
+
+    // OCR badge ("1 頁透過 OCR").
+    await expect(main.locator('[data-testid="ocr-badge"]')).toBeVisible();
+    await expect(main.locator('[data-testid="ocr-badge"]')).toContainText('OCR');
+
+    // Element table (numeral → description) surfaced in the preview.
+    const table = main.locator('[data-testid="element-table"]');
+    await expect(table).toBeVisible();
+    await expect(table).toContainText('microchannel');
+
+    // Native PDF preview: <object type="application/pdf"> on the file blob URL.
+    const pdfFrame = main.locator('[data-testid="pdf-preview"]');
+    await expect(pdfFrame).toHaveAttribute('type', 'application/pdf');
+    await expect(pdfFrame).toHaveAttribute('data', /^blob:/);
+  });
 });

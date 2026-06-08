@@ -91,6 +91,12 @@ class Settings:
     # deployment so a multi-env estate can scope tokens to one environment.
     JWT_ISS: str = os.getenv("JWT_ISS", "patentmind-gateway")
     JWT_AUD: str = os.getenv("JWT_AUD", "patentmind-api")
+    # H-5 phase 3: asymmetric signing. Set JWT_ALGO=RS256 (or ES256/PS256) and
+    # supply PEM keys via env to sign with a private key and verify with the
+    # public key — so a service that only needs to VERIFY tokens never holds a
+    # key that can MINT them. Empty + HS256 (default) keeps the symmetric POC path.
+    JWT_PRIVATE_KEY: str = os.getenv("JWT_PRIVATE_KEY", "")
+    JWT_PUBLIC_KEY: str = os.getenv("JWT_PUBLIC_KEY", "")
     # Q12: magic-link single-use token TTL (small-firm "no IdP, no password"
     # login path — /v1/auth/magic/request → /v1/auth/magic/consume).
     MAGIC_LINK_TTL_MIN: int = int(os.getenv("MAGIC_LINK_TTL_MIN", "15"))
@@ -125,6 +131,11 @@ class Settings:
     # Cache (Q9)
     CACHE_BACKEND: str = os.getenv("CACHE_BACKEND", "memory")  # memory | redis
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    # [H-5] session-token revocation store. `memory` is per-process (lost on
+    # restart, not shared across replicas) — fine for a single-replica POC.
+    # `redis` makes the logout kill switch durable + fleet-wide, with each jti
+    # auto-expiring at the token's own TTL so the set stays bounded.
+    REVOCATION_BACKEND: str = os.getenv("REVOCATION_BACKEND", "memory")  # memory | redis
     CACHE_TTL_RESPONSE_SEC: int = 3600        # LLM response cache 1hr
     CACHE_TTL_RETRIEVAL_SEC: int = 86400      # retrieval result 24hr
     CACHE_EMBEDDING_PERMANENT: bool = True    # patent embedding 永久
@@ -318,8 +329,20 @@ _TRUSTED_IPS_PARSED: frozenset = _parse_trusted_ips(settings.TRUSTED_UPSTREAM_IP
 # guard never fires under the test harness even though PYTEST_CURRENT_TEST
 # is exported per-test by pytest.
 _PLACEHOLDER_JWT_SECRET = "changeme-generate-with-openssl-rand-hex-32"
+# Asymmetric mode (RS*/ES*/PS*) doesn't use JWT_SECRET — it needs a key PAIR.
+# Refuse to boot if asymmetric is selected without both PEM keys.
 if (
     "PYTEST_CURRENT_TEST" not in os.environ
+    and not settings.JWT_ALGO.startswith("HS")
+    and not (settings.JWT_PRIVATE_KEY and settings.JWT_PUBLIC_KEY)
+):
+    raise RuntimeError(
+        f"JWT_ALGO={settings.JWT_ALGO} is asymmetric but JWT_PRIVATE_KEY / "
+        "JWT_PUBLIC_KEY are not both set. Provide a PEM key pair, or use HS256."
+    )
+if (
+    "PYTEST_CURRENT_TEST" not in os.environ
+    and settings.JWT_ALGO.startswith("HS")
     and settings.JWT_SECRET == _PLACEHOLDER_JWT_SECRET
 ):
     raise RuntimeError(

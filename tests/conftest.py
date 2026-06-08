@@ -218,6 +218,13 @@ def _reset_module_state():
     except (ImportError, AttributeError):
         pass
     try:
+        # H-5: clear the in-memory session-token revocation store so a logout
+        # in one test can't reject a (coincidentally same-jti) token in another.
+        from backend.gateway import revocation as _revocation_mod
+        _revocation_mod.clear()
+    except (ImportError, AttributeError):
+        pass
+    try:
         from backend.gateway import cache as _cache_mod
         # The cache module exposes a private `_MemoryCache` instance bound to
         # `_cache`; clearing its internal `_data` dict is the canonical reset.

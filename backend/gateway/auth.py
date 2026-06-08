@@ -98,6 +98,7 @@ from typing import Optional
 import jwt
 from fastapi import HTTPException, Request, status
 
+from backend.gateway import revocation
 from backend.shared.config import _parse_trusted_ips, settings
 from backend.shared.models import User, UserRole
 
@@ -261,13 +262,6 @@ _CASE_ACL: dict[str, set[str]] = {
 }
 
 
-# H-5: revoked session-token jti set. A logged-out / killed jti is refused for
-# the rest of its TTL. POC = in-memory set (per-process, lost on restart);
-# production MUST be Redis with TTL = remaining token lifetime so the set stays
-# bounded, survives restart, and spans replicas. Mirrors the magic-token
-# single-use store (`_CONSUMED_MAGIC_JTIS`).
-_REVOKED_SESSION_JTIS: set[str] = set()
-
 
 # H-5 (phase 3): algorithm-aware key selection. HS* is symmetric (one shared
 # secret); RS*/ES*/PS* are asymmetric — sign with the private key, verify with
@@ -328,7 +322,7 @@ def verify_token(token: str) -> User:
 
     # H-5: revocation (logout / leaked-token kill switch).
     jti = payload.get("jti")
-    if jti is not None and jti in _REVOKED_SESSION_JTIS:
+    if jti is not None and revocation.is_revoked(jti):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token revoked")
 
     user_id = payload.get("sub")
@@ -358,7 +352,14 @@ def revoke_token(token: str) -> bool:
     jti = payload.get("jti")
     if not jti:
         return False
-    _REVOKED_SESSION_JTIS.add(jti)
+    # Expire the revocation entry when the token itself would expire — no point
+    # holding a jti past its TTL (the token is rejected on expiry anyway), and
+    # it keeps the store bounded.
+    exp = payload.get("exp")
+    ttl = int(exp - time.time()) if exp else settings.JWT_EXPIRES_MIN * 60
+    if ttl <= 0:
+        return False  # already expired — nothing to revoke
+    revocation.revoke(jti, ttl)
     return True
 
 
@@ -420,7 +421,7 @@ def issue_magic_token(user_id: str) -> str:
         "exp": int((now + timedelta(minutes=settings.MAGIC_LINK_TTL_MIN)).timestamp()),
         "jti": str(uuid.uuid4()),
     }
-    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGO)
+    return jwt.encode(payload, _signing_key(), algorithm=settings.JWT_ALGO)
 
 
 def magic_token_jti(token: str) -> Optional[str]:
@@ -434,7 +435,7 @@ def magic_token_jti(token: str) -> Optional[str]:
     try:
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET,
+            _verifying_key(),
             algorithms=[settings.JWT_ALGO],
             options={"verify_exp": False},
         )
@@ -461,7 +462,7 @@ def consume_magic_token(token: str) -> str:
     )
     try:
         payload = jwt.decode(
-            token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGO]
+            token, _verifying_key(), algorithms=[settings.JWT_ALGO]
         )
     except jwt.InvalidTokenError:
         # Covers ExpiredSignatureError (subclass) + tamper/bad-signature.

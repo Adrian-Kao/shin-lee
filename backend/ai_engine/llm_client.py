@@ -113,8 +113,10 @@ class MockLLM:
         would lose 5 and 7) and missing full-width tilde / wave-dash.
         """
         claims: set[int] = set()
-        # Range separators we recognise (mixes ASCII + full-width / CJK).
-        _range_re = re.compile(r"\s*[~\-〜～–—至到－]\s*(\d+)")
+        # Range separators we recognise (mixes ASCII + full-width / CJK +
+        # KR '내지' = "to"/range). '내지' is matched before single CJK chars so
+        # 'claims 1 내지 3' yields [1,2,3].
+        _range_re = re.compile(r"\s*(?:내지|[~\-〜～–—至到－])\s*(\d+)")
         # List separators between numbers (Chinese comma, ASCII comma, etc.).
         _list_re = re.compile(r"\s*[、,，]\s*")
         _num_re = re.compile(r"\s*(\d+)")
@@ -145,6 +147,14 @@ class MockLLM:
             _consume(m.end())
         for m in re.finditer(r"[Cc]laims?\s+", text):
             _consume(m.end())
+        # CN (CNIPA) 简体: 权利要求 1-3 / 权利要求 1、3。 NOTE: 权利要求 (简体)
+        # is a distinct token from TW 請求項 (繁體) so the two never overlap.
+        for m in re.finditer(r"权利要求", text):
+            _consume(m.end())
+        # KR (KIPO) 한글: 청구항 1-3 / 청구항 제1항. Strip an optional leading
+        # 제 so '청구항 제1항' starts consuming at the digit.
+        for m in re.finditer(r"청구항\s*제?", text):
+            _consume(m.end())
         return sorted(claims)
 
     @staticmethod
@@ -164,7 +174,11 @@ class MockLLM:
         fallback for demos without an API key.
         """
         rejections: list[dict] = []
-        cited = re.findall(r"\bUS\d{6,8}[A-Z]?\d?\b|\bTW\d{6,9}[A-Z]?\b|\bEP\d{6,8}\b", user)
+        cited = re.findall(
+            r"\bUS\d{6,8}[A-Z]?\d?\b|\bTW\d{6,9}[A-Z]?\b|\bEP\d{6,8}\b"
+            r"|\bCN\d{6,12}[A-Z]?\b|\bKR\d{6,12}[A-Z]?\b",
+            user,
+        )
         user_l = user.lower()
         claims = MockLLM._parse_claim_numbers(user)
 
@@ -282,6 +296,169 @@ class MockLLM:
                 "examiner_argument": (
                     "審查官指出本案與同申請人之新型專利屬一案兩請，"
                     "依專利法第32條應擇一聲明。"
+                ),
+                "confidence": 0.83,
+            })
+
+        # ----- EP (EPO) — Art. NN EPC -------------------------------------
+        # English-language communications. Use the canonical "Art. NN EPC"
+        # clause form so a bare digit can't mis-trigger US §102/§103.
+        #   Art. 56 EPC  → inventive step      → 103_obviousness
+        #   Art. 54 EPC  → novelty             → 102_novelty
+        #   Art. 84 EPC  → clarity / support   → other
+        #   Art. 123(2)  → added subject-matter→ other
+        # Match "Art. 56 EPC" / "Article 56 EPC" with at most a short gap
+        # (e.g. "Art. 56(1) EPC") so a stray digit elsewhere can't pair up
+        # with a distant "EPC". Non-greedy, capped span, no DOTALL.
+        _art = lambda n: re.search(  # noqa: E731 — tiny local helper
+            rf"\bArt(?:icle|\.)?\s*{n}\b[^\n]{{0,12}}?\bEPC\b", user, re.IGNORECASE
+        )
+        if _art(56) or "inventive step" in user_l:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "103_obviousness",
+                "affected_claims": _claims_or([1, 2, 3]),
+                "cited_prior_art": cited[:2] or ["EP3210987"],
+                "examiner_argument": (
+                    "The subject-matter of the claims does not involve an inventive "
+                    "step within the meaning of Art. 56 EPC, being obvious to the "
+                    "skilled person in view of the cited documents D1 and D2."
+                ),
+                "confidence": 0.88,
+            })
+        if _art(54) or "lacks novelty" in user_l or "not novel" in user_l:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "102_novelty",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": cited[:1] or ["EP3210987"],
+                "examiner_argument": (
+                    "The subject-matter of the claims lacks novelty under Art. 54 EPC, "
+                    "all features being directly and unambiguously disclosed in D1."
+                ),
+                "confidence": 0.90,
+            })
+        if _art(84) or "lack of clarity" in user_l:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "other",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "The claims do not meet the requirements of Art. 84 EPC as they "
+                    "are not clear and are not supported by the description."
+                ),
+                "confidence": 0.84,
+            })
+        if re.search(r"\bArt(?:icle|\.)?\s*123\s*\(?\s*2\s*\)?", user, re.IGNORECASE) \
+                or "added subject-matter" in user_l or "added subject matter" in user_l:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "other",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "The amendment introduces subject-matter extending beyond the "
+                    "content of the application as filed, contrary to Art. 123(2) EPC."
+                ),
+                "confidence": 0.85,
+            })
+
+        # ----- CN (CNIPA) — 专利法第N条第M款 (简体) ------------------------
+        # 简体 cues (创造性/新颖性/权利要求/说明书) and 条/款 markers are
+        # DISTINCT code points from TW 繁體 (進步性/新穎性/條/項), so the CN
+        # and TW branches can never cross-fire on the same document.
+        #   第22条第3款 创造性 (inventive step) → 103_obviousness
+        #   第22条第2款 新颖性 (novelty)        → 102_novelty
+        #   第26条第3款/第4款 (充分公开/支持)   → other
+        if "创造性" in user or "第22条第3款" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "103_obviousness",
+                "affected_claims": _claims_or([1, 2, 3]),
+                "cited_prior_art": cited[:2] or ["CN101234567"],
+                "examiner_argument": (
+                    "审查员认为所述权利要求相对于对比文件不具备创造性，"
+                    "不符合专利法第22条第3款的规定。"
+                ),
+                "confidence": 0.88,
+            })
+        if "新颖性" in user or "第22条第2款" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "102_novelty",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": cited[:1] or ["CN101234567"],
+                "examiner_argument": (
+                    "审查员认为所述权利要求相对于对比文件不具备新颖性，"
+                    "不符合专利法第22条第2款的规定。"
+                ),
+                "confidence": 0.90,
+            })
+        if "第26条第3款" in user or "充分公开" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "other",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "审查员指出说明书未对所述技术方案作出清楚、完整的说明，"
+                    "致使所属技术领域的技术人员不能实现，不符合专利法第26条第3款。"
+                ),
+                "confidence": 0.84,
+            })
+        if "第26条第4款" in user or ("权利要求" in user and "得到说明书的支持" in user):
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "other",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "审查员指出权利要求未以说明书为依据，未得到说明书的支持，"
+                    "不符合专利法第26条第4款的规定。"
+                ),
+                "confidence": 0.83,
+            })
+
+        # ----- KR (KIPO) — 특허법 제N조제M항 (한글) ------------------------
+        # 한글 cues (진보성/신규성/청구항/거절이유) are a distinct script
+        # from both the TW 繁體 and CN 简体 cues, so no cross-fire.
+        #   제29조제2항 진보성 (inventive step) → 103_obviousness
+        #   제29조제1항 신규성 (novelty)        → 102_novelty
+        #   제42조 기재불비 (명세서)            → other
+        if "진보성" in user or "제29조제2항" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "103_obviousness",
+                "affected_claims": _claims_or([1, 2, 3]),
+                "cited_prior_art": cited[:2] or ["KR1020210012345"],
+                "examiner_argument": (
+                    "심사관은 청구항이 인용발명에 비하여 진보성이 없다고 판단하며, "
+                    "특허법 제29조제2항의 규정에 의하여 거절이유를 통지합니다。"
+                ),
+                "confidence": 0.88,
+            })
+        if "신규성" in user or "제29조제1항" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "102_novelty",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": cited[:1] or ["KR1020210012345"],
+                "examiner_argument": (
+                    "심사관은 청구항이 인용발명에 의하여 신규성이 없다고 판단하며, "
+                    "특허법 제29조제1항의 규정에 의하여 거절이유를 통지합니다。"
+                ),
+                "confidence": 0.90,
+            })
+        if "제42조" in user or "기재불비" in user:
+            rejections.append({
+                "rejection_id": _next_id(),
+                "rejection_type": "other",
+                "affected_claims": _claims_or([1]),
+                "cited_prior_art": [],
+                "examiner_argument": (
+                    "심사관은 명세서의 기재가 특허법 제42조의 요건을 충족하지 못하는 "
+                    "기재불비에 해당한다고 판단합니다。"
                 ),
                 "confidence": 0.83,
             })

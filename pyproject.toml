@@ -3,6 +3,8 @@ name = "patentmind-poc"
 version = "0.2.0"
 description = "PatentMind — patent Office Action analysis POC (digiRunner gateway + Dify-style AI engine)."
 requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 # Runtime dependencies are intentionally NOT declared here.
 # `requirements.txt` (root) and `backend/requirements.txt` remain the source of truth
 # until the project graduates from POC to packaged distribution.

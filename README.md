@@ -1,118 +1,150 @@
-# PatentMind AI — POC
+# PatentMind AI
 
-> **Secure & Automated Patent Office Action (OA) Analysis Platform**
-> NCCU GDGoC × Computex 2026
->
-> 這個 repo 是 PatentMind AI 的 POC：完整 frontend + backend，把架構決策驗證到能跑端到端。
-> 預期下一步交給 Claude Code 接手做 production hardening（清單見 `CLAUDE.md`）。
+> **A reference architecture for secure, audited LLM pipelines in regulated
+> domains — demonstrated on patent Office Action (OA) response.**
 
-## 為什麼存在
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
+[![Node 20+](https://img.shields.io/badge/node-20%2B-green)](frontend/package.json)
+[![Status: PoC](https://img.shields.io/badge/status-proof--of--concept-orange)](#status)
 
-律師事務所做專利 Office Action 答辯：
-- 看 OA、找 prior art、寫答辯狀，現在純人工，**1 件案 8-12 小時**
-- 引用法源容易抄錯（幻覺風險）
-- 期日算錯就完蛋
-- 客戶資料絕對不能外流
+*NCCU GDGoC × Computex 2026 · [繁體中文 README](README.zh-TW.md)*
 
-PatentMind 把這個流程半自動化，律師仍對最終 draft 負完全責任。
+PatentMind semi-automates the drafting of patent OA responses **without ever
+letting client data leak to a public LLM** — and makes every AI claim
+verifiable, every action auditable, and the attorney accountable for the final
+draft. The interesting part for most people isn't the patent workflow; it's the
+**security/trust gateway pattern** underneath it, which applies to any
+AI feature handling confidential, compliance-sensitive data.
 
-## 三件事這個 POC 已驗證可行
+---
 
-1. **`scripts/verify.sh` 全綠** — 從 login → redaction → RAG → grounded draft → verifier → deadline → audit chain 完整跑通。
-2. **20 題架構 reasoning 都有對應的可執行 code**。grep `# Q\d+:` 看每個決策的落地點。
-3. **Frontend 可看到** AI draft、grounded citation hover、律師逐句簽核 (Q16)、audit 不可竄改驗證 (Q13)。
+## Why it exists
 
-## 快速開始
+Law firms answering a patent Office Action today, by hand:
+
+- **Slow** — reading the OA, finding prior art, and writing the response is
+  **8–12 hours per case**.
+- **Hallucination risk** — citing the wrong statute or a fabricated case is a
+  professional-liability event.
+- **Deadline risk** — miscalculating the statutory deadline can forfeit the
+  patent. There is no undo.
+- **Confidentiality** — client matter data must never go to a public LLM, which
+  is exactly why firms can't just paste it into ChatGPT.
+
+PatentMind addresses all four — and the attorney still signs off on every
+sentence.
+
+## What makes it different (the trust layer)
+
+These are enforced **invariants**, not features you can toggle off
+(see [`CLAUDE.md` §4](CLAUDE.md)):
+
+| Guarantee | How |
+|---|---|
+| 🛡️ **No data leak** | Mandatory PII/customer redaction before *any* LLM call; reversal map stays on-prem |
+| 🏠 **Confidential → local** | Confidential cases auto-route to an on-prem LLM, never the cloud |
+| 🎯 **No hallucinated citations** | Two-stage generate→verify; citations not in the grounded set are stripped, and the UI shows *what* was stripped + which model verified |
+| 🧾 **Tamper-evident audit** | Every request writes exactly one append-only, hash-chained audit row — user-verifiable, not vendor-attested |
+| 👤 **Per-case access control** | `case_id` ACL checked on every request; multi-tenant isolation |
+| ✍️ **Human accountability** | Sentence-level provenance (AI / paralegal / attorney) + a hard attorney sign-off gate before export |
+
+A general-purpose chatbot can't offer the first five. That's the moat.
+
+## Quickstart
+
+Prerequisites: **Python 3.11+**, **Node 20+**. Runs fully in **mock mode** — no
+API keys required.
 
 ```bash
-# 1. 後端（完整 POC）
+# Backend (full POC) — gateway :8010 + ai_engine :8011, seeds demo data
 bash scripts/start_backend.sh
-# 會啟動 gateway + ai_engine，並 seed demo patent
 
-# 1a. 後端（最小 MVP）
-bash scripts/start_minimal.sh
-# 單一 process、單一 /v1/oa/analyze API，適合快速驗證核心流程
-
-# 2. 驗證（完整 POC）
+# End-to-end verification — must print "ALL CHECKS PASSED"
 bash scripts/verify.sh
-# 應該印 "ALL CHECKS PASSED"
 
-# 3. 前端
-cd frontend
-npm install
-npm run dev
-# 開 http://localhost:5173
+# Frontend
+cd frontend && npm install && npm run dev   # http://localhost:5173
 ```
 
-## 依架構決策對應的試玩腳本
+Demo login passwords are `demo-<user>` (e.g. `demo-alice`); see `.env.example`.
 
-| 試玩 | 動作 | 觀察重點 |
-|------|------|----------|
-| Q12 case ACL | 用 Carol 登入 → 嘗試分析 CASE-2025-001 | 403 被擋（Carol 不在這 case 名單） |
-| Q10 Redaction | Alice 登入 → 在分析頁按「預覽 redaction」 | email/phone/案件編號被換成 placeholder |
-| Q14 Grounded | 跑分析後 hover `[GROUNDED_REF_1]` pill | tooltip 顯示來源 patent + section + 原文 |
-| Q16 律師簽核 | 在 draft 區域逐句 hover → Accept/Edit | 紫底 = AI、綠底 = 律師改寫；全簽完才能簽核 |
-| Q13 Audit | Dave 登入 → Audit 頁 | 看到 mask rules 紀錄 + 「驗證 hash chain」綠燈 |
-| Q15 機密路由 | Case_id 結尾 `-CONF` 重跑分析 | audit row 的 model_used 變 `llama-mock`（地端） |
-| Q9 Cache | 同樣 OA + 同 case 連按兩次「分析」 | 第二次 audit row model_used=`cache`，token=0 |
-| Q17 Deadline | 在分析頁看 DeadlineCard | 期日落在週末/假日會自動 roll forward |
+## Try it (decision → demo)
 
-## 架構速覽
+| Try | Action | What to watch |
+|---|---|---|
+| Case ACL (Q12) | Log in as Carol → analyze `CASE-2025-001` | 403 — Carol isn't on that case |
+| Redaction (Q10) | Alice → "Preview redaction" | email / phone / case-no replaced with placeholders |
+| Grounded cites (Q14) | Run analysis → open a `[GROUNDED_REF_1]` pill | shows source patent + section + text; unverified cites shown as removed |
+| Sign-off (Q16) | Accept/Edit each sentence in the draft | purple = AI, green = attorney; export gated until all signed |
+| Audit (Q13) | Log in as Dave → Audit page | mask-rule log + green "verify hash chain" |
+| Confidential routing (Q15) | Re-run with a `-CONF` case_id | audit row's model flips to the local model |
+| Cache (Q9) | Analyze the same OA + case twice | 2nd audit row: model=`cache`, tokens=0 |
+| Deadline (Q17) | See the deadline → click "Why" | weekend/holiday roll-forward, with the calculation basis |
+
+## Architecture
 
 ```
-Vite SPA  ──/api──▶  Gateway :8000 (digiRunner mock, 厚)
-                       │
-                       ├─ Auth (Q12)         │ JWT + case_id ACL
-                       ├─ RateLimit (Q18)    │ RPM + quota + circuit breaker
-                       ├─ Mask (Q3+Q10)      │ regex + dict + reversible
-                       ├─ Cache (Q9)         │ tenant:user:case scoped
-                       ├─ Orchestrator (Q1)  │ 6-step business flow
-                       └─ Audit (Q13)        │ append-only + hash chain
-                       │
-                       ▼ HTTP
-                  AI Engine :8001 (Dify mock)
-                       ├─ parse_oa (Q11 spotlight)
-                       ├─ retrieve (Q6+Q7 hierarchical+claim-tree)
-                       ├─ draft   (Q14 grounded)
-                       ├─ verify  (Q14 verifier)
-                       └─ deadline (Q17 multi-jurisdiction)
-                       │
-                       └─ llm_client (Q15 router + Q11 canary)
+Vite SPA  ──/api──▶  Gateway :8010  (digiRunner mock, "thick" gateway)
+                       ├─ Auth (Q12)         JWT + case_id ACL + revocation/logout
+                       ├─ RateLimit (Q18)    RPM + quota + cost circuit breaker
+                       ├─ Mask (Q3+Q10)      regex + dict, reversible on-prem
+                       ├─ Cache (Q9)         tenant:user:case scoped
+                       ├─ Orchestrator (Q1)  6-step business flow
+                       └─ Audit (Q13)        append-only + hash chain
+                       │  HTTP (intra-VPC)
+                       ▼
+                  AI Engine :8011  (Dify mock — single-step inference, no business state)
+                       ├─ parse_oa (Q11)  ├─ retrieve (Q6+Q7)  ├─ draft (Q14)
+                       ├─ verify (Q14)    └─ deadline (Q17)
+                       └─ llm_client (Q15 multi-model router + Q11 canary)
 ```
 
-完整 Q→code 對應請見 `docs/ARCHITECTURE.md`。
+Two rules keep the security boundary clean: **the gateway never calls an LLM
+directly**, and **the AI engine holds no business state**. Full decision→code
+map in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## 文件導覽
+## Tech stack
 
-- **`docs/DECISIONS.md`** — 20 題的最終決策表
-- **`docs/QUESTIONS.md`** — 每題的選項分析（reasoning trace）
-- **`docs/ARCHITECTURE.md`** — 每個決策對應到哪份 code、為什麼
-- **`CLAUDE.md`** — 給 Claude Code agent 的接手文件（含 TODO list）
+FastAPI · React 18 + Vite · TanStack Query · Tailwind · react-i18next (zh-TW/EN)
+· Playwright + pytest. Vector store / cache / LLM are abstracted so mock ↔
+production swaps by env (`LLM_MODE`, `VECTOR_BACKEND`, `CACHE_BACKEND`).
 
-## Demo 帳號
+## Documentation
 
-| User | Role | Tenant | 看得到的 case | 用途 |
-|------|------|--------|---------------|------|
-| `alice` | attorney | tenant_a | CASE-2025-001~003 | 跑分析、簽核 |
-| `bob` | paralegal | tenant_a | CASE-2025-001~002 | 看分析（受限） |
-| `carol` | it_admin | tenant_b | (無) | 看儀表板、配額 |
-| `audit_dave` | auditor | tenant_a | * (全 tenant_a) | 審計、驗 chain |
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — the 20 architectural decisions (read first)
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — each decision → which code, and why
+- [`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md) — security self-audit
+- [`CLAUDE.md`](CLAUDE.md) — agent/maintainer handoff + hardening TODO list
 
-## 已知未實作（POC 範圍外）
+## Demo accounts
 
-- 真實 LLM 後端（目前 mock；改 `LLM_MODE=anthropic` 切換）
-- 真實 Qdrant（目前 numpy in-memory）
-- 真實 Redis cache（目前 in-process dict）
-- OIDC / SAML / magic link 三種 IdP（只有 built-in JWT）
-- S3 Object Lock audit archive（目前只有本地 SQLite）
-- Dify webhook 實接（目前 ai_engine 是 mock）
-- 每小時 streaming replication backup（目前無，Q20 退讓）
-- Prometheus metrics endpoint（Q19 layer 1 沒實作）
-- 真 PDF 上傳（只接受文字輸入）
-- 真 Vision LLM 圖示分析（Q8 stub）
+| User | Role | Tenant | Cases | Use |
+|---|---|---|---|---|
+| `alice` | attorney | tenant_a | CASE-2025-001..003 | analyze, sign off |
+| `bob` | paralegal | tenant_a | CASE-2025-001..002 | analyze, assist drafting |
+| `carol` | it_admin | tenant_b | (none) | dashboard, quota |
+| `audit_dave` | auditor | tenant_a | * | audit, verify chain |
 
-> 完整 TODO 看 `CLAUDE.md` § 3 「What's stubbed」表。
+## Status
+
+This is a **proof of concept**. It is **not safe to expose beyond localhost**
+without the hardening in [`SECURITY.md`](SECURITY.md) and [`CLAUDE.md`](CLAUDE.md)
+§3/§5. Mocked/stubbed for now: real LLM backend, Qdrant, Redis, OIDC/SAML,
+S3 Object Lock audit archive, Redis-backed JWT revocation + RS256. Changes are
+tracked in [`CHANGELOG.md`](CHANGELOG.md).
+
+## Contributing & security
+
+- Start with [CONTRIBUTING.md](CONTRIBUTING.md) and our
+  [Code of Conduct](CODE_OF_CONDUCT.md).
+- **Never commit real, unpublished, or personally-identifiable patent data** —
+  all fixtures are synthetic (`data/cases/`). This is the very problem the
+  project exists to solve.
+- Report vulnerabilities privately per [SECURITY.md](SECURITY.md) — do not open
+  a public issue.
 
 ## License
 
-POC 內部專案，未公開授權。
+[Apache License 2.0](LICENSE) — free to use, modify, and distribute, with an
+explicit patent grant.

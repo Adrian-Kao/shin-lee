@@ -5,6 +5,7 @@ import OAUpload from '../OAUpload.jsx';
 import ErrorBanner from '../ErrorBanner.jsx';
 import { SkeletonText } from '../Skeleton.jsx';
 import ClaimTree from './ClaimTree.jsx';
+import { Button } from '../ui/button.jsx';
 
 /**
  * Left pane — OA input + redaction preview + quota / deadline summary.
@@ -57,13 +58,13 @@ export default function InputPane({
           <input
             value={caseId}
             onChange={(e) => setCaseId(e.target.value)}
-            className="mb-3 w-full rounded border dark:border-slate-700 px-2 py-1.5 text-sm"
+            className="mb-3 w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
           />
           <label className="mb-1 block text-xs text-slate-500 dark:text-slate-400">Target patent (本案)</label>
           <input
             value={targetPatent}
             onChange={(e) => setTargetPatent(e.target.value)}
-            className="mb-3 w-full rounded border dark:border-slate-700 px-2 py-1.5 text-sm"
+            className="mb-3 w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
           />
 
           {showUpload && (
@@ -77,7 +78,7 @@ export default function InputPane({
               <button
                 type="button"
                 onClick={() => setShowUpload(false)}
-                className="mt-2 inline-flex items-center gap-1 text-xs text-navy-700 dark:text-navy-200 hover:underline"
+                className="mt-2 inline-flex items-center gap-1 rounded text-xs text-navy-700 dark:text-navy-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
               >
                 <ClipboardPaste className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
                 {t('upload.switch_to_paste')}
@@ -88,7 +89,7 @@ export default function InputPane({
             <button
               type="button"
               onClick={() => setShowUpload(true)}
-              className="mb-2 inline-flex items-center gap-1 text-xs text-navy-700 dark:text-navy-200 hover:underline"
+              className="mb-2 inline-flex items-center gap-1 rounded text-xs text-navy-700 dark:text-navy-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
             >
               <Paperclip className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
               {t('upload.switch_to_upload')}
@@ -128,22 +129,20 @@ export default function InputPane({
             value={oaText}
             onChange={(e) => setOaText(e.target.value)}
             rows={12}
-            className="w-full rounded border dark:border-slate-700 px-2 py-1.5 font-mono text-xs"
+            className="w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
           />
           <div className="mt-3 flex gap-2">
-            <button
-              onClick={onPreviewRedaction}
-              className="flex-1 rounded bg-slate-200 dark:bg-slate-700 px-3 py-2 text-sm hover:bg-slate-300 dark:hover:bg-slate-600"
-            >
+            <Button variant="secondary" onClick={onPreviewRedaction} className="flex-1">
               {t('analyze.input.preview_redaction')}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
               onClick={onAnalyze}
               disabled={running}
-              className="flex-1 rounded-md bg-navy-900 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-700 disabled:cursor-wait disabled:bg-slate-400"
+              className="flex-1 disabled:cursor-wait"
             >
               {running ? t('analyze.input.analyzing') : t('analyze.input.analyze_oa')}
-            </button>
+            </Button>
           </div>
           {error && (
             <div className="mt-3">
@@ -294,7 +293,7 @@ function BudgetPanel({ budget, t }) {
           <div className="font-mono text-sm text-slate-800 dark:text-slate-200">
             {fmt(forecast.projected_month_end_usd)}
             {cap != null && (
-              <span className="ml-1 text-[10px] text-slate-400 dark:text-slate-500">
+              <span className="ml-1 text-3xs text-slate-400 dark:text-slate-500">
                 / {fmt(cap)} {t('budget.cap')}
               </span>
             )}
@@ -348,7 +347,7 @@ function Bar({ label, used, total }) {
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
         <div
-          className={`h-full ${isHigh ? 'bg-rose-500' : 'bg-indigo-500'}`}
+          className={`h-full ${isHigh ? 'bg-rose-500' : 'bg-navy-500'}`}
           style={{ width: `${pct}%` }}
         />
       </div>

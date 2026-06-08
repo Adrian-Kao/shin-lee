@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { UploadCloud } from 'lucide-react';
+import { UploadCloud, FileText, Loader2 } from 'lucide-react';
 import { api } from '../api/client.js';
+import { Button } from './ui/button.jsx';
 
 // Day 2: drag-drop PDF / DOCX upload for the Analyze view.
 // State machine:
@@ -266,7 +267,7 @@ function DropZone({ dragOver, onDragOver, onDragLeave, onDrop, onBrowseClick, t 
   const base =
     'h-48 border-2 border-dashed rounded-lg flex flex-col items-center justify-center transition-colors cursor-pointer select-none';
   const tone = dragOver
-    ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300'
+    ? 'border-navy-400 bg-navy-50 text-navy-700 dark:bg-navy-950/40 dark:text-navy-300'
     : 'border-slate-300 text-slate-500 hover:border-slate-400 dark:border-slate-600 dark:text-slate-400';
   return (
     <div
@@ -310,7 +311,7 @@ function PreviewPane({ file, blobUrl, t }) {
   }
   return (
     <div className="flex h-96 w-full flex-col items-center justify-center rounded border bg-slate-50 px-6 text-center dark:border-slate-700 dark:bg-slate-800/50">
-      <div className="mb-2 text-4xl">📄</div>
+      <FileText className="mb-2 h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />
       <div className="text-sm text-slate-600 dark:text-slate-300">{t('upload.docx_no_preview')}</div>
       <div className="mt-2 break-all font-mono text-xs text-slate-400 dark:text-slate-500">{file.name}</div>
     </div>
@@ -342,18 +343,12 @@ function StatusPane({
 
       {status === 'file-selected' && (
         <div className="flex gap-2">
-          <button
-            onClick={onUpload}
-            className="flex-1 rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700"
-          >
+          <Button variant="primary" onClick={onUpload} className="flex-1">
             {t('upload.upload_button')}
-          </button>
-          <button
-            onClick={onChange}
-            className="rounded bg-slate-200 px-3 py-2 text-sm hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
-          >
+          </Button>
+          <Button variant="secondary" onClick={onChange}>
             {t('upload.change_file')}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -364,22 +359,19 @@ function StatusPane({
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
             <div
-              className="h-full bg-indigo-500 transition-[width] duration-150"
+              className="h-full bg-navy-500 transition-[width] duration-150"
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>
-          <button
-            onClick={onCancel}
-            className="mt-3 rounded bg-slate-200 px-3 py-1.5 text-sm hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
-          >
+          <Button variant="secondary" size="xs" onClick={onCancel} className="mt-3 px-3 py-1.5 text-sm">
             {t('upload.cancel_button')}
-          </button>
+          </Button>
         </div>
       )}
 
       {status === 'server-extracting' && (
         <div className="flex items-start gap-2">
-          <span className="animate-pulse text-xl">⏳</span>
+          <Loader2 className="h-5 w-5 shrink-0 animate-spin text-navy-600 dark:text-navy-300" strokeWidth={1.75} aria-hidden="true" />
           <div className="text-sm text-slate-700 dark:text-slate-200">{t('upload.extracting')}</div>
         </div>
       )}
@@ -404,18 +396,12 @@ function StatusPane({
           </div>
           <ElementTable table={extractResult.element_table} t={t} />
           <div className="flex gap-2">
-            <button
-              onClick={onAccept}
-              className="flex-1 rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700"
-            >
+            <Button variant="primary" onClick={onAccept} className="flex-1">
               {t('upload.use_this_text')}
-            </button>
-            <button
-              onClick={onChange}
-              className="rounded bg-slate-200 px-3 py-2 text-sm hover:bg-slate-300"
-            >
+            </Button>
+            <Button variant="secondary" onClick={onChange}>
               {t('upload.change_file')}
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -428,19 +414,12 @@ function StatusPane({
             </div>
           )}
           <div className="flex gap-2">
-            <button
-              onClick={onRetry}
-              className="flex-1 rounded bg-indigo-600 px-3 py-2 text-sm text-white hover:bg-indigo-700"
-              disabled={!file}
-            >
+            <Button variant="primary" onClick={onRetry} disabled={!file} className="flex-1">
               {t('upload.retry_button')}
-            </button>
-            <button
-              onClick={onChange}
-              className="rounded bg-slate-200 px-3 py-2 text-sm hover:bg-slate-300"
-            >
+            </Button>
+            <Button variant="secondary" onClick={onChange}>
               {t('upload.change_file')}
-            </button>
+            </Button>
           </div>
         </div>
       )}

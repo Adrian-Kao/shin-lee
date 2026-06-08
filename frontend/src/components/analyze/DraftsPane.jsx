@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShieldCheck, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, AlertTriangle, Loader2, CheckCircle2, Circle, FileText } from 'lucide-react';
 import DraftEditor from '../DraftEditor.jsx';
 import EmptyState from '../EmptyState.jsx';
 
@@ -39,7 +39,7 @@ export default function DraftsPane({
         <PaneHeader title={t('analyze.pane_drafts', { defaultValue: '草稿 / Drafts' })} />
         <div className="flex-1 overflow-y-auto p-4">
           <EmptyState
-            icon="📄"
+            icon={<FileText className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />}
             title={t('empty.no_result_title')}
             description={t('empty.no_result_desc')}
             hint={t('empty.no_result_hint')}
@@ -107,9 +107,9 @@ function RejectionTabs({ rejections, activeRejectionId, setActiveRejectionId }) 
           <button
             key={r.rejection_id}
             onClick={() => setActiveRejectionId(r.rejection_id)}
-            className={`whitespace-nowrap border-b-2 px-2 py-1.5 text-xs font-medium transition-colors ${
+            className={`whitespace-nowrap border-b-2 px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 ${
               isActive
-                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300'
+                ? 'border-navy-600 text-navy-700 dark:text-navy-200'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-700 dark:hover:text-slate-200'
             }`}
           >
@@ -269,12 +269,12 @@ function VerificationBanner({ draft }) {
         </span>
       </div>
       {invalidCitations != null && invalidCitations.length > 0 && (
-        <div className="mt-1 break-words font-mono text-[11px] text-rose-700 dark:text-rose-300">
+        <div className="mt-1 break-words font-mono text-2xs text-rose-700 dark:text-rose-300">
           已移除 / removed: {invalidCitations.join('、')}
         </div>
       )}
       {verifierModel && (
-        <div className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+        <div className="mt-1 text-2xs text-slate-500 dark:text-slate-400">
           由 {verifierModel} 把關 / verified by {verifierModel}
         </div>
       )}
@@ -334,10 +334,10 @@ function RunningPanel() {
     <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-8">
       <div className="mb-4 flex items-baseline justify-between">
         <div className="flex items-center gap-2">
-          <span className="animate-pulse text-2xl">⏳</span>
+          <Loader2 className="h-4 w-4 animate-spin text-navy-600 dark:text-navy-300" strokeWidth={1.75} aria-hidden="true" />
           <span className="font-semibold text-slate-700 dark:text-slate-200">{t('analyze.drafts.analyzing')}</span>
         </div>
-        <div className="font-mono text-2xl tabular-nums text-indigo-700">
+        <div className="font-mono text-2xl tabular-nums text-navy-700 dark:text-navy-200">
           {fmtElapsed(elapsedMs)}
         </div>
       </div>
@@ -350,10 +350,16 @@ function RunningPanel() {
             <div key={stage.name} className="flex items-center gap-3 text-sm">
               <span
                 className={`inline-flex w-5 justify-center ${
-                  done ? 'text-emerald-600' : active ? 'text-indigo-600' : 'text-slate-300'
+                  done ? 'text-emerald-600 dark:text-emerald-400' : active ? 'text-navy-600 dark:text-navy-300' : 'text-slate-300 dark:text-slate-600'
                 }`}
               >
-                {done ? '✓' : active ? '●' : '○'}
+                {done ? (
+                  <CheckCircle2 className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+                ) : active ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
+                ) : (
+                  <Circle className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                )}
               </span>
               <span
                 className={
@@ -367,7 +373,7 @@ function RunningPanel() {
                 {t(stage.key)}
               </span>
               {active && (
-                <span className="ml-auto animate-pulse text-xs text-indigo-500">running…</span>
+                <span className="ml-auto animate-pulse text-xs text-navy-500 dark:text-navy-300">running…</span>
               )}
             </div>
           );

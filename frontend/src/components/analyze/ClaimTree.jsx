@@ -184,7 +184,7 @@ function ClaimRow({ node, rejection, cascade, active, onClaimClick }) {
   return (
     <li>
       <div
-        className={`flex items-center gap-2 rounded ${independentBorder} ${activeRing} ${toneClasses} px-2 py-1.5 text-xs transition-colors`}
+        className={`flex items-center gap-2 rounded ${independentBorder} ${activeRing} ${toneClasses} px-2 py-1.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500`}
         style={{ marginLeft: indentPx }}
         onClick={handleClick}
         role={rejection ? 'button' : undefined}
@@ -200,14 +200,14 @@ function ClaimRow({ node, rejection, cascade, active, onClaimClick }) {
       >
         <Badge
           tone={badgeTone}
-          className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold ring-0"
+          className="shrink-0 rounded px-1.5 py-0.5 font-mono text-3xs font-semibold ring-0"
         >
           #{node.claim_no}
         </Badge>
         {node.is_independent && (
           <Badge
             tone="brand"
-            className="shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider ring-0"
+            className="shrink-0 rounded px-1 py-0.5 text-3xs font-semibold uppercase tracking-wider ring-0"
           >
             indep
           </Badge>
@@ -231,7 +231,7 @@ function RejectionChip({ rejection }) {
     <Badge
       tone="error"
       variant="solid"
-      className="shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase ring-0"
+      className="shrink-0 rounded px-1.5 py-0.5 font-mono text-3xs font-semibold uppercase ring-0"
     >
       {label}
     </Badge>
@@ -250,7 +250,7 @@ const SHORT_LABEL = {
 
 function Legend({ t }) {
   return (
-    <div className="flex gap-1.5 text-[10px]">
+    <div className="flex gap-1.5 text-3xs">
       <Badge tone="error" className="rounded px-1.5 py-0.5 ring-0">
         {t('analyze.claim_tree.legend.rejected', { defaultValue: '駁回 / Rejected' })}
       </Badge>

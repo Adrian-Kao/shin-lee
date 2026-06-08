@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, ChevronRight, Mail } from 'lucide-react';
+import { Loader2, ChevronRight, Mail, LogIn } from 'lucide-react';
 
 import { api } from '../api/client.js';
 
@@ -75,7 +75,7 @@ export default function Login({ onLogin }) {
           </div>
           <div className="leading-tight">
             <div className="text-base font-semibold tracking-tight">{t('app_title')}</div>
-            <div className="text-[12px] text-navy-200">專利答辯協助系統</div>
+            <div className="text-xs text-navy-200">專利答辯協助系統</div>
           </div>
         </div>
       </header>
@@ -103,8 +103,10 @@ export default function Login({ onLogin }) {
                   aria-busy={isBusy}
                   className={[
                     'flex w-full items-center gap-3 px-4 py-3 text-left transition-colors',
-                    'focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-700',
-                    disabled ? 'cursor-wait opacity-60' : 'cursor-pointer hover:bg-navy-50 dark:hover:bg-navy-900/40',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-500 dark:focus-visible:ring-navy-400',
+                    disabled
+                      ? 'cursor-wait opacity-60'
+                      : 'cursor-pointer hover:bg-navy-50 dark:hover:bg-navy-900/40',
                   ].join(' ')}
                 >
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-navy-900 text-sm font-bold text-white">
@@ -119,7 +121,7 @@ export default function Login({ onLogin }) {
                   </div>
                   {isBusy ? (
                     <Loader2
-                      className="h-5 w-5 shrink-0 animate-spin text-navy-700"
+                      className="h-5 w-5 shrink-0 animate-spin text-navy-700 dark:text-navy-200"
                       aria-hidden="true"
                     />
                   ) : (
@@ -204,7 +206,7 @@ function MagicLink({ onLogin, disabled }) {
         type="button"
         onClick={() => setOpen(true)}
         disabled={disabled}
-        className="mt-6 inline-flex items-center gap-2 text-sm text-navy-700 hover:underline disabled:opacity-50 dark:text-navy-200"
+        className="mt-6 inline-flex items-center gap-2 rounded-md text-sm text-navy-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2 disabled:opacity-50 dark:text-navy-200 dark:focus-visible:ring-navy-400 dark:focus-visible:ring-offset-slate-800"
       >
         <Mail className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         {t('magic.link_cta')}
@@ -226,12 +228,12 @@ function MagicLink({ onLogin, disabled }) {
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             placeholder={t('magic.user_placeholder')}
-            className="flex-1 rounded border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-navy-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+            className="flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm transition-colors focus-visible:border-navy-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus-visible:border-navy-400 dark:focus-visible:ring-navy-400"
           />
           <button
             type="submit"
             disabled={!userId.trim() || phase === 'requesting' || phase === 'consuming'}
-            className="rounded bg-navy-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-navy-700 disabled:bg-slate-300"
+            className="rounded-md bg-navy-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-navy-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2 disabled:bg-slate-300 dark:focus-visible:ring-navy-400 dark:focus-visible:ring-offset-slate-900 dark:disabled:bg-slate-700"
           >
             {phase === 'requesting' ? t('magic.requesting') : t('magic.request')}
           </button>
@@ -242,12 +244,12 @@ function MagicLink({ onLogin, disabled }) {
         <div className="mt-3 space-y-2">
           <div className="text-xs text-slate-500 dark:text-slate-400">{t('magic.sent')}</div>
           {token && (
-            <div className="rounded border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/40">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+            <div className="rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/40">
+              <div className="mb-1 text-2xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
                 {t('magic.demo_label')}
               </div>
               <div
-                className="mb-2 break-all font-mono text-[10px] text-slate-600 dark:text-slate-300"
+                className="mb-2 break-all font-mono text-3xs text-slate-600 dark:text-slate-300"
                 data-testid="magic-token"
               >
                 {token}
@@ -256,10 +258,12 @@ function MagicLink({ onLogin, disabled }) {
                 type="button"
                 onClick={consume}
                 disabled={phase === 'consuming'}
-                className="inline-flex items-center gap-1 rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:opacity-60 dark:focus-visible:ring-emerald-400 dark:focus-visible:ring-offset-amber-950"
               >
-                {phase === 'consuming' && (
+                {phase === 'consuming' ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <LogIn className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                 )}
                 {phase === 'consuming'
                   ? t('magic.consuming')
@@ -284,7 +288,7 @@ function MagicLink({ onLogin, disabled }) {
           setToken(null);
           setError(null);
         }}
-        className="mt-3 text-xs text-slate-500 hover:underline dark:text-slate-400"
+        className="mt-3 rounded text-xs text-slate-500 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 focus-visible:ring-offset-2 dark:text-slate-400 dark:focus-visible:ring-navy-400 dark:focus-visible:ring-offset-slate-900"
       >
         {t('magic.back')}
       </button>

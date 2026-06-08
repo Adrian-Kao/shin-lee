@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle } from 'lucide-react';
+import { Button } from './ui/button.jsx';
 import { api } from '../api/client.js';
 import { useQuota, useAnalyze } from '../api/queries.js';
 import { toast } from '../lib/toast.jsx';
@@ -282,9 +284,9 @@ function Header({ session, onLogout, onSwitchView }) {
               {session.tenant_id} · {session.role}
             </div>
           </div>
-          <button onClick={onLogout} className="rounded bg-slate-200 dark:bg-slate-700 px-2 py-1 text-xs">
+          <Button variant="secondary" size="xs" onClick={onLogout}>
             登出
-          </button>
+          </Button>
         </div>
       </div>
     </header>
@@ -350,20 +352,23 @@ function ResultSummaryBar({ result }) {
           </span>
           {warnings.length > 0 && (
             <span
-              className="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 font-semibold text-amber-800 dark:text-amber-300"
+              className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 font-semibold text-amber-800 dark:text-amber-300"
               title={warnings.join('\n')}
             >
-              ⚠ {warnings.length}
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+              {warnings.length}
             </span>
           )}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             onClick={() => setShowDeadlineDetail((s) => !s)}
             aria-expanded={showDeadlineDetail}
-            className="rounded px-1.5 py-0.5 text-slate-500 dark:text-slate-400 underline-offset-2 hover:bg-slate-100 hover:underline"
+            className="px-1.5 py-0.5 text-slate-500 dark:text-slate-400 underline-offset-2 hover:underline"
           >
             {showDeadlineDetail ? '收合' : '計算依據 / Why'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -424,9 +429,9 @@ function MobileTabBar({ activeTab, setActiveTab, hasResult }) {
             key={tab.id}
             onClick={() => !tab.disabled && setActiveTab(tab.id)}
             disabled={tab.disabled}
-            className={`flex-1 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+            className={`flex-1 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 ${
               isActive
-                ? 'border-indigo-600 text-indigo-700 dark:text-indigo-300'
+                ? 'border-navy-600 text-navy-700 dark:text-navy-200'
                 : tab.disabled
                   ? 'cursor-not-allowed border-transparent text-slate-300 dark:text-slate-600'
                   : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'

@@ -33,6 +33,15 @@ export default {
       },
     },
     extend: {
+      // Named micro type-scale tokens — replace ad-hoc `text-[9/10/11px]`
+      // magic numbers with a small, consistent scale below Tailwind's
+      // `text-xs` (12px). Sizes match the previous arbitrary values so the
+      // swap is visually neutral. Dense legal UI (case IDs, chips, audit
+      // tables) lives in this band; keeping it named is the whole point.
+      fontSize: {
+        '2xs': ['0.6875rem', { lineHeight: '1rem' }], // 11px
+        '3xs': ['0.625rem', { lineHeight: '0.875rem' }], // 10px
+      },
       fontFamily: {
         // Latin first, Noto Sans TC second so mixed zh/en strings render
         // with matching x-heights instead of system-font drift. The previous

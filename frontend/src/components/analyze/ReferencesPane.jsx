@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link2 } from 'lucide-react';
 import EmptyState from '../EmptyState.jsx';
 import ReferenceModal from './ReferenceModal.jsx';
+import { Button } from '../ui/button.jsx';
+import { Badge } from '../ui/badge.jsx';
 
 /**
  * Right pane — cited prior art + grounded RAG retrieval hits.
@@ -47,7 +50,7 @@ export default function ReferencesPane({ result, activeRejectionId, selectedCita
         <PaneHeader title={t('analyze.pane_refs', { defaultValue: '引證 / References' })} />
         <div className="flex-1 overflow-y-auto p-4">
           <EmptyState
-            icon="🔗"
+            icon={<Link2 className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />}
             title={t('analyze.refs_empty_title', { defaultValue: '尚無引證' })}
             description={t('analyze.refs_empty_desc', {
               defaultValue: '分析完成後此處顯示 examiner 引證案 + RAG 命中的先前技術',
@@ -77,9 +80,9 @@ export default function ReferencesPane({ result, activeRejectionId, selectedCita
             </div>
             <div className="flex flex-wrap gap-1">
               {citedNos.map((p) => (
-                <span key={p} className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-mono text-xs">
+                <Badge key={p} tone="neutral" className="rounded font-mono">
                   {p}
-                </span>
+                </Badge>
               ))}
             </div>
           </section>
@@ -148,9 +151,9 @@ function ReferenceCard({ hit, onOpen, highlighted, cardRef }) {
         {excerpt}
         {truncated && '…'}
       </p>
-      <button type="button" onClick={onOpen} className="text-navy-600 hover:underline">
+      <Button type="button" variant="link" size="xs" onClick={onOpen} className="px-0">
         Open full text →
-      </button>
+      </Button>
     </div>
   );
 }

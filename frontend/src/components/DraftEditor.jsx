@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check } from 'lucide-react';
 import { api, ApiError } from '../api/client.js';
 import { toast } from '../lib/toast.jsx';
+import { Button } from './ui/button.jsx';
 
 /**
  * Q16: 逐句律師標記 + 簽核匯出（責任界線）。
@@ -166,18 +168,16 @@ export default function DraftEditor({
                 rows={3}
               />
               <div className="mt-1 flex gap-2">
-                <button
+                <Button
+                  size="xs"
                   onClick={commitEdit}
-                  className="rounded bg-emerald-600 px-2 py-1 text-xs text-white"
+                  className="bg-emerald-600 text-white hover:bg-emerald-700 focus-visible:ring-emerald-500"
                 >
                   {t('signoff.save')}
-                </button>
-                <button
-                  onClick={() => setEditingIdx(null)}
-                  className="rounded bg-slate-200 dark:bg-slate-700 px-2 py-1 text-xs"
-                >
+                </Button>
+                <Button size="xs" variant="secondary" onClick={() => setEditingIdx(null)}>
                   {t('signoff.cancel')}
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
@@ -187,24 +187,21 @@ export default function DraftEditor({
               >
                 <CitationHighlighter text={l.text} citationLookup={citationLookup} />
                 {l.accepted && (
-                  <span className="ml-2 text-xs text-emerald-600">✓ {sourceLabel(l.source, t)}</span>
+                  <span className="ml-2 inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                    <Check className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                    {sourceLabel(l.source, t)}
+                  </span>
                 )}
               </div>
               <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
                 {!l.accepted && (
-                  <button
-                    onClick={() => accept(i)}
-                    className="rounded bg-indigo-600 px-2 py-1 text-xs text-white"
-                  >
+                  <Button size="xs" variant="primary" onClick={() => accept(i)}>
                     {t('signoff.accept')}
-                  </button>
+                  </Button>
                 )}
-                <button
-                  onClick={() => startEdit(i)}
-                  className="rounded bg-slate-200 dark:bg-slate-700 px-2 py-1 text-xs"
-                >
+                <Button size="xs" variant="secondary" onClick={() => startEdit(i)}>
                   {t('signoff.edit')}
-                </button>
+                </Button>
               </div>
             </>
           )}
@@ -222,13 +219,15 @@ export default function DraftEditor({
             className="w-full rounded border border-slate-200 dark:border-slate-700 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
             rows={2}
           />
-          <button
+          <Button
+            size="xs"
+            variant="secondary"
             onClick={addLine}
             disabled={!addingValue.trim()}
-            className="mt-1 rounded bg-slate-200 dark:bg-slate-700 px-2 py-1 text-xs hover:bg-slate-300 disabled:opacity-50"
+            className="mt-1"
           >
             {t('signoff.add_line')}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -250,15 +249,16 @@ export default function DraftEditor({
             <div className="text-xs text-slate-500 dark:text-slate-400">
               {reviewed ? null : t('signoff.export_hint')}
             </div>
-            <button
+            <Button
               type="button"
+              variant="primary"
               disabled={!reviewed || exporting || acceptedCount === 0}
               onClick={doExport}
               data-testid="signoff-export"
-              className="rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-navy-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {exporting ? t('signoff.exporting') : t('signoff.export')}
-            </button>
+            </Button>
           </div>
           {acceptedCount === 0 && (
             <div className="text-xs text-amber-700 dark:text-amber-300">{t('signoff.no_accepted')}</div>
@@ -287,13 +287,15 @@ function ExportResultPanel({ result, onDownload, onClose, t }) {
     >
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">{t('signoff.result_title')}</h4>
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="xs"
           onClick={onClose}
-          className="text-xs text-slate-500 dark:text-slate-400 hover:underline"
+          className="text-slate-500 dark:text-slate-400"
         >
           {t('signoff.close')}
-        </button>
+        </Button>
       </div>
       <div className="text-xs text-slate-600 dark:text-slate-300">
         {t('signoff.signed_off_by')}: <span className="font-medium">{result.signed_off_by}</span>
@@ -322,16 +324,17 @@ function ExportResultPanel({ result, onDownload, onClose, t }) {
           </span>
         )}
       </div>
-      <div className="break-all font-mono text-[10px] text-slate-400 dark:text-slate-500">
+      <div className="break-all font-mono text-3xs text-slate-400 dark:text-slate-500">
         {t('signoff.content_hash')}: {result.content_sha256}
       </div>
-      <button
+      <Button
         type="button"
+        size="xs"
         onClick={onDownload}
-        className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+        className="bg-emerald-600 text-white hover:bg-emerald-700"
       >
         {t('signoff.download')}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -374,7 +377,7 @@ function CitationHighlighter({ text, citationLookup }) {
             <span
               key={i}
               title={hit ? `${hit.patent_no} / ${hit.section}\n\n${hit.text}` : p}
-              className="mx-0.5 inline-block cursor-help rounded border border-indigo-300 dark:border-indigo-700 bg-indigo-100 dark:bg-indigo-900/40 px-1.5 py-0.5 font-mono text-xs text-indigo-800 dark:text-indigo-300"
+              className="mx-0.5 inline-block cursor-help rounded border border-navy-300 dark:border-navy-700 bg-navy-100 dark:bg-navy-900/40 px-1.5 py-0.5 font-mono text-xs text-navy-800 dark:text-navy-200"
             >
               {p}
             </span>

@@ -148,11 +148,11 @@ function TopBar({ session, onLogout, auditState, canCallAudit, onNavigateAudit, 
             <div className="hidden items-center gap-3 sm:flex">
               <div className="text-right text-xs leading-tight">
                 <div className="font-medium text-white">{session.display_name}</div>
-                <div className="text-[11px] text-navy-200">
+                <div className="text-2xs text-navy-200">
                   <span className="font-mono">{session.tenant_id}</span>
                 </div>
               </div>
-              <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-navy-50 ring-1 ring-white/15">
+              <span className="rounded-full bg-white/10 px-2 py-0.5 text-2xs font-medium uppercase tracking-wider text-navy-50 ring-1 ring-white/15">
                 {t(roleKey, { defaultValue: session.role })}
               </span>
             </div>
@@ -259,7 +259,7 @@ function LangButton({ active, onClick, label }) {
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors ${
+      className={`rounded px-1.5 py-0.5 text-2xs font-medium transition-colors ${
         active ? 'bg-white text-navy-900' : 'text-navy-50 hover:bg-white/15'
       }`}
     >
@@ -297,7 +297,7 @@ function ChainChip({ state, canCallAudit, onClick, t }) {
     >
       <Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       <span>{label}</span>
-      {rowsText && <span className="hidden font-mono text-[11px] opacity-80 sm:inline">·{' '}{rowsText}</span>}
+      {rowsText && <span className="hidden font-mono text-2xs opacity-80 sm:inline">·{' '}{rowsText}</span>}
     </button>
   );
 }
@@ -352,7 +352,7 @@ function TrustBand({ session, trustContext, t }) {
           }
         />
         {session?.tenant_id && (
-          <div className="ml-auto flex items-center gap-1.5 font-mono text-[11px] text-slate-500">
+          <div className="ml-auto flex items-center gap-1.5 font-mono text-2xs text-slate-500">
             <span>tenant</span>
             <span className="rounded bg-slate-100 px-1.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
               {session.tenant_id}

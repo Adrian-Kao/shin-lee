@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LogOut, RefreshCw, ScrollText, ShieldCheck, ShieldAlert, Loader2 } from 'lucide-react';
+import { LogOut, RefreshCw, ScrollText, ShieldCheck, ShieldAlert, Loader2, Check, X } from 'lucide-react';
 import { useAuditRecent, useAuditVerify } from '../api/queries.js';
+import { Button } from './ui/button.jsx';
+import { Badge } from './ui/badge.jsx';
 import ErrorBanner from './ErrorBanner.jsx';
 import EmptyState from './EmptyState.jsx';
 import { SkeletonCard } from './Skeleton.jsx';
@@ -83,13 +85,15 @@ export default function AuditView({ session, onSwitchView, onLogout, embedded = 
                 Append-only SQLite + UPDATE/DELETE trigger 阻擋。 Production 加 S3 Object Lock 每小時封存。
               </p>
             </div>
-            <button
+            <Button
+              variant="outline"
+              size="xs"
               onClick={refresh}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              className="gap-1.5"
             >
               <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
               重新整理
-            </button>
+            </Button>
           </div>
 
           {verify && (
@@ -180,12 +184,13 @@ export default function AuditView({ session, onSwitchView, onLogout, embedded = 
                         ) : (
                           <div className="flex flex-wrap gap-1">
                             {r.masked_field_rules.map((m, i) => (
-                              <span
+                              <Badge
                                 key={i}
-                                className="rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 font-mono text-[10px]"
+                                tone="warning"
+                                className="px-1.5 py-0.5 font-mono text-3xs"
                               >
                                 {m}
-                              </span>
+                              </Badge>
                             ))}
                           </div>
                         )}
@@ -195,7 +200,7 @@ export default function AuditView({ session, onSwitchView, onLogout, embedded = 
                           {Object.entries(r.policy_decisions || {}).map(([k, v]) => (
                             <span
                               key={k}
-                              className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
+                              className={`rounded px-1.5 py-0.5 font-mono text-3xs ${
                                 k === 'cache_hit' || k === 'circuit_open'
                                   ? v
                                     ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300'
@@ -205,7 +210,14 @@ export default function AuditView({ session, onSwitchView, onLogout, embedded = 
                                     : 'bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300'
                               }`}
                             >
-                              {k}={v ? '✓' : '✗'}
+                              <span className="inline-flex items-center gap-0.5">
+                                {k}=
+                                {v ? (
+                                  <Check className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                                ) : (
+                                  <X className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+                                )}
+                              </span>
                             </span>
                           ))}
                         </div>
@@ -253,12 +265,13 @@ function HeroMetrics({ metrics, verifying, onVerify, t }) {
             small
           />
         </div>
-        <button
+        <Button
           type="button"
+          variant="primary"
           onClick={onVerify}
           disabled={verifying}
           data-testid="audit-verify-now"
-          className="inline-flex items-center gap-2 rounded-md bg-navy-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-navy-700 disabled:cursor-wait disabled:opacity-70"
+          className="gap-2 disabled:cursor-wait disabled:opacity-70"
         >
           {verifying ? (
             <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} aria-hidden="true" />
@@ -266,7 +279,7 @@ function HeroMetrics({ metrics, verifying, onVerify, t }) {
             <ShieldCheck className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
           )}
           {verifying ? t('audit.verifying') : t('audit.verify_now')}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -280,7 +293,7 @@ function HeroStat({ label, value, tone, small }) {
   };
   return (
     <div>
-      <div className="text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
+      <div className="text-2xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
       <div
         className={`mt-1 font-mono font-semibold ${toneClasses[tone] || toneClasses.slate} ${
           small ? 'text-sm sm:text-base' : 'text-2xl sm:text-3xl'

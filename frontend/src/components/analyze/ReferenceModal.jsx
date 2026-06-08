@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
+import { Button } from '../ui/button.jsx';
 
 /**
  * Minimal modal for displaying a single RAG retrieval hit's full text.
@@ -51,14 +53,16 @@ export default function ReferenceModal({ hit, onClose }) {
             {hit.section} · score {hit.score.toFixed(3)}
           </div>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           onClick={onClose}
-          className="rounded bg-slate-100 dark:bg-slate-800 px-2 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+          className="h-8 w-8 shrink-0"
           aria-label="Close"
         >
-          ✕
-        </button>
+          <X className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+        </Button>
       </div>
       <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">{hit.text}</p>

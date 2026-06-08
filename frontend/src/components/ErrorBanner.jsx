@@ -73,7 +73,7 @@ export default function ErrorBanner({ error, onRetry, onDismiss, onLogin }) {
             <summary className="cursor-pointer select-none">
               {t('errors.technical_details')}
             </summary>
-            <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[11px]">
+            <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-2xs">
               {rawMessage}
             </pre>
           </details>

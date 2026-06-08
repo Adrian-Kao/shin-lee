@@ -1,0 +1,23 @@
+{
+  "jurisdiction": "KR",
+  "version": "2025.1",
+  "source": "POC seed. South Korea public holidays for 2025, including the 설날 (Seollal) and 추석 (Chuseok) three-day blocks and 대체공휴일 (substitute holidays) where a holiday falls on a weekend or overlaps another. Lunar dates (설날/추석/부처님오신날) and substitute-holiday designations should be pulled from the official 관공서의 공휴일 notice for production.",
+  "holidays": {
+    "2025-01-01": "신정",
+    "2025-01-28": "설날 연휴",
+    "2025-01-29": "설날",
+    "2025-01-30": "설날 연휴",
+    "2025-03-01": "삼일절",
+    "2025-03-03": "삼일절 대체공휴일",
+    "2025-05-05": "어린이날 / 부처님오신날",
+    "2025-05-06": "대체공휴일",
+    "2025-06-06": "현충일",
+    "2025-08-15": "광복절",
+    "2025-10-03": "개천절",
+    "2025-10-06": "추석 연휴",
+    "2025-10-07": "추석",
+    "2025-10-08": "추석 연휴",
+    "2025-10-09": "한글날",
+    "2025-12-25": "성탄절"
+  }
+}

@@ -164,6 +164,104 @@ def test_jp_parse_keeps_year_and_adds_jpo_closure():
 
 
 # --------------------------------------------------------------------------- #
+# CN / KR Nager.Date JSON parsing (in-memory; HTTP monkeypatched -> no network)#
+# --------------------------------------------------------------------------- #
+
+_NAGER_CN_SAMPLE = json.dumps([
+    {"date": "2025-01-01", "localName": "元旦", "name": "New Year's Day"},
+    {"date": "2025-01-29", "localName": "春节", "name": "Chinese New Year"},
+    {"date": "2025-10-01", "localName": "国庆节", "name": "National Day"},
+    {"date": "2024-12-31", "localName": "旧年", "name": "Prev year"},  # filtered
+])
+
+_NAGER_KR_SAMPLE = json.dumps([
+    {"date": "2025-01-01", "localName": "신정", "name": "New Year's Day"},
+    {"date": "2025-01-29", "localName": "설날", "name": "Korean New Year"},
+    {"date": "2025-10-07", "localName": "추석", "name": "Chuseok"},
+    {"date": "2026-01-01", "localName": "신정", "name": "Next year"},  # filtered
+])
+
+
+def test_nager_parse_keeps_localname_and_filters_year():
+    out = fetch_holidays._parse_nager_holidays(_NAGER_CN_SAMPLE, 2025)
+    assert out["2025-01-01"] == "元旦"
+    assert out["2025-01-29"] == "春节"
+    assert out["2025-10-01"] == "国庆节"
+    assert "2024-12-31" not in out  # different year dropped
+
+
+def test_nager_parse_empty_for_year_raises():
+    with pytest.raises(fetch_holidays.FetchError):
+        fetch_holidays._parse_nager_holidays("[]", 2025)
+
+
+def test_nager_parse_non_list_raises():
+    with pytest.raises(fetch_holidays.FetchError):
+        fetch_holidays._parse_nager_holidays('{"date":"2025-01-01"}', 2025)
+
+
+def test_cn_fetch_monkeypatched_no_network(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_get(url, encodings=("utf-8",)):
+        calls["n"] += 1
+        assert "CN" in url
+        return _NAGER_CN_SAMPLE
+
+    monkeypatch.setattr(fetch_holidays, "_http_get_text", fake_get)
+    holidays, source = fetch_holidays.fetch_cn_holidays(2025)
+    assert calls["n"] == 1
+    assert holidays["2025-10-01"] == "国庆节"
+    assert source  # a URL string
+
+
+def test_kr_fetch_monkeypatched_no_network(monkeypatch):
+    def fake_get(url, encodings=("utf-8",)):
+        assert "KR" in url
+        return _NAGER_KR_SAMPLE
+
+    monkeypatch.setattr(fetch_holidays, "_http_get_text", fake_get)
+    holidays, source = fetch_holidays.fetch_kr_holidays(2025)
+    assert holidays["2025-10-07"] == "추석"
+    assert "2026-01-01" not in holidays
+
+
+# --------------------------------------------------------------------------- #
+# EP — hand-curated, no network                                               #
+# --------------------------------------------------------------------------- #
+
+def test_ep_fetch_returns_curated_year_no_network(monkeypatch):
+    """EP must NOT hit the network: if _http_get_text is called the test fails."""
+    def boom(*a, **k):
+        raise AssertionError("EP fetch must not touch the network")
+
+    monkeypatch.setattr(fetch_holidays, "_http_get_text", boom)
+    holidays, source = fetch_holidays.fetch_ep_holidays(2025)
+    assert holidays["2025-12-25"].startswith("Christmas Day")
+    assert "approx" in source.lower() or "no network" in source.lower()
+
+
+def test_ep_fetch_uncurated_year_raises():
+    with pytest.raises(fetch_holidays.FetchError):
+        fetch_holidays.fetch_ep_holidays(2099)
+
+
+def test_ep_fetch_matches_shipped_calendar():
+    """The curated EP 2025 set must equal the shipped EP_2025.1.json holidays."""
+    shipped = json.loads(
+        (_ROOT / "data" / "calendars" / "EP_2025.1.json").read_text(encoding="utf-8")
+    )["holidays"]
+    curated, _ = fetch_holidays.fetch_ep_holidays(2025)
+    assert curated == shipped
+
+
+@pytest.mark.parametrize("jur", ["CN", "KR", "EP"])
+def test_new_jurisdictions_registered(jur):
+    assert jur in fetch_holidays.FETCHERS
+    assert jur in fetch_holidays.SUPPORTED
+
+
+# --------------------------------------------------------------------------- #
 # build_calendar / write_calendar: schema + overwrite-guard + atomicity       #
 # --------------------------------------------------------------------------- #
 

@@ -28,7 +28,9 @@ hard-coded dict is a byte-for-byte mirror for the shipped 2025.1 versions). A
 requested version with NO file AND no hard-coded entry resolves to an EMPTY
 calendar plus a LOUD warning in the returned dict — never a silently-wrong date.
 
-POC jurisdictions: TW, US, JP. Others stub-out (60-day default + warning).
+POC jurisdictions: TW, US, JP, EP, CN, KR (the EP/CN/KR rules are documented
+approximations — see each rule's inline caveat). Anything else stubs out
+(60-day default + warning).
 """
 from __future__ import annotations
 
@@ -117,6 +119,72 @@ _FALLBACK_HOLIDAYS: dict[tuple[str, str], dict[date, str]] = {
         date(2025, 12, 29): "年末休 (JPO closed)",
         date(2025, 12, 30): "年末休 (JPO closed)",
         date(2025, 12, 31): "年末休 (JPO closed)",
+    },
+    # EP fallback — byte-for-byte mirror of EP_2025.1.json. APPROXIMATE EPO
+    # closure days (see the JSON's source note + the EP RULES caveat).
+    ("EP", "2025.1"): {
+        date(2025, 1, 1): "New Year's Day (EPO closed, approx.)",
+        date(2025, 4, 18): "Good Friday (EPO closed, approx.)",
+        date(2025, 4, 21): "Easter Monday (EPO closed, approx.)",
+        date(2025, 5, 1): "Labour Day (EPO closed, approx.)",
+        date(2025, 5, 8): "Liberation Day (NL, EPO closed, approx.)",
+        date(2025, 5, 29): "Ascension Day (EPO closed, approx.)",
+        date(2025, 6, 9): "Whit Monday (EPO closed, approx.)",
+        date(2025, 10, 3): "German Unity Day (EPO closed, approx.)",
+        date(2025, 12, 24): "Christmas Eve (EPO closed, approx.)",
+        date(2025, 12, 25): "Christmas Day (EPO closed, approx.)",
+        date(2025, 12, 26): "Boxing Day (EPO closed, approx.)",
+        date(2025, 12, 31): "New Year's Eve (EPO closed, approx.)",
+    },
+    # CN fallback — byte-for-byte mirror of CN_2025.1.json. 国务院 statutory
+    # public holidays incl. the 春节 + 国庆/中秋 golden weeks.
+    ("CN", "2025.1"): {
+        date(2025, 1, 1): "元旦",
+        date(2025, 1, 28): "春节(除夕)",
+        date(2025, 1, 29): "春节(初一)",
+        date(2025, 1, 30): "春节(初二)",
+        date(2025, 1, 31): "春节(初三)",
+        date(2025, 2, 1): "春节",
+        date(2025, 2, 2): "春节",
+        date(2025, 2, 3): "春节",
+        date(2025, 2, 4): "春节",
+        date(2025, 4, 4): "清明节",
+        date(2025, 5, 1): "劳动节",
+        date(2025, 5, 2): "劳动节",
+        date(2025, 5, 3): "劳动节",
+        date(2025, 5, 4): "劳动节",
+        date(2025, 5, 5): "劳动节",
+        date(2025, 5, 31): "端午节",
+        date(2025, 6, 1): "端午节",
+        date(2025, 6, 2): "端午节",
+        date(2025, 10, 1): "国庆节",
+        date(2025, 10, 2): "国庆节",
+        date(2025, 10, 3): "国庆节",
+        date(2025, 10, 4): "国庆节",
+        date(2025, 10, 5): "国庆节",
+        date(2025, 10, 6): "中秋节",
+        date(2025, 10, 7): "国庆节",
+        date(2025, 10, 8): "国庆节",
+    },
+    # KR fallback — byte-for-byte mirror of KR_2025.1.json. 공휴일 incl. the
+    # 설날 + 추석 three-day blocks and 대체공휴일 substitutions.
+    ("KR", "2025.1"): {
+        date(2025, 1, 1): "신정",
+        date(2025, 1, 28): "설날 연휴",
+        date(2025, 1, 29): "설날",
+        date(2025, 1, 30): "설날 연휴",
+        date(2025, 3, 1): "삼일절",
+        date(2025, 3, 3): "삼일절 대체공휴일",
+        date(2025, 5, 5): "어린이날 / 부처님오신날",
+        date(2025, 5, 6): "대체공휴일",
+        date(2025, 6, 6): "현충일",
+        date(2025, 8, 15): "광복절",
+        date(2025, 10, 3): "개천절",
+        date(2025, 10, 6): "추석 연휴",
+        date(2025, 10, 7): "추석",
+        date(2025, 10, 8): "추석 연휴",
+        date(2025, 10, 9): "한글날",
+        date(2025, 12, 25): "성탄절",
     },
 }
 
@@ -326,6 +394,68 @@ RULES: dict[str, JurisdictionRule] = {
         timezone_name="Asia/Tokyo",
         extension_days=90,
     ),
+    # EP (EPO) — POC APPROXIMATION, pending attorney confirmation.
+    # Basis: a response to an EPO examining-division communication under
+    # Art. 94(3) EPC is set in the communication itself and is conventionally
+    # ~4 months from the communication date. We model 4 months as 120 days
+    # counted from the communication date in Europe/Berlin (the canonical IANA
+    # zone covering the EPO's Munich seat — there is no separate "Europe/Munich"
+    # zone). If the last day falls on a weekend or an EPO non-working day it
+    # rolls to the next day the EPO is open (Rule 134(1) EPC).
+    # CAVEAT 1: the period is a CALENDAR-MONTH count under Rule 131(4) EPC (e.g.
+    #   a communication dated the 15th expires on the 15th four months later),
+    #   NOT a fixed 120-day count; the 120-day figure is a POC simplification
+    #   that the dataclass's day-based schema forces and can be off by 1-2 days.
+    # CAVEAT 2: the old "10-day rule" (Rule 126(2) EPC, +10 days for notified
+    #   deemed-delivery) was ABOLISHED for documents notified on/after
+    #   2023-11-01, so we do NOT add it; pre-2023 communications would need it.
+    # The exact start event and any further-processing/extension rights MUST be
+    # confirmed with an EP attorney before production use.
+    "EP": JurisdictionRule(
+        name="EPO Art. 94(3) examination response (POC approximation)",
+        response_days=120,            # ~4 months, simplified to fixed days
+        excludes_weekends=False,
+        excludes_holidays=False,
+        timezone_name="Europe/Berlin",  # canonical IANA zone for Munich
+        extension_days=60,            # further processing / extension, approx.
+    ),
+    # CN (CNIPA) — POC APPROXIMATION, pending attorney confirmation.
+    # Basis: a response to the first Office Action (审查意见通知书) is due ~4
+    # months from the 发文日 (issue/dispatch date printed on the notice). We
+    # model 4 months as 120 days counted in Asia/Shanghai. Roll forward over
+    # weekends + national holidays (incl. the multi-day 春节/国庆 golden weeks).
+    # CAVEAT: under 专利法实施细则, the period actually runs from the date of
+    #   RECEIPT, which the rules PRESUME to be the 发文日 + 15 days (送达推定).
+    #   So a more faithful statutory deadline is closer to 发文日 + 15 + ~120
+    #   days. This engine counts from whatever received_date the caller passes;
+    #   if the caller passes the 发文日, add the +15-day presumption upstream (or
+    #   pass the presumed receipt date). The 15-day presumption is NOT auto-added
+    #   here to avoid double-counting when the caller already has the true
+    #   receipt date. Confirm with a CN attorney before production use.
+    "CN": JurisdictionRule(
+        name="CNIPA 审查意见通知书 答复期限 (POC approximation)",
+        response_days=120,            # ~4 months from 发文日, simplified
+        excludes_weekends=False,
+        excludes_holidays=False,
+        timezone_name="Asia/Shanghai",
+        extension_days=60,
+    ),
+    # KR (KIPO) — POC APPROXIMATION, pending attorney confirmation.
+    # Basis: a response to a KIPO office action (의견제출통지서) is conventionally
+    # ~2 months from notification for a domestic applicant, extendable on
+    # request. We model 2 months as 60 days counted in Asia/Seoul, rolling
+    # forward over weekends + national holidays (incl. the 설날/추석 blocks).
+    # CAVEAT: the exact start event (notification vs deemed receipt) and the
+    #   per-month extension scheme (KIPO grants extensions in monthly tranches)
+    #   are simplified; confirm with a KR attorney before production use.
+    "KR": JurisdictionRule(
+        name="KIPO 의견제출통지서 응답기간 (POC approximation)",
+        response_days=60,             # ~2 months, extendable
+        excludes_weekends=False,
+        excludes_holidays=False,
+        timezone_name="Asia/Seoul",
+        extension_days=30,
+    ),
 }
 
 
@@ -482,9 +612,27 @@ def _self_test():
     r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=timezone.utc), "US", "2025.1")
     assert r["statutory_deadline"].startswith("2025-06-30"), r["statutory_deadline"]
 
-    # Case 4: jurisdiction stub
+    # Case 4: jurisdiction stub (still works for anything not in RULES)
     r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=timezone.utc), "DE", "2025.1")
     assert any("not yet implemented" in w for w in r["warnings"])
+
+    # Case 5: CN — +120 days lands on the 国庆 golden week; must roll past it
+    # and land on a business day, in +08:00 (Asia/Shanghai).
+    r = calculate_deadline(datetime(2025, 6, 9, 9, 0, tzinfo=timezone.utc), "CN", "2025.1")
+    assert r["statutory_deadline"].endswith("+08:00"), r["statutory_deadline"]
+    cn_sd = date.fromisoformat(r["statutory_deadline"][:10])
+    assert cn_sd.weekday() < 5 and cn_sd not in get_holidays("CN", "2025.1"), cn_sd
+
+    # Case 6: KR — +60 days, Asia/Seoul (+09:00), rolls off weekends/holidays.
+    r = calculate_deadline(datetime(2025, 8, 1, 9, 0, tzinfo=timezone.utc), "KR", "2025.1")
+    assert r["statutory_deadline"].endswith("+09:00"), r["statutory_deadline"]
+    kr_sd = date.fromisoformat(r["statutory_deadline"][:10])
+    assert kr_sd.weekday() < 5 and kr_sd not in get_holidays("KR", "2025.1"), kr_sd
+
+    # Case 7: EP — +120 days, Europe/Munich; business day.
+    r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=timezone.utc), "EP", "2025.1")
+    ep_sd = date.fromisoformat(r["statutory_deadline"][:10])
+    assert ep_sd.weekday() < 5 and ep_sd not in get_holidays("EP", "2025.1"), ep_sd
 
     print("✓ deadline self-test passed")
 

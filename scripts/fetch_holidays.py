@@ -30,6 +30,15 @@ Jurisdictions:
   JP — Japanese national holidays (内閣府 publishes syukujitsu.csv). Fetched +
        parsed; we additionally fold in the JPO year-end/new-year closure
        (12/29–1/3) since the JPO is shut then. Needs network.
+  CN — China statutory holidays incl. the 春节/国庆 golden weeks. Lunar + an
+       annual 国务院办公厅 调休 notice, so NOT computable; fetched from the public
+       Nager.Date holiday API. Needs network. (Does not model 调休 make-up work
+       Saturdays — irrelevant to roll-forward.)
+  KR — South Korea public holidays incl. the 설날/추석 blocks + 대체공휴일, fetched
+       from the public Nager.Date holiday API. Needs network.
+  EP — EPO closure days. The EPO has NO clean machine-readable feed, so these
+       are HAND-CURATED per year from its annual closure notice (approximate;
+       Munich / The Hague public holidays). No network.
 
 CLI:
   python scripts/fetch_holidays.py <JUR> <YEAR> [--version X] [--out DIR]
@@ -327,6 +336,130 @@ def fetch_jp_holidays(year: int) -> tuple[dict[str, str], str]:
 
 
 # --------------------------------------------------------------------------- #
+# CN — 国务院办公厅 annual holiday-arrangement notice (Nager.Date public API)   #
+# --------------------------------------------------------------------------- #
+
+# China's statutory holidays (esp. the 春节 / 国庆 golden weeks) follow the lunar
+# calendar AND an annual 国务院办公厅 调休 notice, so they are NOT computable from
+# fixed rules. There is no official machine-readable government endpoint, but the
+# widely-used public Nager.Date API exposes the State-Council-aligned public
+# holidays per country/year. We fetch from there and tag the source.
+NAGER_PUBLIC_HOLIDAYS_URL = "https://date.nager.at/api/v3/PublicHolidays/{year}/{cc}"
+
+
+def _parse_nager_holidays(text: str, year: int, *, local_name: bool = True) -> dict[str, str]:
+    """Parse a Nager.Date /PublicHolidays JSON array into {ISO-date: name}.
+
+    Nager returns objects like {"date":"2025-01-01","localName":"元旦",
+    "name":"New Year's Day", ...}. We keep `localName` (the native-language name)
+    by default, falling back to `name`. Rows outside `year` are ignored.
+    """
+    try:
+        rows = json.loads(text)
+    except ValueError as exc:
+        raise FetchError(f"Holiday API returned non-JSON: {exc}") from exc
+    if not isinstance(rows, list):
+        raise FetchError(
+            "Holiday API JSON was not a list of holidays — upstream format may "
+            "have changed."
+        )
+    out: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        iso = _normalise_tw_date(str(row.get("date", "")))
+        if iso is None or not iso.startswith(f"{year:04d}-"):
+            continue
+        name = (row.get("localName") if local_name else None) or row.get("name") or ""
+        out[iso] = str(name).strip() or "holiday"
+    if not out:
+        raise FetchError(
+            f"Holiday API returned no holidays for {year}. The year may not be "
+            "published yet."
+        )
+    return {k: out[k] for k in sorted(out)}
+
+
+def fetch_cn_holidays(year: int) -> tuple[dict[str, str], str]:
+    """Fetch CN public holidays for `year` from the Nager.Date public API.
+
+    Needs network. CAVEAT: this returns the legally OFF days (incl. the golden
+    weeks); it does NOT model the 调休 make-up WORK Saturdays, which the deadline
+    engine does not need (an extra working day can only delay, never advance, a
+    roll-forward). Cross-check against the year's 国务院办公厅 notice for prod.
+    """
+    url = NAGER_PUBLIC_HOLIDAYS_URL.format(year=year, cc="CN")
+    text = _http_get_text(url)
+    return _parse_nager_holidays(text, year), url
+
+
+# --------------------------------------------------------------------------- #
+# KR — public holidays incl. 설날/추석 + 대체공휴일 (Nager.Date public API)      #
+# --------------------------------------------------------------------------- #
+
+def fetch_kr_holidays(year: int) -> tuple[dict[str, str], str]:
+    """Fetch KR public holidays for `year` from the Nager.Date public API.
+
+    Needs network. The Nager feed includes the lunar 설날/추석 blocks and the
+    대체공휴일 (substitute) days. CAVEAT: substitute-holiday designations are set
+    annually by 인사혁신처 notice; cross-check the official 관공서 공휴일 list for
+    production.
+    """
+    url = NAGER_PUBLIC_HOLIDAYS_URL.format(year=year, cc="KR")
+    text = _http_get_text(url)
+    return _parse_nager_holidays(text, year), url
+
+
+# --------------------------------------------------------------------------- #
+# EP — EPO closure days: hand-curated, no clean machine-readable upstream      #
+# --------------------------------------------------------------------------- #
+
+# The EPO publishes its annual list of days on which its filing offices are
+# closed as a PDF / web notice (not a stable JSON/CSV API), and that list does
+# NOT equal any single country's public-holiday set. So EP is HAND-CURATED here:
+# a per-year table, approximated from the public holidays at the EPO's main
+# locations (Munich / The Hague). To add a year, drop its entry below after
+# reading the EPO's official "days on which the EPO is closed" notice.
+_EP_HOLIDAYS_BY_YEAR: dict[int, dict[str, str]] = {
+    2025: {
+        "2025-01-01": "New Year's Day (EPO closed, approx.)",
+        "2025-04-18": "Good Friday (EPO closed, approx.)",
+        "2025-04-21": "Easter Monday (EPO closed, approx.)",
+        "2025-05-01": "Labour Day (EPO closed, approx.)",
+        "2025-05-08": "Liberation Day (NL, EPO closed, approx.)",
+        "2025-05-29": "Ascension Day (EPO closed, approx.)",
+        "2025-06-09": "Whit Monday (EPO closed, approx.)",
+        "2025-10-03": "German Unity Day (EPO closed, approx.)",
+        "2025-12-24": "Christmas Eve (EPO closed, approx.)",
+        "2025-12-25": "Christmas Day (EPO closed, approx.)",
+        "2025-12-26": "Boxing Day (EPO closed, approx.)",
+        "2025-12-31": "New Year's Eve (EPO closed, approx.)",
+    },
+}
+
+
+def fetch_ep_holidays(year: int) -> tuple[dict[str, str], str]:
+    """Return EP (EPO) closure days for `year` from the hand-curated table.
+
+    NO network: the EPO has no clean machine-readable upstream, so years are
+    hand-curated from its annual closure notice. Raises FetchError for a year
+    not yet curated, with an actionable message.
+    """
+    table = _EP_HOLIDAYS_BY_YEAR.get(year)
+    if table is None:
+        raise FetchError(
+            f"EP {year} is not hand-curated. The EPO has no clean "
+            "machine-readable holiday feed; add the year to "
+            "_EP_HOLIDAYS_BY_YEAR after reading the EPO's official 'days on "
+            "which the EPO is closed' notice for that year."
+        )
+    return dict(sorted(table.items())), (
+        "Hand-curated from EPO annual closure notice (APPROXIMATE; Munich / "
+        "The Hague public holidays). No clean upstream — no network."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # HTTP helper (httpx, with timeout + actionable errors)                       #
 # --------------------------------------------------------------------------- #
 
@@ -377,6 +510,9 @@ FETCHERS: dict[str, Callable[[int], tuple[dict[str, str], str]]] = {
     ),
     "TW": fetch_tw_holidays,
     "JP": fetch_jp_holidays,
+    "CN": fetch_cn_holidays,
+    "KR": fetch_kr_holidays,
+    "EP": fetch_ep_holidays,
 }
 
 SUPPORTED = sorted(FETCHERS)
@@ -566,6 +702,9 @@ def _usage() -> None:
     print("  US — federal holidays, computed deterministically (no network).")
     print("  TW — 行政院人事行政總處 calendar from data.gov.tw (network).")
     print("  JP — 内閣府 national holidays + JPO closure (network).")
+    print("  CN — 国务院 statutory holidays via Nager.Date API (network).")
+    print("  KR — 공휴일 incl. 설날/추석 + 대체공휴일 via Nager.Date API (network).")
+    print("  EP — EPO closure days, hand-curated per year (no network).")
     print()
     print("Usage:")
     print("  python scripts/fetch_holidays.py <JUR> <YEAR> "

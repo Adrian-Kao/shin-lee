@@ -312,7 +312,7 @@ def test_non_leap_year_has_no_feb_29():
 #    This is the _prev_business_day bug class. Brute-force every 2025 day x3 jur.
 # ===========================================================================
 
-@pytest.mark.parametrize("jur", ["TW", "US", "JP"])
+@pytest.mark.parametrize("jur", ["TW", "US", "JP", "EP", "CN", "KR"])
 def test_recommended_strictly_before_statutory_full_year(jur):
     d = date(2025, 1, 1)
     end = date(2025, 12, 31)
@@ -412,7 +412,8 @@ def test_get_holidays_version_locked_and_cached():
 def test_file_and_fallback_agree_for_shipped_versions():
     """The shipped JSON calendars must mirror the hard-coded fallback exactly,
     so version-locking holds whether or not the data dir is present."""
-    for (jur, ver) in [("TW", "2025.1"), ("US", "2025.1"), ("JP", "2025.1")]:
+    for (jur, ver) in [("TW", "2025.1"), ("US", "2025.1"), ("JP", "2025.1"),
+                       ("EP", "2025.1"), ("CN", "2025.1"), ("KR", "2025.1")]:
         path = CALENDARS_DIR / f"{jur}_{ver}.json"
         assert path.exists(), f"missing shipped calendar {path}"
         doc = json.loads(path.read_text(encoding="utf-8"))
@@ -461,7 +462,7 @@ def test_calendar_is_missing_helper():
 
 def test_known_version_not_flagged_missing():
     for ver in ["2025.1"]:
-        for jur in ["TW", "US", "JP"]:
+        for jur in ["TW", "US", "JP", "EP", "CN", "KR"]:
             calculate_deadline(_utc(2025, 4, 1), jur, ver)
             assert calendar_is_missing(jur, ver) is False
 
@@ -470,7 +471,7 @@ def test_known_version_not_flagged_missing():
 # 11. Unknown jurisdiction -> 60-day naive default + warning.
 # ===========================================================================
 
-@pytest.mark.parametrize("jur", ["DE", "EP", "CN", "KR", "ZZ"])
+@pytest.mark.parametrize("jur", ["DE", "GB", "IN", "ZZ"])
 def test_unknown_jurisdiction_default(jur):
     r = calculate_deadline(_utc(2025, 4, 1), jur, "2025.1")
     assert r["days_remaining"] == 60
@@ -589,3 +590,214 @@ def test_pct_style_multi_jurisdiction_distinct_deadlines():
     assert _stat_date(tw) < _stat_date(us)
     assert _stat_date(tw) < _stat_date(jp)
     assert len(dates) >= 2
+
+
+# ===========================================================================
+# 17. EP / CN / KR (Q17 multi-jurisdiction expansion).
+#
+# These three rules are documented POC APPROXIMATIONS (see each rule's inline
+# caveat in deadline.py). The tests pin the engine BEHAVIOUR (window length,
+# roll-forward over the golden-week / Chuseok blocks, timezone correctness,
+# recommended-before-statutory) — not the legal exactness of the day counts.
+# ===========================================================================
+
+# --- Rule basis sanity --------------------------------------------------------
+
+def test_ep_rule_basis():
+    assert RULES["EP"].timezone_name == "Europe/Berlin"  # canonical Munich zone
+    assert RULES["EP"].response_days == 120              # ~4 months (approx.)
+
+
+def test_cn_rule_basis():
+    assert RULES["CN"].timezone_name == "Asia/Shanghai"
+    assert RULES["CN"].response_days == 120              # ~4 months from 发文日
+
+
+def test_kr_rule_basis():
+    assert RULES["KR"].timezone_name == "Asia/Seoul"
+    assert RULES["KR"].response_days == 60               # ~2 months, extendable
+
+
+# --- Window length baselines --------------------------------------------------
+
+@pytest.mark.parametrize(
+    "jur,received,raw",
+    [
+        ("EP", date(2025, 4, 1), date(2025, 7, 30)),   # +120
+        ("CN", date(2025, 6, 9), date(2025, 10, 7)),   # +120 (lands in 国庆 week)
+        ("KR", date(2025, 8, 1), date(2025, 9, 30)),   # +60
+    ],
+)
+def test_new_jur_window_length(jur, received, raw):
+    r = calculate_deadline(_utc(received.year, received.month, received.day), jur, "2025.1")
+    # statutory >= raw (rollover only pushes forward)
+    assert _stat_date(r) >= raw
+    assert r["holiday_calendar_version"] == "2025.1"
+
+
+# --- Full-year business-day invariant (never weekend/holiday) -----------------
+
+@pytest.mark.parametrize("jur", ["EP", "CN", "KR"])
+def test_statutory_never_weekend_or_holiday_new_jur_full_year(jur):
+    hol = get_holidays(jur, "2025.1")
+    d = date(2025, 1, 1)
+    end = date(2025, 12, 31)
+    while d <= end:
+        r = calculate_deadline(datetime(d.year, d.month, d.day, 9, 0, tzinfo=UTC), jur, "2025.1")
+        sd = _stat_date(r)
+        assert sd.weekday() < 5, f"{jur} {d} -> {sd} is a weekend"
+        if sd.year == 2025:
+            assert sd not in hol, f"{jur} {d} -> {sd} landed on holiday {hol.get(sd)}"
+        d += timedelta(days=1)
+
+
+# --- Each shipped holiday rolls forward off itself ----------------------------
+
+@pytest.mark.parametrize("jur", ["EP", "CN", "KR"])
+def test_new_jur_each_holiday_rolls_forward(jur):
+    for hol_date in sorted(_FALLBACK_HOLIDAYS[(jur, "2025.1")].keys()):
+        received = _received_for_raw(jur, hol_date)
+        r = calculate_deadline(received, jur, "2025.1")
+        sd = _stat_date(r)
+        assert sd > hol_date, f"{jur} {hol_date} did not roll forward (-> {sd})"
+        assert sd.weekday() < 5
+        assert sd not in get_holidays(jur, "2025.1")
+
+
+# --- Multi-day block roll-through ---------------------------------------------
+
+def test_cn_spring_festival_block_rolls_past():
+    """CN 春节 golden week 2025-01-28..02-04 (Tue..Tue) + the 02-05 boundary.
+    A raw deadline anywhere in the block rolls to Wed 2025-02-05 (first working
+    day after)."""
+    for raw in [date(2025, 1, 28), date(2025, 1, 31), date(2025, 2, 1),
+                date(2025, 2, 4)]:
+        received = _received_for_raw("CN", raw)
+        assert _stat_date(calculate_deadline(received, "CN", "2025.1")) == date(2025, 2, 5)
+
+
+def test_cn_national_day_golden_week_rolls_past():
+    """CN 国庆/中秋 golden week 2025-10-01..10-08. A raw deadline inside it rolls
+    to Thu 2025-10-09 (first working day after)."""
+    for raw in [date(2025, 10, 1), date(2025, 10, 6), date(2025, 10, 8)]:
+        received = _received_for_raw("CN", raw)
+        assert _stat_date(calculate_deadline(received, "CN", "2025.1")) == date(2025, 10, 9)
+
+
+def test_kr_chuseok_block_rolls_past():
+    """KR 추석 block 2025-10-06..10-08 (Mon..Wed), followed by 개천절-adjacent days
+    and 한글날 (Thu 10-09). A raw deadline inside the 추석 block rolls to Fri
+    2025-10-10 (the first working day after the block + 한글날)."""
+    for raw in [date(2025, 10, 6), date(2025, 10, 7), date(2025, 10, 8)]:
+        received = _received_for_raw("KR", raw)
+        assert _stat_date(calculate_deadline(received, "KR", "2025.1")) == date(2025, 10, 10)
+
+
+def test_kr_seollal_block_rolls_past():
+    """KR 설날 block 2025-01-28..01-30 (Tue..Thu). A raw deadline inside it rolls
+    to Fri 2025-01-31 (a working day)."""
+    for raw in [date(2025, 1, 28), date(2025, 1, 29), date(2025, 1, 30)]:
+        received = _received_for_raw("KR", raw)
+        sd = _stat_date(calculate_deadline(received, "KR", "2025.1"))
+        assert sd == date(2025, 1, 31), f"raw {raw} -> {sd}"
+
+
+# --- Timezone correctness (a near-midnight-UTC instant maps to the right local
+#     date for Europe/Berlin vs Asia/Shanghai vs Asia/Seoul) -------------------
+
+def test_tz_berlin_offset_in_output():
+    r = calculate_deadline(_utc(2025, 4, 1), "EP", "2025.1")
+    # Berlin is CEST (+02:00) in summer; the EP deadline (late July) is summer.
+    assert r["statutory_deadline"].endswith("+02:00"), r["statutory_deadline"]
+
+
+def test_tz_shanghai_offset_in_output():
+    r = calculate_deadline(_utc(2025, 6, 9), "CN", "2025.1")
+    assert r["statutory_deadline"].endswith("+08:00"), r["statutory_deadline"]
+
+
+def test_tz_seoul_offset_in_output():
+    r = calculate_deadline(_utc(2025, 8, 1), "KR", "2025.1")
+    assert r["statutory_deadline"].endswith("+09:00"), r["statutory_deadline"]
+
+
+def test_tz_near_utc_midnight_maps_to_correct_local_date():
+    """An instant at 22:30 UTC maps to a DIFFERENT local calendar date depending
+    on the zone: still the same day in Berlin (+1/+2) but already the NEXT day
+    in Shanghai (+8) and Seoul (+9). The received_date in the result is
+    case-local, so it must reflect each zone's date."""
+    # 2025-06-10 22:30 UTC -> Berlin 2025-06-11 00:30 (CEST +2) -> 6/11;
+    #                         Shanghai 2025-06-11 06:30 -> 6/11; Seoul 6/11.
+    # Use a winter instant to separate Berlin from the Asian zones:
+    # 2025-01-15 23:30 UTC -> Berlin (CET +1) 2025-01-16 00:30 -> 1/16;
+    #                         Shanghai 2025-01-16 07:30 -> 1/16; Seoul 1/16.
+    # To get a DIVERGENCE, use 2025-01-15 22:00 UTC ->
+    #   Berlin 23:00 -> 1/15 ;  Shanghai 06:00 -> 1/16 ; Seoul 07:00 -> 1/16.
+    dt = datetime(2025, 1, 15, 22, 0, tzinfo=UTC)
+    ep = calculate_deadline(dt, "EP", "2025.1")
+    cn = calculate_deadline(dt, "CN", "2025.1")
+    kr = calculate_deadline(dt, "KR", "2025.1")
+    assert ep["received_date"].startswith("2025-01-15")
+    assert cn["received_date"].startswith("2025-01-16")
+    assert kr["received_date"].startswith("2025-01-16")
+
+
+# --- Recommended internal deadline strictly before statutory across a golden
+#     week -----------------------------------------------------------------
+
+def test_cn_recommended_before_statutory_across_golden_week():
+    """CN statutory rolled to 2025-10-09 (after the 国庆 golden week). The
+    recommended date (~7 days earlier) falls INSIDE the golden week and must
+    roll BACK to a working day strictly before statutory — Tue 2025-09-30."""
+    received = _received_for_raw("CN", date(2025, 10, 6))  # inside the block
+    r = calculate_deadline(received, "CN", "2025.1")
+    assert _stat_date(r) == date(2025, 10, 9)
+    rec = _rec_date(r)
+    assert rec < date(2025, 10, 9)
+    assert rec == date(2025, 9, 30)  # last working day before the golden week
+    assert rec.weekday() < 5
+
+
+def test_kr_recommended_before_statutory_across_chuseok():
+    """KR statutory rolled to 2025-10-10 (after 추석 + 한글날). The recommended
+    date falls inside that block and must roll back strictly before statutory to
+    a working day — Fri 2025-10-03 is 개천절 (holiday), so it lands on Thu
+    2025-10-02."""
+    received = _received_for_raw("KR", date(2025, 10, 7))
+    r = calculate_deadline(received, "KR", "2025.1")
+    assert _stat_date(r) == date(2025, 10, 10)
+    rec = _rec_date(r)
+    assert rec < date(2025, 10, 10)
+    assert rec.weekday() < 5
+    assert rec not in get_holidays("KR", "2025.1")
+
+
+# --- Calendar-version locking holds for the new jurisdictions -----------------
+
+@pytest.mark.parametrize("jur", ["EP", "CN", "KR"])
+def test_new_jur_version_locked_and_cached(jur):
+    h1 = get_holidays(jur, "2025.1")
+    h2 = get_holidays(jur, "2025.1")
+    assert h1 is h2
+    assert h1 == _FALLBACK_HOLIDAYS[(jur, "2025.1")]
+
+
+@pytest.mark.parametrize("jur", ["EP", "CN", "KR"])
+def test_new_jur_same_version_identical_output(jur):
+    a = calculate_deadline(_utc(2025, 5, 1), jur, "2025.1")
+    b = calculate_deadline(_utc(2025, 5, 1), jur, "2025.1")
+    assert a == b
+
+
+# --- PCT-style: one receipt, six jurisdictions, distinct windows --------------
+
+def test_six_jurisdiction_distinct_windows():
+    received = _utc(2025, 4, 1)
+    results = {j: calculate_deadline(received, j, "2025.1")
+               for j in ["TW", "US", "JP", "EP", "CN", "KR"]}
+    for j, r in results.items():
+        assert not any("not yet implemented" in w for w in r["warnings"]), j
+        assert _stat_date(r) > date(2025, 4, 1)
+    # KR (+60) earliest of the long set; EP/CN (+120) latest.
+    assert _stat_date(results["KR"]) < _stat_date(results["EP"])
+    assert _stat_date(results["KR"]) < _stat_date(results["CN"])

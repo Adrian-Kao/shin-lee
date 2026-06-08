@@ -23,6 +23,15 @@ from backend.shared.config import AUDIT_DB_PATH
 from backend.shared.models import User
 
 
+# Code-controlled SYSTEM SENTINEL tenants — legitimate tenant_id values written
+# by the gateway itself for events that occur BEFORE a real tenant identity is
+# known. ``_preauth_`` labels pre-auth audit rows (magic-link request/consume,
+# Q12 — see backend/gateway/main.py). verify_global_chain's tenant-whitelist
+# pass treats these as known so they are never mistaken for a smuggled ghost
+# tenant. Keep in sync with the sentinels main.py actually writes.
+_SYSTEM_SENTINEL_TENANTS: frozenset[str] = frozenset({"_preauth_"})
+
+
 _DDL = """
 CREATE TABLE IF NOT EXISTS audit (
     audit_id           TEXT PRIMARY KEY,
@@ -273,7 +282,15 @@ class AuditWriter:
         # Cross-import settings here (not at module top) so a test that
         # monkeypatches DEMO_TENANTS via settings sees the override.
         from backend.shared.config import settings as _settings
-        known_tenants: set[str] = set(_settings.DEMO_TENANTS.keys())
+        # Known tenants = real demo tenants PLUS code-controlled SYSTEM SENTINEL
+        # tenants. Pre-auth audit rows (magic-link request/consume — Q12) are
+        # written before any tenant identity exists, under the documented
+        # ``_preauth_`` sentinel (see backend/gateway/main.py). Those rows are
+        # legitimate and MUST NOT be flagged ``unknown_tenant`` — that check
+        # exists to catch a DBA-smuggled ghost/typo tenant, not our own
+        # sentinel. Without this, any global chain verify after someone uses
+        # magic-link would show false ``broken`` rows forever.
+        known_tenants: set[str] = set(_settings.DEMO_TENANTS.keys()) | _SYSTEM_SENTINEL_TENANTS
 
         by_tenant: dict[str, dict] = {}
         broken: list[tuple[str, str]] = []

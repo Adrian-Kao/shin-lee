@@ -114,6 +114,37 @@ def test_verify_global_chain_with_intact_rows_reports_no_breakage(tmp_path, monk
     assert result["by_tenant"]["tenant_b"]["verified"] == 2
 
 
+def test_verify_global_chain_accepts_preauth_sentinel_tenant(tmp_path):
+    """Q12×Q13: magic-link pre-auth audit rows are written under the
+    code-controlled ``_preauth_`` sentinel tenant (no real tenant exists yet).
+    ``verify_global_chain`` must treat that sentinel as KNOWN — NOT flag it
+    ``unknown_tenant`` — otherwise any global chain verify after someone uses
+    magic-link shows false ``broken`` rows forever. A genuinely-unknown tenant
+    (typo / smuggled ghost) MUST still be flagged.
+    """
+    from backend.gateway.audit import AuditWriter, _SYSTEM_SENTINEL_TENANTS
+
+    assert "_preauth_" in _SYSTEM_SENTINEL_TENANTS  # the contract this rests on
+
+    db_path = tmp_path / "audit.db"
+    writer = AuditWriter(path=db_path)
+
+    _seed_audit_rows(writer, "tenant_a", n=2)
+    _seed_audit_rows(writer, "_preauth_", n=2)   # legitimate pre-auth rows
+    _seed_audit_rows(writer, "tenant_zzz", n=1)  # a real ghost — must be flagged
+
+    result = writer.verify_global_chain()
+
+    # The sentinel is accepted: not flagged, fully verified, no broken rows.
+    assert result["by_tenant"]["_preauth_"].get("unknown_tenant") is not True, result
+    assert result["by_tenant"]["_preauth_"]["verified"] == 2, result
+    assert not any(tid == "_preauth_" for tid, _ in result["broken"]), result
+
+    # The genuine ghost is still caught (the whitelist still has teeth).
+    assert result["by_tenant"]["tenant_zzz"].get("unknown_tenant") is True, result
+    assert any(tid == "tenant_zzz" for tid, _ in result["broken"]), result
+
+
 def test_verify_global_chain_detects_fabricated_unknown_tenant(tmp_path, monkeypatch):
     """An attacker (or compromised DBA) writes a row with a tenant_id
     NOT in DEMO_TENANTS. Per-tenant verify never sees it. Global

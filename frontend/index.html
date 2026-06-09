@@ -3,17 +3,36 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PatentMind AI — POC</title>
-    <!-- Tailwind via CDN keeps the POC dep-light. Production build should compile it. -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', sans-serif; }
-      /* Q16 provenance highlights */
-      .ai-line { background: linear-gradient(180deg, transparent 60%, rgba(99,102,241,0.18) 60%); }
-      .attorney-line { background: linear-gradient(180deg, transparent 60%, rgba(34,197,94,0.22) 60%); }
-    </style>
+    <meta name="description" content="AI-powered Patent Office Action analysis and response drafting." />
+    <meta name="theme-color" content="#1e3a8a" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231e3a8a'/%3E%3Ctext x='16' y='22' font-family='-apple-system,Segoe UI,sans-serif' font-size='16' font-weight='700' fill='white' text-anchor='middle'%3EPM%3C/text%3E%3C/svg%3E" />
+    <!--
+      Day 9C — CHUNK-1 typography.
+      Inter (Latin body), Noto Sans TC (zh-TW body), JetBrains Mono (case
+      IDs / hashes / audit rows). preconnect saves ~100ms on the first paint
+      for the Google Fonts CSS request. display=swap ensures FOUT not FOIT,
+      so on slow networks attorneys see system-font fallbacks instantly
+      instead of invisible text. Subset to weights actually used (no italic).
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>PatentMind AI</title>
   </head>
-  <body class="bg-slate-50 text-slate-900">
+  <body>
+    <script>
+      // Pre-React theme application to avoid FOUC on dark-mode reload.
+      // Mirrors logic in src/lib/theme.jsx — keep them in sync.
+      try {
+        var t = localStorage.getItem('theme');
+        if (t === 'dark') document.documentElement.classList.add('dark');
+      } catch (e) {
+        /* localStorage blocked — ignore */
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

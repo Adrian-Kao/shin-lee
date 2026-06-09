@@ -1,0 +1,23 @@
+[公開公報] US18000005 A
+中華民國智慧財產局   發明說明書公開本
+公開編號：US18000005 A
+公開日：中華民國 115 年 3 月 1 日（西元 2026-03-01）
+申請日：中華民國 113 年 6 月 26 日
+國際分類：G01S7/481  G01S17/931
+申請人：Lumosense Inc.（TW）
+發明人：Anna Schultz
+申請專利範圍項數：2 項
+
+【名稱】Solid-state LiDAR with MEMS Mirror
+
+【摘要】
+A solid-state LiDAR module employing a MEMS mirror, a 905 nm laser diode, and a SPAD receiver array.
+
+【說明書節錄】
+Background: Mechanical LiDAR is bulky.
+Description: Compact MEMS-based solid-state LiDAR.
+
+
+【申請專利範圍】
+請求項 1：1. A LiDAR module comprising: a 905 nm laser diode; a MEMS mirror configured to scan the laser beam; and a single-photon avalanche diode (SPAD) array configured to receive reflected photons.
+請求項 2：2. The module of claim 1, wherein the MEMS mirror has a scan angle of at least 60 degrees.

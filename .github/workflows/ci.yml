@@ -1,0 +1,264 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded runs on feature branches/PRs, but never on main:
+  # fast-follow commits to main must each be verified independently so a
+  # broken-but-cancelled run can't silently mask a regression.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend unit tests + lint.
+  # Green today: yes (uses only the mock/in-memory backends).
+  # ---------------------------------------------------------------------------
+  backend-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Both requirements files contribute — backend/requirements.txt is
+          # the runtime contract; the root one carries extra CLI / OCR deps.
+          pip install -r backend/requirements.txt
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt || \
+              echo "WARN: some optional deps (paddleocr/paddlepaddle) skipped on CI" >&2
+          fi
+          # Pin ruff — an unpinned ruff silently enables new lint rules on
+          # each release, which can red the lint step on untouched code. Bump
+          # deliberately, fixing any new findings in the same PR.
+          pip install pytest pytest-asyncio ruff==0.15.15
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Pytest (unit)
+        env:
+          LLM_MODE: mock
+          VECTOR_BACKEND: memory
+          EMBEDDING_BACKEND: mock
+          CACHE_BACKEND: memory
+        run: pytest tests/unit -v
+
+  # ---------------------------------------------------------------------------
+  # Backend integration tests.
+  # Green today: yes — the integration test is hermetic (ASGITransport).
+  # Services are pre-wired for Phase 2 (Postgres audit, Redis cache, Qdrant
+  # vector store) so as those backends come online the test surface can grow
+  # without touching CI.
+  # ---------------------------------------------------------------------------
+  backend-integration:
+    runs-on: ubuntu-latest
+    # NOTE (Phase 1 → Phase 2): the postgres / redis / qdrant services are
+    # pre-wired here even though today's integration test is hermetic
+    # (ASGITransport, mock backends). Phase 2 swaps the gateway audit store
+    # to Postgres (Q13), the response cache to Redis (Q9) and the vector
+    # store to Qdrant (Q7) — at which point these services are exercised
+    # by integration tests via env (DATABASE_URL / REDIS_URL / QDRANT_URL).
+    # Keeping them wired now means Phase 2 is a `pytest` change only, with
+    # no CI plumbing churn.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: patentmind
+          POSTGRES_PASSWORD: patentmind
+          POSTGRES_DB: patentmind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U patentmind"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      qdrant:
+        # NOTE: the qdrant/qdrant image is distroless — no bash / curl / wget,
+        # so a `--health-cmd` shell probe (TCP, HTTP) cannot run inside the
+        # container and silently fails the healthcheck even when Qdrant is up.
+        # Without `--health-cmd`, GitHub considers the service healthy once
+        # docker reports it started; consumers (Phase 2 tests) should perform
+        # their own retry-on-connect against http://localhost:6333/readyz.
+        image: qdrant/qdrant:v1.12.4
+        ports:
+          - 6333:6333
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt || \
+              echo "WARN: some optional deps (paddleocr/paddlepaddle) skipped on CI" >&2
+          fi
+          pip install pytest pytest-asyncio
+
+      - name: Pytest (integration)
+        env:
+          LLM_MODE: mock
+          # Today's integration test still uses memory backends. The service
+          # URLs are exported so Phase 2 tests can opt-in by overriding env.
+          VECTOR_BACKEND: memory
+          EMBEDDING_BACKEND: mock
+          CACHE_BACKEND: memory
+          DATABASE_URL: postgres://patentmind:patentmind@localhost:5432/patentmind
+          REDIS_URL: redis://localhost:6379/0
+          QDRANT_URL: http://localhost:6333
+        run: pytest tests/integration -v
+
+  # ---------------------------------------------------------------------------
+  # Frontend build + Playwright e2e (desktop + mobile projects).
+  # Build step is green today.
+  # The Playwright suite covers login, analyze three-pane flow, audit + chain
+  # verify, OAUpload drag-drop, the Day 9C trust band, and visual regression
+  # baselines under tests/e2e/__screenshots__/.
+  # ---------------------------------------------------------------------------
+  frontend-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install (npm ci)
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Cache Playwright browsers separately from npm — they live in
+      # ~/.cache/ms-playwright and downloading them is ~150 MB.
+      - name: Cache Playwright browsers
+        id: pw-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # Bump the cache key if @playwright/test changes — different
+          # browser versions ship per Playwright release.
+          key: ${{ runner.os }}-pw-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-pw-
+
+      - name: Install Playwright browsers
+        # Even on a cache hit we need the OS-level libs (`--with-deps`) on a
+        # fresh runner. `playwright install` is a no-op if the binaries are
+        # already on disk.
+        run: npx playwright install --with-deps chromium
+
+      # Functional e2e is the BLOCKING gate — deterministic DOM assertions
+      # (login, analyze, audit, trust band, upload) that are stable cross-OS.
+      - name: Playwright functional (desktop)
+        run: npx playwright test --project=chromium-desktop --grep-invert "Visual regression"
+
+      - name: Playwright functional (mobile)
+        # Don't short-circuit on desktop failure — the mobile project covers
+        # different selectors (tab strip, single-pane, ≤sm breakpoint) and
+        # we want both signals in the same CI run.
+        if: always()
+        run: npx playwright test --project=chromium-mobile --grep-invert "Visual regression"
+
+      # Visual regression is NON-BLOCKING: baselines are generated on the
+      # developer's OS (Windows) but CI runs on Linux, where font rendering
+      # differs enough to exceed the 5% tolerance. Diff images are still
+      # uploaded as artifacts and surfaced as a PR comment below. To make this
+      # blocking, generate Linux baselines (run `--update-snapshots` inside a
+      # Linux container, commit them) and drop continue-on-error.
+      - name: Playwright visual regression (non-blocking — platform-specific baselines)
+        if: always()
+        continue-on-error: true
+        run: npx playwright test --grep "Visual regression"
+
+      - name: Upload Playwright traces + screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # On a visual regression diff, surface the diff image into the PR so
+      # reviewers can see it without downloading artifacts. Only runs in PR
+      # context — push-only runs skip silently.
+      - name: Comment on PR with visual regression diffs
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const root = path.join(process.env.GITHUB_WORKSPACE, 'frontend', 'test-results');
+            if (!fs.existsSync(root)) return;
+            const diffs = [];
+            const walk = (dir) => {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) walk(full);
+                else if (entry.name.endsWith('-diff.png')) diffs.push(full);
+              }
+            };
+            walk(root);
+            if (diffs.length === 0) return;
+            const body = [
+              '### Visual regression diffs',
+              '',
+              `${diffs.length} snapshot(s) differ from the baseline.`,
+              'Download the `playwright-artifacts` archive to inspect the full diff,',
+              'or run `npx playwright test --update-snapshots` locally to refresh.',
+              '',
+              ...diffs.map((p) => `- \`${path.relative(process.env.GITHUB_WORKSPACE, p)}\``),
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

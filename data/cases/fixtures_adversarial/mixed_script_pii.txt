@@ -1,0 +1,17 @@
+經濟部智慧財產局 / TIPO Office Action / 特許庁通知
+
+代理人 / Agent / 代理人:
+  申請人：拓連科技股份有限公司
+  Attorney: John Smith, Esq.  Email: john.smith@apex-ip.com
+  代理人 phone: 0912-345-678 (TW mobile)
+  US phone: (415) 555-2381
+  申請人代表：林子茜 / Lin Tzu-Chien / リン・ツーチン
+  案件號：APEX-2025-12345 / Reference No. CL-AIX2024 / 件名：ＴＩＰＯ-2025-001
+
+說明 / Notes / 注意:
+本案請求項 1 有不符 專利法第22條第2項 之情形。Claim 1 is rejected under
+35 U.S.C. § 103. 請求項 1 は、特許法第29条第2項の規定により拒絶されます。
+
+引證資料 / Cited refs / 引用文献：US10876543、TW201912345、JP2020112233
+
+Examiner email: examiner@uspto.gov; 審查官 phone: (02)23766050

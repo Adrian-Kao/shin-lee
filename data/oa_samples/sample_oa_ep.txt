@@ -1,0 +1,43 @@
+EUROPEAN PATENT OFFICE
+Communication pursuant to Article 94(3) EPC
+
+Application No.: 19 123 456.7
+Applicant: NCCU Apex Patent Law Firm (file ref: APEX-2025-EP07, client: CL-EVCO12)
+Examining Division: Munich
+Date of this communication: 2025-04-15
+
+The examination of the above-identified application has revealed that it does
+not meet the requirements of the European Patent Convention for the reasons set
+out below. The applicant is invited to file observations and, where appropriate,
+amendments within FOUR MONTHS of the date of this communication.
+
+------------------------------------------------------------
+1. Inventive step - Article 56 EPC
+------------------------------------------------------------
+Claims 1-3 do not involve an inventive step within the meaning of Art. 56 EPC.
+Document D1 (EP3210987) discloses a wireless charging coil arrangement, and the
+distinguishing features of claim 1 amount to an obvious workshop modification
+that the skilled person would apply when faced with the objective technical
+problem. The combination of D1 with the common general knowledge evidenced by D2
+renders the claimed subject-matter obvious.
+
+------------------------------------------------------------
+2. Novelty - Article 54 EPC
+------------------------------------------------------------
+Claim 4 lacks novelty under Art. 54 EPC. All of its features are directly and
+unambiguously derivable from D1 (EP3210987).
+
+------------------------------------------------------------
+3. Clarity - Article 84 EPC
+------------------------------------------------------------
+Claim 5 does not meet the requirements of Art. 84 EPC: the expression
+"substantially aligned" is unclear and is not supported by the description.
+
+The applicant's attention is drawn to Art. 123(2) EPC: any amendment must not
+introduce subject-matter extending beyond the content of the application as
+filed.
+
+Examiner contact:
+- Primary examiner: m.weber@epo.example  (tel: +49-89-2399-0000)
+
+[End of Communication]

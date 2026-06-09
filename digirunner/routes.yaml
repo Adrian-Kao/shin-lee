@@ -1,0 +1,229 @@
+# digiRunner route configuration — design intent + audit trail
+#
+# IMPORTANT: digiRunner's documented configuration model is UI-first
+# (see https://docs.tpi.dev/guide/api-management/api-registry).
+# There is no documented "kubectl apply this YAML" pattern. The operator
+# transcribes the entries below into the digiRunner admin console.
+# This file lives in git as:
+#   1. Design intent — what routes SHOULD exist and why
+#   2. Audit trail — diff this file in PRs when a route changes
+#   3. Disaster-recovery template — re-create the digiRunner config from scratch
+#
+# Every field marked [CONFIRM WITH TPISOFT] should be checked against
+# digiRunner's actual schema during Phase 3.2 setup.
+#
+# digiRunner version assumed: Enterprise 2026 (post-AI gateway repositioning,
+# per https://www.tpisoftware.com/en/products/digirunner).
+
+apiVersion: digirunner.tpisoftware.com/v2026  # [CONFIRM WITH TPISOFT]
+kind: RouteConfig
+metadata:
+  name: patentmind-routes
+  environment: pilot  # pilot | staging | production
+  owner: patentmind-platform-team
+
+# Global defaults applied to every route unless overridden per-route.
+defaults:
+  # All upstream calls run over TLS in production. Pilot may relax for
+  # localhost loopback during 3.1 shadow mode.
+  tls:
+    upstream_verify: true
+    min_version: TLSv1.2
+  cors:
+    # SPA origin in dev. Production: replace with the firm's deployed origin.
+    allow_origins:
+      - http://localhost:5173
+      - https://patentmind.lawfirm.example
+    allow_methods: [GET, POST, OPTIONS]
+    allow_headers: [Authorization, Content-Type, X-Case-Id, X-Request-Id]
+    allow_credentials: true
+    max_age: 600
+  # Day 8C's upstream-header path: digiRunner is the trusted upstream IP.
+  upstream_headers_forwarded:
+    - name: X-User-Id
+      source: claim.sub          # OIDC sub claim
+    - name: X-Tenant-Id
+      source: claim.tenant_id    # custom claim, mapped from IdP group
+    - name: X-User-Role
+      source: claim.role         # custom claim, mapped from IdP role
+    - name: X-Case-Id
+      source: request.header.X-Case-Id  # passthrough (SPA already sends)
+    - name: X-Request-Id
+      source: request.id         # digiRunner-generated trace ID
+  rate_limit:
+    # Per-user (keyed on X-User-Id after OIDC validation).
+    # Match backend/gateway/rate_limit.py defaults: 60 RPM, 100k tokens/day.
+    requests_per_minute: 60
+    requests_per_minute_window: 60s
+    burst: 10
+    quota_tokens_per_day: 100000  # AI gateway feature [CONFIRM WITH TPISOFT]
+    # Per-IP login rate limit (matches Day 8I LOGIN_RPM default).
+    # Applied only to the OIDC redirect endpoint; not to authenticated routes.
+    login_rpm_per_ip: 10
+  observability:
+    # digiRunner's "Real-time monitoring dashboards with AI usage insights"
+    # (per https://www.tpisoftware.com/en/products/digirunner).
+    log_request_body: false   # PII risk; thin gateway audit is the source of truth
+    log_response_body: false  # PII risk
+    log_metadata: true
+    sentry_dsn: ${SENTRY_DSN_DIGIRUNNER}  # optional sidecar
+
+# Authentication policy referenced by individual routes below.
+auth_policies:
+  oidc-primary:
+    type: oidc
+    provider_ref: firm-idp     # see oidc.yaml
+    required_scopes: [openid, profile, email]
+    # OIDC mints JWT; digiRunner trusts the IdP, forwards mapped headers.
+    token_forwarding: disabled  # SPA never sees the raw OIDC token; digiRunner mints a short-lived gateway session token if needed
+
+# AI gateway policy: applied to routes that hit Dify or AI engine.
+ai_policies:
+  dify-managed:
+    # Per https://www.tpisoftware.com/en/products/digirunner (2026 AI gateway):
+    # "Manage AI endpoints with governance, routing, rate limiting, and access control"
+    model_routing:
+      default: claude-sonnet-4-6
+      verifier: claude-haiku-4-5-20251001
+      confidential: ollama/llama3.1-8b
+    cost_tracking:
+      enabled: true
+      tag_by_header: X-Case-Id
+      tag_by_claim: tenant_id
+    prompt_caching_passthrough: true  # don't strip cache_control headers from Anthropic
+    confidential_routing_rule:
+      # When the upstream request has X-Case-Id ending in -CONF, force
+      # routing to the local model. Defense-in-depth with the Dify
+      # workflow's own IF/ELSE branch.
+      condition: 'header.X-Case-Id ends_with "-CONF"'
+      override_provider: ollama
+      override_model: llama3.1:8b
+
+# Per-route definitions. Each entry maps one external SPA-visible path
+# to one upstream service.
+routes:
+
+  # ---------------------- Public (unauthenticated) ----------------------
+  - id: spa-static
+    path: /
+    methods: [GET]
+    upstream: http://patentmind-frontend.svc.cluster.local:5173
+    auth: none
+    rate_limit:
+      requests_per_minute: 600  # static assets are cheap; raise the cap
+
+  # ---------------------- Authentication ----------------------
+  - id: oidc-login
+    path: /api/auth/login
+    methods: [GET]
+    description: OIDC redirect entrypoint. Replaces POST /v1/auth/login in backend/gateway/main.py.
+    upstream: digirunner://oidc/authorize
+    auth: none
+    rate_limit:
+      requests_per_minute: 10  # per-IP login throttle (matches Day 8I)
+  - id: oidc-callback
+    path: /api/auth/callback
+    methods: [GET]
+    upstream: digirunner://oidc/callback
+    auth: none
+    # On success, digiRunner sets the session cookie and redirects to SPA.
+  - id: auth-logout
+    path: /api/auth/logout
+    methods: [POST]
+    upstream: digirunner://session/revoke
+    auth: oidc-primary
+
+  # ---------------------- Main business endpoints ----------------------
+  # /v1/oa/analyze becomes a Dify workflow invocation. digiRunner is the
+  # only entity that can call Dify's workflow run API; the SPA hits this
+  # gateway path, digiRunner translates to Dify's API shape.
+  - id: oa-analyze
+    path: /api/v1/oa/analyze
+    methods: [POST]
+    description: Main OA analysis. Was orchestrator.py 6-step DAG; now Dify analyze_oa.workflow.json.
+    upstream: ${DIFY_API_URL}/v1/workflows/${DIFY_ANALYZE_OA_WORKFLOW_ID}/run
+    auth: oidc-primary
+    ai_policy: dify-managed
+    rate_limit:
+      requests_per_minute: 60
+      burst: 5
+    request_transform:
+      # SPA still sends AnalysisRequest shape. Translate to Dify's
+      # workflow run API shape: {"inputs": {...}, "response_mode": "blocking", "user": "..."}.
+      body_template: |
+        {
+          "inputs": {
+            "oa_text": "${request.body.oa_text}",
+            "tenant_id": "${header.X-Tenant-Id}",
+            "case_id": "${request.body.case_id}",
+            "target_patent_no": "${request.body.target_patent_no}",
+            "security_level": "${case_id_security_level(request.body.case_id)}",
+            "user_hint": "${request.body.user_hint}",
+            "user_id": "${header.X-User-Id}"
+          },
+          "response_mode": "blocking",
+          "user": "${header.X-User-Id}"
+        }
+    response_transform:
+      # Dify returns {"workflow_run_id": "...", "data": {...}}. SPA expects AnalysisResponse directly.
+      body_path: data.outputs
+      # Strip internal-only fields before responding to SPA.
+      strip_fields: [_internal_meta]
+
+  - id: oa-upload
+    path: /api/v1/oa/upload
+    methods: [POST]
+    description: Multipart upload → extract_pdf.workflow.json. Body-cap enforced here too.
+    upstream: ${DIFY_API_URL}/v1/workflows/${DIFY_EXTRACT_PDF_WORKFLOW_ID}/run
+    auth: oidc-primary
+    ai_policy: dify-managed
+    body_size_limit: 30MB  # matches backend/shared/config.py MAX_UPLOAD_MB
+    request_transform:
+      # Convert multipart to Dify workflow input (base64). digiRunner has
+      # a built-in transformer for this. [CONFIRM WITH TPISOFT]
+      multipart_to_b64: true
+
+  # ---------------------- Audit (thin gateway is authoritative) ----------------------
+  - id: audit-recent
+    path: /api/v1/audit/recent
+    methods: [GET]
+    upstream: http://patentmind-thin-gw.svc.cluster.local:8010/v1/gateway/audit/recent
+    auth: oidc-primary
+    required_role: AUDITOR
+  - id: audit-verify
+    path: /api/v1/audit/verify
+    methods: [GET]
+    upstream: http://patentmind-thin-gw.svc.cluster.local:8010/v1/gateway/audit/verify
+    auth: oidc-primary
+    required_role: AUDITOR
+
+  # ---------------------- Quota / dashboard ----------------------
+  - id: quota
+    path: /api/v1/quota
+    methods: [GET]
+    upstream: http://patentmind-thin-gw.svc.cluster.local:8010/v1/gateway/quota
+    auth: oidc-primary
+    # Any authenticated role can read their own quota.
+
+  # ---------------------- Health (used by liveness probes) ----------------------
+  - id: health
+    path: /api/v1/health
+    methods: [GET]
+    upstream: http://patentmind-thin-gw.svc.cluster.local:8010/v1/health
+    auth: none
+
+# Environment variables digiRunner expects at runtime.
+# Set via TPIsoftware secret vault or Kubernetes Secret.
+env:
+  - name: DIFY_API_URL
+    description: Dify base URL (https in prod)
+    example: https://dify.lawfirm.example
+  - name: DIFY_ANALYZE_OA_WORKFLOW_ID
+    description: UUID Dify assigns to analyze_oa.workflow after import
+    example: REPLACE_AT_IMPORT
+  - name: DIFY_EXTRACT_PDF_WORKFLOW_ID
+    description: UUID Dify assigns to extract_pdf.workflow after import
+    example: REPLACE_AT_IMPORT
+  - name: SENTRY_DSN_DIGIRUNNER
+    description: Optional Sentry DSN for digiRunner-level events
+    required: false

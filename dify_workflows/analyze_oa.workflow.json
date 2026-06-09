@@ -1,0 +1,359 @@
+{
+  "_meta": {
+    "purpose": "PatentMind main OA analysis workflow. Replaces backend/gateway/orchestrator.py's 6-step DAG.",
+    "dify_version_required": ">=1.6.0",
+    "dify_version_tested": "Schema reverse-engineered from community samples (see docs/PHASE3_MIGRATION.md §6). Validate import in your Dify sandbox before production.",
+    "required_dify_env_vars": [
+      "THIN_GATEWAY_URL — e.g. http://patentmind-thin-gw.svc.cluster.local:8010",
+      "AI_ENGINE_URL    — e.g. http://patentmind-ai-engine.svc.cluster.local:8011",
+      "INTERNAL_TOKEN   — bearer for backend service-to-service auth (matches backend/shared/config.py settings.INTERNAL_TOKEN)",
+      "OLLAMA_BASE_URL  — for confidential-branch local LLM"
+    ],
+    "required_llm_provider_config": {
+      "anthropic": {
+        "models": ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+        "api_key_source": "digiRunner AI gateway secret vault OR Dify provider config — pick one source of truth"
+      },
+      "ollama": {
+        "models": ["llama3.1:8b"],
+        "endpoint": "OLLAMA_BASE_URL env",
+        "purpose": "confidential-case fallback per CLAUDE.md §4 invariant #7"
+      }
+    },
+    "manual_setup_steps_not_in_json": [
+      "1. Dify auto-assigns timestamp-based node IDs at import. The 'id' fields below are PLACEHOLDERS — Dify will rewrite them but the wiring (edges referring to those IDs) will follow.",
+      "2. Configure Anthropic + Ollama model providers BEFORE import or LLM nodes will show 'no provider'.",
+      "3. After import, enable 'Structured Output' on parse_oa, draft_response, verify_citations LLM nodes (Dify 1.3+ feature) and paste the JSON schemas from prompts_export.md §schemas.",
+      "4. Test with shadow-mode (see PHASE3_MIGRATION.md §4 Phase 3.1) before any traffic switch."
+    ]
+  },
+  "app": {
+    "name": "PatentMind — Analyze OA",
+    "description": "OA analysis: redact → parse → retrieve → draft → verify → deadline → audit. Replaces orchestrator.py.",
+    "icon": "📜",
+    "icon_background": "#FDF6E3",
+    "mode": "workflow"
+  },
+  "kind": "app",
+  "version": "0.1.0",
+  "workflow": {
+    "features": {
+      "file_upload": {"image": {"enabled": false}},
+      "opening_statement": "",
+      "retriever_resource": {"enabled": false},
+      "sensitive_word_avoidance": {"enabled": false},
+      "speech_to_text": {"enabled": false},
+      "suggested_questions": [],
+      "suggested_questions_after_answer": {"enabled": false},
+      "text_to_speech": {"enabled": false}
+    },
+    "graph": {
+      "nodes": [
+        {
+          "id": "node-start",
+          "type": "custom",
+          "position": {"x": 50, "y": 300},
+          "data": {
+            "title": "Start",
+            "type": "start",
+            "desc": "Input from digiRunner → thin gateway → Dify workflow run",
+            "variables": [
+              {"variable": "oa_text", "label": "OA text (untrusted; will be redacted in node 2)", "type": "paragraph", "required": true, "max_length": 1000000},
+              {"variable": "tenant_id", "label": "Tenant ID", "type": "text-input", "required": true, "max_length": 64},
+              {"variable": "case_id", "label": "Case ID", "type": "text-input", "required": true, "max_length": 128},
+              {"variable": "target_patent_no", "label": "Target patent number", "type": "text-input", "required": true, "max_length": 64},
+              {"variable": "security_level", "label": "Security level (public|confidential) — set by thin gateway from case_id suffix", "type": "select", "required": true, "options": ["public", "confidential"]},
+              {"variable": "user_hint", "label": "Attorney hint (optional)", "type": "paragraph", "required": false, "max_length": 8000},
+              {"variable": "user_id", "label": "User ID (from upstream digiRunner header)", "type": "text-input", "required": true, "max_length": 64}
+            ]
+          }
+        },
+        {
+          "id": "node-redact",
+          "type": "custom",
+          "position": {"x": 350, "y": 300},
+          "data": {
+            "title": "Redact OA text",
+            "type": "http-request",
+            "desc": "Q3 + Q10 — mandatory redaction before any LLM call. Mapping table stays on-prem.",
+            "method": "POST",
+            "url": "{{env.THIN_GATEWAY_URL}}/v1/gateway/redact",
+            "authorization": {
+              "type": "bearer",
+              "config": {"api_key": "{{env.INTERNAL_TOKEN}}"}
+            },
+            "headers": "Content-Type: application/json\nX-Internal-Token: {{env.INTERNAL_TOKEN}}",
+            "params": "",
+            "body": {
+              "type": "json",
+              "data": "{\"text\": {{#node-start.oa_text#}}, \"tenant_id\": {{#node-start.tenant_id#}}, \"case_id\": {{#node-start.case_id#}}}"
+            },
+            "timeout": {"connect_timeout": 5, "read_timeout": 30, "write_timeout": 30},
+            "ssl_verify": true,
+            "retry": {"max_retries": 2, "interval": 1000}
+          }
+        },
+        {
+          "id": "node-parse-oa",
+          "type": "custom",
+          "position": {"x": 700, "y": 300},
+          "data": {
+            "title": "Parse OA (LLM)",
+            "type": "llm",
+            "desc": "Replaces backend/ai_engine/oa_analyzer.py parse_oa step. System prompt from prompts/parse_oa.yaml.",
+            "model": {
+              "provider": "anthropic",
+              "name": "claude-sonnet-4-6",
+              "mode": "chat",
+              "completion_params": {"temperature": 0.2, "max_tokens": 4096}
+            },
+            "prompt_template": [
+              {
+                "role": "system",
+                "text": "PASTE_FROM: backend/ai_engine/prompts/parse_oa.yaml#system\n\n// See dify_workflows/prompts_export.md §1 for the full text."
+              },
+              {
+                "role": "user",
+                "text": "<untrusted_input>\n{{#node-redact.body.redacted#}}\n</untrusted_input>\n\nTarget patent: {{#node-start.target_patent_no#}}"
+              }
+            ],
+            "context": {"enabled": false},
+            "vision": {"enabled": false},
+            "structured_output": {
+              "enabled": true,
+              "schema_ref": "prompts_export.md#parse_oa_schema",
+              "_comment": "Paste the JSON Schema from prompts_export.md after import. Required for downstream nodes to read structured fields."
+            },
+            "_q11_spotlight": "User content wrapped in <untrusted_input> per oa_analyzer.py:157-159"
+          }
+        },
+        {
+          "id": "node-iterate-rejections",
+          "type": "custom",
+          "position": {"x": 1050, "y": 300},
+          "data": {
+            "title": "Per-rejection: retrieve + draft + verify",
+            "type": "iteration",
+            "desc": "Iterate over parse_oa.rejections[]. Child graph runs once per rejection. Aggregated outputs become drafts[].",
+            "iterator_input_variable_selector": ["node-parse-oa", "structured_output", "rejections"],
+            "iterator_input_type": "array[object]",
+            "output_selector": ["node-verify-citations", "structured_output"],
+            "output_type": "array[object]",
+            "parallel": {"enabled": true, "max_workers": 4},
+            "_comment": "Mirrors asyncio.gather() pattern in orchestrator.py:94, 117, 128.",
+            "children": [
+              {
+                "id": "node-retrieve-prior-art",
+                "type": "custom",
+                "position": {"x": 1100, "y": 350},
+                "data": {
+                  "title": "Retrieve prior art (HTTP)",
+                  "type": "http-request",
+                  "desc": "Calls our AI engine's RAG. Per-rejection. Returns top-5 grounded hits.",
+                  "method": "POST",
+                  "url": "{{env.AI_ENGINE_URL}}/v1/retrieve_prior_art",
+                  "authorization": {"type": "bearer", "config": {"api_key": "{{env.INTERNAL_TOKEN}}"}},
+                  "headers": "Content-Type: application/json\nX-Internal-Token: {{env.INTERNAL_TOKEN}}",
+                  "body": {
+                    "type": "json",
+                    "data": "{\"tenant_id\": {{#node-start.tenant_id#}}, \"rejection\": {{#iteration.item#}}, \"target_patent_no\": {{#node-start.target_patent_no#}}, \"top_k\": 5}"
+                  },
+                  "timeout": {"connect_timeout": 5, "read_timeout": 30, "write_timeout": 30},
+                  "retry": {"max_retries": 2, "interval": 1000}
+                }
+              },
+              {
+                "id": "node-confidential-check",
+                "type": "custom",
+                "position": {"x": 1450, "y": 350},
+                "data": {
+                  "title": "Confidential routing branch",
+                  "type": "if-else",
+                  "desc": "Q15 invariant — confidential cases use local LLM, never cloud. Belt + braces: thin gateway already labelled security_level; this is the in-workflow defence-in-depth.",
+                  "conditions": [
+                    {
+                      "id": "case-confidential",
+                      "logical_operator": "and",
+                      "conditions": [
+                        {
+                          "variable_selector": ["node-start", "security_level"],
+                          "comparison_operator": "is",
+                          "value": "confidential"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "node-draft-response-public",
+                "type": "custom",
+                "position": {"x": 1800, "y": 250},
+                "data": {
+                  "title": "Draft response — public (Anthropic LLM)",
+                  "type": "llm",
+                  "desc": "Replaces oa_analyzer.py draft step. System prompt from prompts/draft_response.yaml.",
+                  "model": {
+                    "provider": "anthropic",
+                    "name": "claude-sonnet-4-6",
+                    "mode": "chat",
+                    "completion_params": {"temperature": 0.3, "max_tokens": 8192}
+                  },
+                  "prompt_template": [
+                    {"role": "system", "text": "PASTE_FROM: backend/ai_engine/prompts/draft_response.yaml#system"},
+                    {"role": "user", "text": "Rejection: {{#iteration.item#}}\n\nGROUNDED_SET:\n{{#node-retrieve-prior-art.body.hits#}}\n\nUser hint: {{#node-start.user_hint#}}"}
+                  ],
+                  "structured_output": {
+                    "enabled": true,
+                    "schema_ref": "prompts_export.md#draft_response_schema"
+                  }
+                }
+              },
+              {
+                "id": "node-draft-response-confidential",
+                "type": "custom",
+                "position": {"x": 1800, "y": 450},
+                "data": {
+                  "title": "Draft response — confidential (local Ollama)",
+                  "type": "llm",
+                  "desc": "Q15 — confidential branch. Uses on-prem Ollama. NEVER cloud.",
+                  "model": {
+                    "provider": "ollama",
+                    "name": "llama3.1:8b",
+                    "mode": "chat",
+                    "completion_params": {"temperature": 0.3, "max_tokens": 8192}
+                  },
+                  "prompt_template": [
+                    {"role": "system", "text": "PASTE_FROM: backend/ai_engine/prompts/draft_response.yaml#system"},
+                    {"role": "user", "text": "Rejection: {{#iteration.item#}}\n\nGROUNDED_SET:\n{{#node-retrieve-prior-art.body.hits#}}\n\nUser hint: {{#node-start.user_hint#}}"}
+                  ],
+                  "structured_output": {
+                    "enabled": true,
+                    "schema_ref": "prompts_export.md#draft_response_schema"
+                  }
+                }
+              },
+              {
+                "id": "node-verify-citations",
+                "type": "custom",
+                "position": {"x": 2200, "y": 350},
+                "data": {
+                  "title": "Verify citations (Haiku — cheap verifier)",
+                  "type": "llm",
+                  "desc": "Q14 hard wall — every citation must come from GROUNDED_SET. Cheaper Haiku model per HANDOFF.md §13.3.",
+                  "model": {
+                    "provider": "anthropic",
+                    "name": "claude-haiku-4-5-20251001",
+                    "mode": "chat",
+                    "completion_params": {"temperature": 0.0, "max_tokens": 8192}
+                  },
+                  "prompt_template": [
+                    {"role": "system", "text": "PASTE_FROM: backend/ai_engine/prompts/verify_citations.yaml#system"},
+                    {"role": "user", "text": "DRAFT:\n{{#node-draft-response-public.structured_output#}}\n\n(confidential variant routes through node-draft-response-confidential; variable_aggregator before this node selects the non-null branch)\n\nGROUNDED_SET:\n{{#node-retrieve-prior-art.body.hits#}}"}
+                  ],
+                  "structured_output": {
+                    "enabled": true,
+                    "schema_ref": "prompts_export.md#verify_citations_schema"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "node-compute-deadline",
+          "type": "custom",
+          "position": {"x": 1400, "y": 600},
+          "data": {
+            "title": "Compute deadline (HTTP)",
+            "type": "http-request",
+            "desc": "Q17 — multi-jurisdiction deadline calc with ROC holiday roll-forward. Stays in our AI engine.",
+            "method": "POST",
+            "url": "{{env.AI_ENGINE_URL}}/v1/deadline",
+            "authorization": {"type": "bearer", "config": {"api_key": "{{env.INTERNAL_TOKEN}}"}},
+            "headers": "Content-Type: application/json\nX-Internal-Token: {{env.INTERNAL_TOKEN}}",
+            "body": {
+              "type": "json",
+              "data": "{\"received_date_iso\": {{#node-parse-oa.structured_output.oa.received_date#}}, \"jurisdiction\": \"TW\", \"calendar_version\": \"2025.1\"}"
+            },
+            "timeout": {"connect_timeout": 5, "read_timeout": 10, "write_timeout": 10},
+            "retry": {"max_retries": 2, "interval": 500}
+          }
+        },
+        {
+          "id": "node-aggregate-response",
+          "type": "custom",
+          "position": {"x": 2600, "y": 400},
+          "data": {
+            "title": "Aggregate AnalysisResponse",
+            "type": "template-transform",
+            "desc": "Build the final AnalysisResponse shape matching backend/shared/models.py:AnalysisResponse.",
+            "template": "{\n  \"request_id\": \"{{ uuid() }}\",\n  \"oa\": {{ node-parse-oa.structured_output.oa | tojson }},\n  \"drafts\": {{ node-iterate-rejections.output | tojson }},\n  \"related_prior_art\": {{ node-iterate-rejections.aggregated_hits | tojson }},\n  \"deadline_summary\": {{ node-compute-deadline.body | tojson }},\n  \"cost_meta\": {\n    \"prompt_tokens\": {{ aggregated_prompt_tokens }},\n    \"completion_tokens\": {{ aggregated_completion_tokens }},\n    \"model\": \"claude-sonnet-4-6\",\n    \"estimated_cost_usd\": {{ aggregated_cost }},\n    \"cache_hit\": false\n  }\n}",
+            "_comment": "Dify's template-transform uses jinja2. Aggregated cost: use sum() over iteration items' usage metadata. Wiring details depend on Dify version — may need a code node instead of template if Dify rejects jinja2 over array aggregation."
+          }
+        },
+        {
+          "id": "node-audit-append",
+          "type": "custom",
+          "position": {"x": 2950, "y": 400},
+          "data": {
+            "title": "Append audit row (HTTP)",
+            "type": "http-request",
+            "desc": "Q13 invariant #4 — every workflow run writes ONE audit row to the thin gateway. Hash chain authoritative on our side.",
+            "method": "POST",
+            "url": "{{env.THIN_GATEWAY_URL}}/v1/gateway/audit/append",
+            "authorization": {"type": "bearer", "config": {"api_key": "{{env.INTERNAL_TOKEN}}"}},
+            "headers": "Content-Type: application/json\nX-Internal-Token: {{env.INTERNAL_TOKEN}}\nX-User-Id: {{#node-start.user_id#}}\nX-Tenant-Id: {{#node-start.tenant_id#}}",
+            "body": {
+              "type": "json",
+              "data": "{\"user_id\": {{#node-start.user_id#}}, \"tenant_id\": {{#node-start.tenant_id#}}, \"case_id\": {{#node-start.case_id#}}, \"endpoint\": \"/v1/oa/analyze\", \"request_payload\": {\"target_patent_no\": {{#node-start.target_patent_no#}}, \"oa_text_hash\": \"REDACTED\"}, \"response_payload\": {\"request_id\": {{#node-aggregate-response.output.request_id#}}, \"num_rejections\": {{ node-parse-oa.structured_output.rejections | length }}}, \"policy_decisions\": {\"redaction_triggered\": true, \"mask_rules\": {{#node-redact.body.mask_rules_triggered#}}, \"local_lm_used\": {{ node-start.security_level == 'confidential' }}, \"authz_passed\": true}, \"model\": \"claude-sonnet-4-6\", \"prompt_tokens\": {{ aggregated_prompt_tokens }}, \"completion_tokens\": {{ aggregated_completion_tokens }}, \"estimated_cost_usd\": {{ aggregated_cost }}}"
+            },
+            "timeout": {"connect_timeout": 5, "read_timeout": 10, "write_timeout": 10},
+            "retry": {"max_retries": 3, "interval": 1000},
+            "_invariant_4": "This node MUST run on every exit path. If a failure node is added later, wire its error edge here too."
+          }
+        },
+        {
+          "id": "node-end",
+          "type": "custom",
+          "position": {"x": 3300, "y": 400},
+          "data": {
+            "title": "End",
+            "type": "end",
+            "outputs": [
+              {"variable": "request_id", "value_selector": ["node-aggregate-response", "output", "request_id"]},
+              {"variable": "oa", "value_selector": ["node-aggregate-response", "output", "oa"]},
+              {"variable": "drafts", "value_selector": ["node-aggregate-response", "output", "drafts"]},
+              {"variable": "related_prior_art", "value_selector": ["node-aggregate-response", "output", "related_prior_art"]},
+              {"variable": "deadline_summary", "value_selector": ["node-aggregate-response", "output", "deadline_summary"]},
+              {"variable": "cost_meta", "value_selector": ["node-aggregate-response", "output", "cost_meta"]}
+            ]
+          }
+        }
+      ],
+      "edges": [
+        {"id": "e-start-redact", "source": "node-start", "target": "node-redact", "sourceHandle": "source", "targetHandle": "target"},
+        {"id": "e-redact-parse", "source": "node-redact", "target": "node-parse-oa"},
+        {"id": "e-parse-iterate", "source": "node-parse-oa", "target": "node-iterate-rejections"},
+        {"id": "e-parse-deadline", "source": "node-parse-oa", "target": "node-compute-deadline", "_comment": "deadline computed in parallel with the iteration"},
+        {"id": "e-iterate-retrieve", "source": "node-iterate-rejections", "target": "node-retrieve-prior-art", "_iteration_child": true},
+        {"id": "e-retrieve-confidential", "source": "node-retrieve-prior-art", "target": "node-confidential-check", "_iteration_child": true},
+        {"id": "e-confidential-public", "source": "node-confidential-check", "sourceHandle": "false", "target": "node-draft-response-public", "_iteration_child": true},
+        {"id": "e-confidential-local", "source": "node-confidential-check", "sourceHandle": "true", "target": "node-draft-response-confidential", "_iteration_child": true},
+        {"id": "e-draft-public-verify", "source": "node-draft-response-public", "target": "node-verify-citations", "_iteration_child": true},
+        {"id": "e-draft-conf-verify", "source": "node-draft-response-confidential", "target": "node-verify-citations", "_iteration_child": true},
+        {"id": "e-iterate-aggregate", "source": "node-iterate-rejections", "target": "node-aggregate-response"},
+        {"id": "e-deadline-aggregate", "source": "node-compute-deadline", "target": "node-aggregate-response"},
+        {"id": "e-aggregate-audit", "source": "node-aggregate-response", "target": "node-audit-append"},
+        {"id": "e-audit-end", "source": "node-audit-append", "target": "node-end"}
+      ]
+    },
+    "conversation_variables": [],
+    "environment_variables": [
+      {"name": "THIN_GATEWAY_URL", "value": "http://localhost:8010", "value_type": "string"},
+      {"name": "AI_ENGINE_URL", "value": "http://localhost:8011", "value_type": "string"},
+      {"name": "INTERNAL_TOKEN", "value": "REPLACE_AT_IMPORT", "value_type": "secret"},
+      {"name": "OLLAMA_BASE_URL", "value": "http://localhost:11434", "value_type": "string"}
+    ]
+  }
+}

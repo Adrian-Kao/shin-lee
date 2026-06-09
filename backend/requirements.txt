@@ -1,10 +1,72 @@
+# PatentMind backend runtime deps. Pinned to major versions known to work.
+# Optional groups are commented inline — uncomment to enable that backend mode.
+
+# ---------------------------------------------------------------------------
+# core (always required)
+# ---------------------------------------------------------------------------
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic==2.9.2
 httpx==0.27.2
-PyJWT==2.9.0
 numpy==2.1.1
-qdrant-client==1.12.1
 
-# Phase 2: only needed when EMBEDDING_BACKEND=bge-m3 (mock mode is dep-free)
+# ---------------------------------------------------------------------------
+# auth (Q12)
+# ---------------------------------------------------------------------------
+PyJWT==2.9.0
+
+# ---------------------------------------------------------------------------
+# crypto (Q3/Q10 — at-rest encryption of the reversible redaction mapping
+# table via per-tenant Fernet keys derived with HKDF-SHA256)
+# ---------------------------------------------------------------------------
+cryptography>=42.0.2
+
+# ---------------------------------------------------------------------------
+# llm clients (optional — pick per LLM_MODE)
+# ---------------------------------------------------------------------------
+anthropic==0.39.0        # LLM_MODE=anthropic
+# openai==1.51.0         # LLM_MODE=openai
+
+# ---------------------------------------------------------------------------
+# storage (optional)
+# ---------------------------------------------------------------------------
+qdrant-client==1.12.1    # VECTOR_BACKEND=qdrant (kept un-commented; mock is dep-free anyway)
+redis==5.0.8             # CACHE_BACKEND=redis (Phase 2A — installed unconditionally so CI exercises the wiring)
+# psycopg[binary]==3.2.3 # AUDIT_BACKEND=postgres (Q13/Q20)
+
+# ---------------------------------------------------------------------------
+# embedding (optional — only when EMBEDDING_BACKEND=bge-m3)
+# ---------------------------------------------------------------------------
 sentence-transformers==5.1.2
+
+# ---------------------------------------------------------------------------
+# document parsing (Day 2 PDF/DOCX upload)
+# ---------------------------------------------------------------------------
+# pymupdf version kept in sync with the legacy bundle in /requirements.txt;
+# the binary wheel is large but already cached in CI.
+pymupdf==1.24.10
+python-docx==1.1.2
+
+# python-multipart is needed for FastAPI's UploadFile/Form parsing.
+python-multipart==0.0.12
+
+# ---------------------------------------------------------------------------
+# on-prem OCR (optional — only when OCR_BACKEND=tesseract; Q8 / invariant #7)
+# Required to OCR *confidential* scanned PDFs, which must never reach cloud
+# Vision OCR. NOT installed in CI: the `tesseract` binary is a separate system
+# package (`apt-get install tesseract-ocr tesseract-ocr-chi-tra` for the
+# chi_tra+eng default). Left COMMENTED so `pip install -r` does not hard-fail
+# without the binary; backend/ai_engine/ocr_local.py lazy-imports pytesseract
+# and raises a clear RuntimeError if either the binding or the engine is absent.
+# pytesseract==0.3.13   # OCR_BACKEND=tesseract
+# Pillow>=10.4.0        # image decode for pytesseract (often pulled in already)
+
+# ---------------------------------------------------------------------------
+# observability (Day 5 — no-op when SENTRY_DSN env var is unset)
+# ---------------------------------------------------------------------------
+sentry-sdk[fastapi]==2.18.0
+
+# ---------------------------------------------------------------------------
+# externalized prompts (Compat Refactor 1 — backend/ai_engine/prompts/*.yaml)
+# ---------------------------------------------------------------------------
+PyYAML==6.0.2

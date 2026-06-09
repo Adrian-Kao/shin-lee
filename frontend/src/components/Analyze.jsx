@@ -1,6 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle } from 'lucide-react';
+import { Button } from './ui/button.jsx';
 import { api } from '../api/client.js';
-import DraftEditor from './DraftEditor.jsx';
+import { useQuota, useAnalyze } from '../api/queries.js';
+import { toast } from '../lib/toast.jsx';
+import InputPane from './analyze/InputPane.jsx';
+import DraftsPane from './analyze/DraftsPane.jsx';
+import ReferencesPane from './analyze/ReferencesPane.jsx';
 
 const SAMPLE_OA = `UNITED STATES PATENT AND TRADEMARK OFFICE
 Office Action
@@ -19,52 +27,126 @@ Claims 4-5 are rejected under 35 U.S.C. § 102 as anticipated by US7654321.
 Attorney contact: alice.chen@apex-ip.com (mobile: 0912-345-678)
 `;
 
+// Day 9C: emoji-free chip labels. The visual cue is now the chip color tone
+// (emerald / rose / amber) computed below, not a glyph prefix.
 const SECURITY_BADGE = {
-  rate_limit_passed: { ok: '✓ RPM', no: '✗ RPM' },
-  quota_passed:     { ok: '✓ Quota', no: '✗ Quota' },
-  authz_passed:     { ok: '✓ Authz', no: '✗ Authz' },
-  cache_hit:        { ok: '⚡ Cache', no: '🆕 Fresh' },
-  circuit_open:     { ok: '⚠ Breaker', no: '✓ Breaker OK' },
+  rate_limit_passed: { ok: 'RPM ok', no: 'RPM blocked' },
+  quota_passed: { ok: 'Quota ok', no: 'Quota blocked' },
+  authz_passed: { ok: 'Authz ok', no: 'Authz denied' },
+  cache_hit: { ok: 'Cache hit', no: 'Fresh' },
+  circuit_open: { ok: 'Breaker open', no: 'Breaker ok' },
 };
 
-export default function Analyze({ session, onLogout, onSwitchView }) {
+/**
+ * Three-pane analyze workspace (UX_RESEARCH §4.4, §5 #1 must-have).
+ *
+ * Desktop (≥ xl / 1280px): InputPane (30%) | DraftsPane (40%) | ReferencesPane (30%).
+ * Each pane scrolls independently. Active rejection is lifted to this parent
+ * so the tab strip in DraftsPane and the filter in ReferencesPane stay in sync.
+ *
+ * Tablet / mobile (< xl): single column, top tab strip swaps which pane renders.
+ *
+ * Day 9C — embedded mode. When mounted inside `<AppShell>` (the default for
+ * all authenticated routes after CHUNK-1), the in-component `<Header>` and
+ * tenant chip are suppressed: the shell owns the chrome. The three-pane
+ * grid (`xl:grid-cols-[3fr_4fr_3fr]`) is preserved exactly. `onTrustChange`
+ * lets the shell's trust band react to per-analysis context (case id +
+ * masked-entity count). All optional / default no-op so older callers /
+ * tests that don't pass `embedded` keep rendering the standalone header.
+ */
+export default function Analyze({
+  session,
+  onLogout,
+  onSwitchView,
+  embedded = false,
+  onTrustChange,
+}) {
+  const { t } = useTranslation();
   const [oaText, setOaText] = useState(SAMPLE_OA);
   const [caseId, setCaseId] = useState('CASE-2025-001');
   const [targetPatent, setTargetPatent] = useState('US17123456');
-  const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [redactPreview, setRedactPreview] = useState(null);
-  const [quota, setQuota] = useState(null);
+  const queryClient = useQueryClient();
+  // Server state via TanStack Query (P1③). Quota is a cached query; analyze is
+  // a mutation. `running` is derived from the mutation's in-flight state.
+  const { data: quota } = useQuota(session.token, caseId);
+  const analyzeMut = useAnalyze(session.token);
+  const running = analyzeMut.isPending;
+  const [showUpload, setShowUpload] = useState(true);
+  const [loadedMeta, setLoadedMeta] = useState(null);
+  const [uploadWarnings, setUploadWarnings] = useState([]);
+  // Shared cross-pane state: which rejection is currently focused.
+  const [activeRejectionId, setActiveRejectionId] = useState(null);
+  // < xl: which pane is visible. Desktop ignores this.
+  const [mobileTab, setMobileTab] = useState('input'); // 'input' | 'drafts' | 'refs'
 
+  const handleExtractSuccess = (payload) => {
+    setOaText(payload.extracted_text || '');
+    setLoadedMeta({ fileName: payload.fileName, pages: payload.page_count });
+    setUploadWarnings(Array.isArray(payload.warnings) ? payload.warnings : []);
+    toast.success(t('upload.toast_success', { pages: payload.page_count ?? 0 }));
+  };
+
+  // When a new result arrives, default the active rejection to the first one.
   useEffect(() => {
-    api.quota(session.token, caseId).then(setQuota).catch(() => {});
-  }, [session.token, caseId, result]);
+    if (!result) {
+      setActiveRejectionId(null);
+      return;
+    }
+    const first = result.oa?.rejections?.[0]?.rejection_id;
+    if (first) setActiveRejectionId(first);
+  }, [result]);
+
+  // When a new result arrives on mobile, surface the drafts tab so the
+  // attorney sees the output without an extra tap.
+  useEffect(() => {
+    if (result) setMobileTab('drafts');
+  }, [result]);
+
+  // Day 9C — feed the AppShell trust band. Fires on every case/result change
+  // so the band's `Routing` chip flips between Auto/Confidential and the
+  // Redaction chip shows the per-analysis entity count. The default
+  // `onTrustChange` is a no-op, so standalone (non-embedded) mounts skip this.
+  useEffect(() => {
+    if (typeof onTrustChange !== 'function') return;
+    onTrustChange({
+      caseId,
+      maskedEntityCount: result?.redaction_summary?.masked_entity_count ?? 0,
+    });
+  }, [onTrustChange, caseId, result]);
 
   async function previewRedaction() {
     try {
       const r = await api.redactionPreview(session.token, oaText, caseId);
       setRedactPreview(r);
     } catch (e) {
-      setError(e.message);
+      setError(e);
     }
   }
 
   async function runAnalyze() {
-    setRunning(true); setError(null); setResult(null);
+    setError(null);
+    setResult(null);
     try {
-      const r = await api.analyze(session.token, {
-        oa_text: oaText, case_id: caseId, target_patent_no: targetPatent,
+      const r = await analyzeMut.mutateAsync({
+        oa_text: oaText,
+        case_id: caseId,
+        target_patent_no: targetPatent,
       });
       setResult(r);
+      // Refresh quota after a successful analyze (tokens were spent) — replaces
+      // the old `result`-in-deps useEffect hack with an explicit invalidation.
+      queryClient.invalidateQueries({ queryKey: ['quota', caseId] });
     } catch (e) {
-      setError(`${e.status || ''} ${e.message}`);
-    } finally {
-      setRunning(false);
+      setError(e);
     }
   }
 
-  // Build {[GROUNDED_REF_N]: hit} for citation hover (Q14)
+  // Build {[GROUNDED_REF_N]: hit} for citation hover (Q14).
+  // Preserved here (not lifted into DraftsPane) so the lookup is computed once
+  // per result and re-used if drafts re-render across tab switches.
   const citationLookup = useMemo(() => {
     if (!result) return {};
     const out = {};
@@ -74,361 +156,291 @@ export default function Analyze({ session, onLogout, onSwitchView }) {
     return out;
   }, [result]);
 
+  const inputPaneProps = {
+    caseId,
+    setCaseId,
+    targetPatent,
+    setTargetPatent,
+    oaText,
+    setOaText,
+    showUpload,
+    setShowUpload,
+    loadedMeta,
+    uploadWarnings,
+    onExtractSuccess: handleExtractSuccess,
+    session,
+    onPreviewRedaction: previewRedaction,
+    onAnalyze: runAnalyze,
+    running,
+    error,
+    setError,
+    onLogout,
+    redactPreview,
+    quota,
+    // UX_RESEARCH §5 #2 — claim dependency tree props. Defaults to empty
+    // when there's no result yet; ClaimTree returns null in that case.
+    claimTree: result?.claim_tree || [],
+    rejections: result?.oa?.rejections || [],
+    activeRejectionId,
+    setActiveRejectionId,
+  };
+
+  const draftsPaneProps = {
+    result,
+    running,
+    activeRejectionId,
+    setActiveRejectionId,
+    citationLookup,
+    caseId,
+    session,
+  };
+
+  const referencesPaneProps = {
+    result,
+    activeRejectionId,
+  };
+
   return (
-    <div className="min-h-screen flex flex-col">
-      <Header session={session} onLogout={onLogout} onSwitchView={onSwitchView} />
+    <div className={`flex flex-col bg-slate-50 dark:bg-slate-800/50 ${embedded ? 'min-h-0 flex-1' : 'min-h-screen'}`}>
+      {!embedded && (
+        <Header session={session} onLogout={onLogout} onSwitchView={onSwitchView} />
+      )}
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left: input */}
-        <section className="lg:col-span-1 space-y-4">
-          <div className="bg-white border rounded-lg p-4">
-            <h2 className="font-semibold mb-3">輸入 OA</h2>
-            <label className="block text-xs text-slate-500 mb-1">Case ID</label>
-            <input value={caseId} onChange={(e) => setCaseId(e.target.value)}
-                   className="w-full border rounded px-2 py-1.5 text-sm mb-3" />
-            <label className="block text-xs text-slate-500 mb-1">Target patent (本案)</label>
-            <input value={targetPatent} onChange={(e) => setTargetPatent(e.target.value)}
-                   className="w-full border rounded px-2 py-1.5 text-sm mb-3" />
-            <label className="block text-xs text-slate-500 mb-1">OA 全文</label>
-            <textarea value={oaText} onChange={(e) => setOaText(e.target.value)}
-                      rows={14} className="w-full border rounded px-2 py-1.5 text-xs font-mono" />
-            <div className="flex gap-2 mt-3">
-              <button onClick={previewRedaction} className="flex-1 text-sm px-3 py-2 bg-slate-200 rounded hover:bg-slate-300">
-                預覽 redaction
-              </button>
-              <button onClick={runAnalyze} disabled={running}
-                      className="flex-1 text-sm px-3 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:bg-slate-400">
-                {running ? '分析中…' : '分析 OA'}
-              </button>
-            </div>
-            {error && <div className="mt-3 text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded p-2">{error}</div>}
-          </div>
+      {result && <ResultSummaryBar result={result} />}
 
-          {redactPreview && (
-            <div className="bg-white border rounded-lg p-4">
-              <h3 className="font-semibold text-sm mb-2">Redaction 預覽 <span className="text-xs text-slate-500">(Q10)</span></h3>
-              <div className="text-xs font-mono whitespace-pre-wrap bg-amber-50 border border-amber-200 p-2 rounded mb-2">
-                {redactPreview.redacted}
-              </div>
-              <div className="text-xs">
-                <span className="text-slate-500">觸發規則：</span>
-                {redactPreview.rules_triggered.map((r) => (
-                  <span key={r} className="inline-block bg-slate-100 rounded px-1.5 py-0.5 mr-1 font-mono">{r}</span>
-                ))}
-              </div>
+      {/* Mobile / tablet (< xl): single column, top tab strip swaps panes. */}
+      <main className="flex flex-1 flex-col xl:hidden">
+        <MobileTabBar
+          activeTab={mobileTab}
+          setActiveTab={setMobileTab}
+          hasResult={!!result || running}
+        />
+        <div className="flex flex-1">
+          {mobileTab === 'input' && (
+            <div className="w-full">
+              <InputPane {...inputPaneProps} />
             </div>
           )}
-
-          {quota && (
-            <div className="bg-white border rounded-lg p-4">
-              <h3 className="font-semibold text-sm mb-2">配額 <span className="text-xs text-slate-500">(Q18)</span></h3>
-              <Bar label="今日 token (你)" used={quota.user_daily_used} total={quota.user_daily_limit} />
-              <Bar label="本月 token (tenant)" used={quota.tenant_monthly_used} total={quota.tenant_monthly_cap} />
-              <div className="text-xs text-slate-500 mt-2">
-                Cost breaker: ${quota.circuit_breaker.current_usd} / ${quota.circuit_breaker.threshold_usd}
-                {quota.circuit_breaker.tripped && <span className="ml-2 text-rose-600 font-semibold">TRIPPED</span>}
-              </div>
+          {mobileTab === 'drafts' && (
+            <div className="w-full">
+              <DraftsPane {...draftsPaneProps} />
             </div>
           )}
-        </section>
-
-        {/* Right: result */}
-        <section className="lg:col-span-2 space-y-4">
-          {!result && !running && (
-            <div className="bg-white border rounded-lg p-12 text-center text-slate-500">
-              <div className="text-5xl mb-2">📄</div>
-              <p>左側輸入 OA 後點「分析 OA」</p>
-              <p className="text-xs mt-2">Demo 預設使用 CASE-2025-001（Alice 有權限）；若用 Carol 嘗試會被擋（Q12 case ACL）</p>
+          {mobileTab === 'refs' && (
+            <div className="w-full">
+              <ReferencesPane {...referencesPaneProps} />
             </div>
           )}
+        </div>
+      </main>
 
-          {running && <RunningPanel />}
-
-          {result && <ResultView result={result} citationLookup={citationLookup} />}
-        </section>
+      {/* Desktop (≥ xl): three-pane side-by-side. Each pane scrolls independently. */}
+      <main className="hidden flex-1 xl:grid xl:grid-cols-[3fr_4fr_3fr]">
+        <div className="min-h-0 border-r dark:border-slate-700 bg-white dark:bg-slate-900">
+          <InputPane {...inputPaneProps} />
+        </div>
+        <div className="min-h-0 border-r dark:border-slate-700 bg-white dark:bg-slate-900">
+          <DraftsPane {...draftsPaneProps} />
+        </div>
+        <div className="min-h-0 bg-white dark:bg-slate-900">
+          <ReferencesPane {...referencesPaneProps} />
+        </div>
       </main>
     </div>
   );
 }
 
+// Day 9C: legacy standalone Header retained for `embedded=false` callers
+// (a few tests + the placeholder cases route prior to the shell switch).
+// The shell's TopBar/NavRail superset this when mounted inside AppShell.
 function Header({ session, onLogout, onSwitchView }) {
   return (
-    <header className="bg-white border-b">
-      <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-4">
+    <header className="border-b dark:border-slate-700 bg-white dark:bg-slate-900">
+      <div className="mx-auto flex max-w-[1920px] items-center gap-4 px-6 py-3">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">PM</div>
+          <div className="flex h-8 w-8 items-center justify-center rounded bg-navy-900 text-sm font-bold text-white">
+            PM
+          </div>
           <span className="font-semibold">PatentMind AI</span>
-          <span className="text-xs uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">POC</span>
         </div>
         <nav className="ml-6 flex gap-1">
-          <button onClick={() => onSwitchView('analyze')} className="px-3 py-1.5 rounded text-sm bg-indigo-50 text-indigo-700 font-medium">分析</button>
-          <button onClick={() => onSwitchView('audit')}   className="px-3 py-1.5 rounded text-sm hover:bg-slate-100">Audit</button>
+          <button
+            onClick={() => onSwitchView('analyze')}
+            className="rounded bg-navy-50 dark:bg-navy-900/40 px-3 py-1.5 text-sm font-medium text-navy-700 dark:text-navy-200"
+          >
+            分析
+          </button>
+          <button
+            onClick={() => onSwitchView('audit')}
+            className="rounded px-3 py-1.5 text-sm hover:bg-slate-100"
+          >
+            Audit
+          </button>
         </nav>
         <div className="ml-auto flex items-center gap-3 text-sm">
           <div className="text-right">
             <div className="font-medium">{session.display_name}</div>
-            <div className="text-xs text-slate-500">{session.tenant_id} · {session.role}</div>
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              {session.tenant_id} · {session.role}
+            </div>
           </div>
-          <button onClick={onLogout} className="text-xs px-2 py-1 bg-slate-200 rounded">登出</button>
+          <Button variant="secondary" size="xs" onClick={onLogout}>
+            登出
+          </Button>
         </div>
       </div>
     </header>
   );
 }
 
-function ResultView({ result, citationLookup }) {
-  const policyChips = useMemo(() => {
-    // Build from cost meta + audit-style decisions
-    return [
+/**
+ * Slim band under the header that surfaces the cross-cutting "result metadata"
+ * (policy chips + deadline). Visible above all three panes so the context is
+ * not duplicated inside each pane.
+ */
+function ResultSummaryBar({ result }) {
+  const policyChips = useMemo(
+    () => [
       ['authz_passed', true],
       ['rate_limit_passed', true],
       ['quota_passed', true],
       ['cache_hit', result.cost_meta.cache_hit],
       ['circuit_open', false],
-    ];
-  }, [result]);
+    ],
+    [result]
+  );
+
+  const ds = result.deadline_summary;
+  const dr = ds.days_remaining;
+  const tone = dr < 14 ? 'rose' : dr < 30 ? 'amber' : 'emerald';
+
+  // ★ deadline 計算依據可解釋：後端已回傳順延理由 / 建議內部完成日 / 假日表版本，
+  // 但原本只顯示日期+天數。期日算錯 = 喪失專利權，因此「為何是這天」必須可攤開。
+  const [showDeadlineDetail, setShowDeadlineDetail] = useState(false);
+  const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString('zh-TW') : '—');
+  const warnings = Array.isArray(ds.warnings) ? ds.warnings : [];
 
   return (
-    <>
-      <div className="bg-white border rounded-lg p-4">
-        <div className="flex items-baseline justify-between flex-wrap gap-2">
-          <h2 className="font-semibold">分析結果 <span className="text-xs font-normal text-slate-500">request: {result.request_id.slice(0, 8)}…</span></h2>
-          <div className="text-xs text-slate-500">
-            model: <span className="font-mono">{result.cost_meta.model}</span> ·
-            tokens: {result.cost_meta.prompt_tokens}+{result.cost_meta.completion_tokens} ·
-            ~${result.cost_meta.estimated_cost_usd.toFixed(4)}
-          </div>
-        </div>
-        <div className="mt-3 flex gap-1.5 flex-wrap text-xs">
+    <div className="border-b dark:border-slate-700 bg-white dark:bg-slate-900">
+      <div className="mx-auto flex max-w-[1920px] flex-wrap items-center gap-4 px-6 py-2 text-xs">
+        <div className="flex flex-wrap gap-1.5">
           {policyChips.map(([k, v]) => {
             const def = SECURITY_BADGE[k];
-            const pos = (k === 'cache_hit' || k === 'circuit_open') ? !v : v;
+            const pos = k === 'cache_hit' || k === 'circuit_open' ? !v : v;
             const label = pos ? def.ok : def.no;
             return (
-              <span key={k} className={`px-2 py-0.5 rounded font-mono ${
-                k === 'cache_hit' ? 'bg-amber-100 text-amber-800' :
-                pos ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-              }`}>{label}</span>
+              <span
+                key={k}
+                className={`rounded px-2 py-0.5 font-mono ${
+                  k === 'cache_hit'
+                    ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300'
+                    : pos
+                      ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300'
+                      : 'bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300'
+                }`}
+              >
+                {label}
+              </span>
             );
           })}
         </div>
+        <div className={`ml-auto flex items-center gap-2 text-${tone}-700`}>
+          <span className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">期日 (Q17)</span>
+          <span className="font-mono">{fmt(ds.statutory_deadline)}</span>
+          <span className={`rounded bg-${tone}-100 px-2 py-0.5 font-semibold text-${tone}-700`}>
+            {dr} 天
+          </span>
+          {warnings.length > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 font-semibold text-amber-800 dark:text-amber-300"
+              title={warnings.join('\n')}
+            >
+              <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+              {warnings.length}
+            </span>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            onClick={() => setShowDeadlineDetail((s) => !s)}
+            aria-expanded={showDeadlineDetail}
+            className="px-1.5 py-0.5 text-slate-500 dark:text-slate-400 underline-offset-2 hover:underline"
+          >
+            {showDeadlineDetail ? '收合' : '計算依據 / Why'}
+          </Button>
+        </div>
       </div>
 
-      <DeadlineCard deadline={result.deadline_summary} oa={result.oa} />
+      {showDeadlineDetail && (
+        <div
+          data-testid="deadline-details"
+          className="mx-auto max-w-[1920px] border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-6 py-2 text-xs text-slate-600 dark:text-slate-300"
+        >
+          <dl className="flex flex-wrap gap-x-6 gap-y-1">
+            <div className="flex gap-1">
+              <dt className="text-slate-400 dark:text-slate-500">起算日 / Received</dt>
+              <dd className="font-mono text-slate-700 dark:text-slate-200">{fmt(ds.received_date)}</dd>
+            </div>
+            <div className="flex gap-1">
+              <dt className="text-slate-400 dark:text-slate-500">法定期日 / Statutory</dt>
+              <dd className="font-mono text-slate-700 dark:text-slate-200">{fmt(ds.statutory_deadline)}</dd>
+            </div>
+            {ds.recommended_internal_deadline && (
+              <div className="flex gap-1">
+                <dt className="text-slate-400 dark:text-slate-500">建議內部完成 / Internal</dt>
+                <dd className="font-mono text-slate-700 dark:text-slate-200">
+                  {fmt(ds.recommended_internal_deadline)}
+                </dd>
+              </div>
+            )}
+            {ds.holiday_calendar_version && (
+              <div className="flex gap-1">
+                <dt className="text-slate-400 dark:text-slate-500">假日表 / Calendar</dt>
+                <dd className="font-mono text-slate-700 dark:text-slate-200">{ds.holiday_calendar_version}</dd>
+              </div>
+            )}
+          </dl>
+          {warnings.length > 0 && (
+            <ul className="mt-1 list-inside list-disc text-amber-700 dark:text-amber-300">
+              {warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
-      {result.oa.rejections.map((rej) => {
-        const draft = result.drafts.find(d => d.rejection_id === rej.rejection_id);
-        const hits = result.related_prior_art.filter(h => rej.cited_prior_art.includes(h.patent_no));
+function MobileTabBar({ activeTab, setActiveTab, hasResult }) {
+  const tabs = [
+    { id: 'input', label: '輸入 / Input' },
+    { id: 'drafts', label: '草稿 / Drafts', disabled: !hasResult },
+    { id: 'refs', label: '引證 / Refs', disabled: !hasResult },
+  ];
+  return (
+    <div className="sticky top-0 z-10 flex border-b dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.id;
         return (
-          <RejectionBlock
-            key={rej.rejection_id}
-            rejection={rej}
-            draft={draft}
-            hits={hits}
-            citationLookup={citationLookup}
-          />
+          <button
+            key={tab.id}
+            onClick={() => !tab.disabled && setActiveTab(tab.id)}
+            disabled={tab.disabled}
+            className={`flex-1 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 ${
+              isActive
+                ? 'border-navy-600 text-navy-700 dark:text-navy-200'
+                : tab.disabled
+                  ? 'cursor-not-allowed border-transparent text-slate-300 dark:text-slate-600'
+                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+            }`}
+          >
+            {tab.label}
+          </button>
         );
       })}
-    </>
-  );
-}
-
-function Bar({ label, used, total }) {
-  const pct = total ? Math.min(100, (used / total) * 100) : 0;
-  const isHigh = pct > 80;
-  return (
-    <div className="mb-2">
-      <div className="flex justify-between text-xs text-slate-600">
-        <span>{label}</span>
-        <span>{used.toLocaleString()} / {total.toLocaleString()}</span>
-      </div>
-      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-        <div className={`h-full ${isHigh ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function DeadlineCard({ deadline, oa }) {
-  const dr = deadline.days_remaining;
-  const tone = dr < 14 ? 'rose' : dr < 30 ? 'amber' : 'emerald';
-  return (
-    <div className={`bg-${tone}-50 border border-${tone}-300 rounded-lg p-4`}>
-      <div className="flex justify-between items-start gap-4">
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-500">法定期日 (Q17)</div>
-          <div className="text-2xl font-semibold mt-0.5">
-            {new Date(deadline.statutory_deadline).toLocaleDateString('zh-TW')}
-          </div>
-          <div className="text-sm text-slate-600 mt-1">
-            內部建議完成日 {new Date(deadline.recommended_internal_deadline).toLocaleDateString('zh-TW')}
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-xs text-slate-500">剩餘</div>
-          <div className={`text-3xl font-bold text-${tone}-700`}>{dr}</div>
-          <div className="text-xs text-slate-500">天</div>
-        </div>
-      </div>
-      {deadline.warnings && deadline.warnings.length > 0 && (
-        <div className="mt-3 text-xs text-slate-700 space-y-1">
-          {deadline.warnings.map((w, i) => <div key={i}>• {w}</div>)}
-        </div>
-      )}
-      <div className="mt-2 text-xs text-slate-500">
-        calendar version: <span className="font-mono">{deadline.holiday_calendar_version}</span>
-      </div>
-    </div>
-  );
-}
-
-function RejectionBlock({ rejection, draft, hits, citationLookup }) {
-  const typeColor = {
-    '102_novelty': 'rose',
-    '103_obviousness': 'orange',
-    '112_indefiniteness': 'amber',
-    '101_subject_matter': 'purple',
-  }[rejection.rejection_type] || 'slate';
-
-  return (
-    <div className="bg-white border rounded-lg p-4 space-y-4">
-      <div className="flex items-baseline justify-between flex-wrap gap-2">
-        <div>
-          <span className={`text-xs px-2 py-0.5 rounded bg-${typeColor}-100 text-${typeColor}-800 font-mono mr-2`}>
-            {rejection.rejection_type}
-          </span>
-          <span className="text-sm font-medium">Claims {rejection.affected_claims.join(', ')}</span>
-        </div>
-        <div className="text-xs text-slate-500">
-          confidence: {(rejection.confidence * 100).toFixed(0)}%
-        </div>
-      </div>
-
-      <div className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded p-3">
-        <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">Examiner 論點</div>
-        {rejection.examiner_argument}
-      </div>
-
-      <div>
-        <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">引證案</div>
-        <div className="flex flex-wrap gap-1">
-          {rejection.cited_prior_art.map(p => (
-            <span key={p} className="text-xs px-2 py-0.5 bg-slate-100 rounded font-mono">{p}</span>
-          ))}
-        </div>
-      </div>
-
-      {hits.length > 0 && (
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">RAG retrieval (Q6, Q7, Q14 grounding)</div>
-          <div className="space-y-1">
-            {hits.slice(0, 3).map((h, i) => (
-              <details key={i} className="text-xs border border-slate-200 rounded p-2">
-                <summary className="cursor-pointer">
-                  <span className="font-mono">{h.patent_no}</span>
-                  <span className="text-slate-500"> · {h.section} · score {h.score.toFixed(3)}</span>
-                </summary>
-                <div className="mt-2 text-slate-600 whitespace-pre-wrap">{h.text}</div>
-              </details>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {draft && (
-        <div className="border-t pt-4">
-          <div className="text-xs uppercase tracking-wider text-slate-500 mb-1">答辯策略</div>
-          <p className="text-sm mb-3 text-slate-700">{draft.strategy}</p>
-
-          <div className="text-xs uppercase tracking-wider text-slate-500 mb-2">
-            草稿（律師逐句簽核 — Q16）
-          </div>
-          <DraftEditor initialDraft={draft.draft_text} citationLookup={citationLookup} />
-          <div className="mt-3 text-xs text-slate-500 flex flex-wrap gap-3">
-            <span>grounded citations: {draft.grounded_citations.length}</span>
-            <span>verifier confidence: {(draft.confidence * 100).toFixed(0)}%</span>
-            <span className="ml-auto">requires attorney review: {draft.requires_attorney_review ? 'true' : 'false'}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Approximate stage timings observed on CPU llama3.1:8b for a typical 1-rejection OA.
-// We don't have per-step server events in the MVP, so we estimate stage from elapsed seconds.
-const STAGES = [
-  { name: 'redact',   label: '遮罩 PII / 客戶識別碼 (Q10)',           untilSec: 1 },
-  { name: 'parse',    label: '解析 OA 鑑別 rejection (parse_oa)',      untilSec: 60 },
-  { name: 'retrieve', label: '檢索先前技術 (RAG, Q6+Q7)',              untilSec: 65 },
-  { name: 'draft',    label: '草擬答辯 (draft_response, grounded Q14)', untilSec: 200 },
-  { name: 'verify',   label: '驗證引證 (verify_citations, Q14)',        untilSec: 290 },
-  { name: 'deadline', label: '計算期日 (Q17)',                          untilSec: 295 },
-  { name: 'unmask',   label: '回填 PII，整理回應',                       untilSec: Infinity },
-];
-
-function fmtElapsed(ms) {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-}
-
-function RunningPanel() {
-  const [tick, setTick] = useState(0);
-  const startRef = React.useRef(Date.now());
-
-  useEffect(() => {
-    startRef.current = Date.now();
-    const id = setInterval(() => setTick((t) => t + 1), 500);
-    return () => clearInterval(id);
-  }, []);
-
-  const elapsedMs = Date.now() - startRef.current;
-  const elapsedSec = elapsedMs / 1000;
-  const currentIdx = STAGES.findIndex((s) => elapsedSec < s.untilSec);
-  const safeIdx = currentIdx === -1 ? STAGES.length - 1 : currentIdx;
-
-  return (
-    <div className="bg-white border rounded-lg p-8">
-      <div className="flex items-baseline justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span className="animate-pulse text-2xl">⏳</span>
-          <span className="font-semibold text-slate-700">分析中…</span>
-        </div>
-        <div className="font-mono text-2xl text-indigo-700 tabular-nums">
-          {fmtElapsed(elapsedMs)}
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        {STAGES.map((stage, i) => {
-          const done = i < safeIdx;
-          const active = i === safeIdx;
-          return (
-            <div key={stage.name} className="flex items-center gap-3 text-sm">
-              <span className={`w-5 inline-flex justify-center ${
-                done ? 'text-emerald-600' : active ? 'text-indigo-600' : 'text-slate-300'
-              }`}>
-                {done ? '✓' : active ? '●' : '○'}
-              </span>
-              <span className={
-                done ? 'text-slate-500 line-through decoration-emerald-300/60' :
-                active ? 'text-slate-800 font-medium' :
-                'text-slate-400'
-              }>
-                {stage.label}
-              </span>
-              {active && (
-                <span className="ml-auto text-xs text-indigo-500 animate-pulse">running…</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <p className="text-xs text-slate-400 mt-5 leading-relaxed">
-        地端 llama3.1:8b 於 CPU 推論，單次分析約 5–7 分鐘。再次送出相同 OA + case 會命中 cache（&lt; 1 秒）。
-      </p>
     </div>
   );
 }

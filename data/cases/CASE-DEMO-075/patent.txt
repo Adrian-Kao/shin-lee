@@ -1,0 +1,24 @@
+[公開公報] US18000003 A
+中華民國智慧財產局   發明說明書公開本
+公開編號：US18000003 A
+公開日：中華民國 115 年 6 月 1 日（西元 2026-06-01）
+申請日：中華民國 113 年 8 月 22 日
+國際分類：B60L53/63  H02J3/14
+申請人：Voltcore Networks, Inc.（TW）
+發明人：David Kim
+申請專利範圍項數：3 項
+
+【名稱】Dynamic Load Balancing for EV Charging Stations
+
+【摘要】
+A method for dynamically balancing load across a cluster of EV charging stations based on real-time grid frequency and state-of-charge data.
+
+【說明書節錄】
+Background: Static load allocation under-utilizes capacity.
+Description: Dynamic balancing improves throughput and grid stability.
+
+
+【申請專利範圍】
+請求項 1：1. A method for load balancing comprising: receiving grid frequency measurements; receiving SOC data from a plurality of EV charging sessions; computing per-station current limits based on frequency deviation and SOC priority; and transmitting the limits to each station.
+請求項 2：2. The method of claim 1, further comprising prioritizing low-SOC sessions during peak hours.
+請求項 3：3. The method of claim 1, wherein the limits are recomputed every 100 milliseconds.

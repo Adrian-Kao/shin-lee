@@ -14,7 +14,7 @@ patentmind-poc/
 │   └── ARCHITECTURE.md   — 每個 Q 對應到哪份 code (READ SECOND)
 ├── backend/
 │   ├── shared/           — Pydantic models + Settings
-│   ├── gateway/          — FastAPI port :8000  (digiRunner mock, 厚 Gateway, Q1)
+│   ├── gateway/          — FastAPI port :8010  (digiRunner mock, 厚 Gateway, Q1)
 │   │   ├── auth.py       — Q12 JWT + case ACL
 │   │   ├── rate_limit.py — Q18 RPM + quota + cost circuit breaker
 │   │   ├── masking.py    — Q10 PII + customer dictionary, reversible
@@ -22,7 +22,7 @@ patentmind-poc/
 │   │   ├── cache.py      — Q9 in-memory, key=tenant:user:case:hash
 │   │   ├── orchestrator.py — Q1+FU 厚 Gateway 流程
 │   │   └── main.py       — FastAPI wire-up
-│   ├── ai_engine/        — FastAPI port :8001  (Dify mock, single-step inference)
+│   ├── ai_engine/        — FastAPI port :8011  (Dify mock, single-step inference)
 │   │   ├── llm_client.py — Q15 multi-model router + Q11 canary + Q18 degrade
 │   │   ├── rag.py        — Q6 hierarchical+claim-tree chunking, Q7 Qdrant-shape store
 │   │   ├── oa_analyzer.py— Q11 spotlight, Q14 grounded citations + verifier
@@ -130,7 +130,7 @@ Every stub is grep-able. Search for `TODO(claude-code)` to find them.
                         │ /api/* (vite proxy)
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                  Gateway :8000  (digiRunner mock)                │
+│                  Gateway :8010  (digiRunner mock)                │
 │ ┌────────┐ ┌──────────┐ ┌─────────┐ ┌───────┐ ┌──────┐ ┌──────┐ │
 │ │  Auth  │→│RateLimit │→│ Mask    │→│Cache  │→│Orch. │→│Audit │ │
 │ │ Q12    │ │  Q18     │ │ Q10/Q3  │ │ Q9    │ │Q1+FU │ │ Q13  │ │
@@ -139,7 +139,7 @@ Every stub is grep-able. Search for `TODO(claude-code)` to find them.
                         │ HTTP (intra-vpc)
                         ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                AI Engine :8001  (Dify mock)                      │
+│                AI Engine :8011  (Dify mock)                      │
 │ ┌────────────┐ ┌─────────┐ ┌────────────┐ ┌──────────────┐      │
 │ │ parse_oa   │ │retrieval│ │draft_resp  │ │verify_cite   │      │
 │ │ Q11        │ │Q6/Q7    │ │Q14/Q15     │ │Q14           │      │
@@ -162,7 +162,7 @@ Every stub is grep-able. Search for `TODO(claude-code)` to find them.
 ## 7. Pitfalls / gotchas
 
 1. **PyJWT 2.7 conflict on Debian 12** — install fix is `pip install --break-system-packages PyJWT`. Already in `start_backend.sh`.
-2. **Vite proxy** — frontend uses `/api` prefix, vite proxies to `:8000`. Don't hardcode port in `client.js`.
+2. **Vite proxy** — frontend uses `/api` prefix, vite proxies to `:8010` (gateway; ai_engine is :8011). Don't hardcode port in `client.js`.
 3. **The `Tailwind via CDN` shortcut** — POC speed. Production should compile via PostCSS for tree-shaking.
 4. **Audit chain is per-tenant** — verifier walks one tenant at a time. Cross-tenant verification needs a separate function.
 5. **Mock embeddings are deterministic via SHA-256** — same query → same retrieval. This makes demo reproducible but masks real RAG quality issues. Replace before demo to prospects.

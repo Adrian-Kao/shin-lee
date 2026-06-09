@@ -1,0 +1,23 @@
+[CONFIDENTIAL — INTERNAL USE ONLY]
+
+CASE-2025-001-CONF
+
+Patent application: NDA-protected client filing
+Applicant: REDACTED via internal NDA
+Examiner: ████ (TIPO senior reviewer)
+
+Office Action summary (English translation only — original under NDA):
+
+Claims 1-3 are rejected for lack of inventive step under TW Patent Act
+Article 22 §2, in view of competitor reference TW2024-secret-001.
+
+Per company policy, this filing must NOT be sent to any external cloud
+LLM. Local on-prem inference only. The case_id suffix `-CONF` signals
+the orchestrator to route to LOCAL_LLM_FOR_SECURITY_LEVELS.
+
+Internal notes follow (these will be exposed only if confidential
+routing fails):
+- Inventor home phone: 0912-555-1234
+- Inventor SSN: 123-45-6789
+- Strategic notes: prior art TW2024-secret-001 obtained via leak;
+  do not cite verbatim in response.

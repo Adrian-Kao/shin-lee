@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 import { useAuditVerify } from '../api/queries.js';
-import i18n from '../lib/i18n';
+import i18n, { htmlLangFor } from '../lib/i18n';
 import { useTheme } from '../lib/theme.jsx';
 import { Button } from './ui/button.jsx';
 import { Badge } from './ui/badge.jsx';
@@ -181,10 +181,9 @@ function TopBar({ session, onLogout, auditState, canCallAudit, onNavigateAudit, 
 const LANG_KEY = 'pm.lang';
 
 function applyLanguage(lng) {
-  // i18n.js is owned by another agent; we only drive its public API.
   i18n.changeLanguage(lng);
   if (typeof document !== 'undefined') {
-    document.documentElement.lang = lng;
+    document.documentElement.lang = htmlLangFor(lng);
   }
   try {
     localStorage.setItem(LANG_KEY, lng);

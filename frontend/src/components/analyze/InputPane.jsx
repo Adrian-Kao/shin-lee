@@ -54,14 +54,20 @@ export default function InputPane({
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
-          <label className="mb-1 block text-xs text-slate-500 dark:text-slate-400">Case ID</label>
+          <label htmlFor="analyze-case-id" className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
+            {t('analyze.input.case_id')}
+          </label>
           <input
+            id="analyze-case-id"
             value={caseId}
             onChange={(e) => setCaseId(e.target.value)}
             className="mb-3 w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
           />
-          <label className="mb-1 block text-xs text-slate-500 dark:text-slate-400">Target patent (本案)</label>
+          <label htmlFor="analyze-target-patent" className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
+            {t('analyze.input.target_patent')}
+          </label>
           <input
+            id="analyze-target-patent"
             value={targetPatent}
             onChange={(e) => setTargetPatent(e.target.value)}
             className="mb-3 w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
@@ -122,10 +128,11 @@ export default function InputPane({
             </div>
           )}
 
-          <label className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
+          <label htmlFor="analyze-oa-text" className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
             {t('analyze.input.oa_full_text')}
           </label>
           <textarea
+            id="analyze-oa-text"
             value={oaText}
             onChange={(e) => setOaText(e.target.value)}
             rows={12}

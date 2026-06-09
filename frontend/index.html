@@ -32,6 +32,14 @@
       } catch (e) {
         /* localStorage blocked — ignore */
       }
+      // Pre-React language attribute so assistive tech + font shaping are
+      // correct on first paint. Mirrors src/lib/i18n.js (key 'pm.lang').
+      try {
+        var l = localStorage.getItem('pm.lang');
+        document.documentElement.lang = l === 'en' ? 'en' : 'zh-Hant';
+      } catch (e2) {
+        /* localStorage blocked — keep the static lang attribute */
+      }
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>

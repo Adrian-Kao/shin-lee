@@ -51,10 +51,8 @@ export default function ReferencesPane({ result, activeRejectionId, selectedCita
         <div className="flex-1 overflow-y-auto p-4">
           <EmptyState
             icon={<Link2 className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />}
-            title={t('analyze.refs_empty_title', { defaultValue: '尚無引證' })}
-            description={t('analyze.refs_empty_desc', {
-              defaultValue: '分析完成後此處顯示 examiner 引證案 + RAG 命中的先前技術',
-            })}
+            title={t('analyze.refs.empty_title')}
+            description={t('analyze.refs.empty_desc')}
           />
         </div>
       </div>
@@ -76,7 +74,7 @@ export default function ReferencesPane({ result, activeRejectionId, selectedCita
         {citedNos.length > 0 && (
           <section>
             <div className="mb-1 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-              引證案 / Cited prior art
+              {t('analyze.refs.cited_title')}
             </div>
             <div className="flex flex-wrap gap-1">
               {citedNos.map((p) => (
@@ -90,13 +88,11 @@ export default function ReferencesPane({ result, activeRejectionId, selectedCita
 
         <section>
           <div className="mb-1 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            RAG retrieval (Q6, Q7, Q14 grounding)
+            {t('analyze.refs.rag_title')}
           </div>
           {hits.length === 0 && (
             <div className="rounded border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs text-slate-500 dark:text-slate-400">
-              {t('analyze.refs_no_hits', {
-                defaultValue: '此 rejection 沒有對應的 RAG 命中。',
-              })}
+              {t('analyze.refs.no_hits')}
             </div>
           )}
           <div className="space-y-2">
@@ -131,6 +127,7 @@ function PaneHeader({ title, children }) {
 }
 
 function ReferenceCard({ hit, onOpen, highlighted, cardRef }) {
+  const { t } = useTranslation();
   const excerpt = (hit.text || '').slice(0, 220);
   const truncated = (hit.text || '').length > 220;
   return (
@@ -145,14 +142,16 @@ function ReferenceCard({ hit, onOpen, highlighted, cardRef }) {
           <span className="font-mono font-medium text-slate-800 dark:text-slate-200">{hit.patent_no}</span>
           <span className="ml-1 text-slate-500 dark:text-slate-400">· {hit.section}</span>
         </div>
-        <span className="font-mono text-slate-500 dark:text-slate-400">score {hit.score.toFixed(3)}</span>
+        <span className="font-mono text-slate-500 dark:text-slate-400">
+          {t('analyze.refs.score')} {hit.score.toFixed(3)}
+        </span>
       </div>
       <p className="mb-2 whitespace-pre-wrap text-slate-600 dark:text-slate-300">
         {excerpt}
         {truncated && '…'}
       </p>
       <Button type="button" variant="link" size="xs" onClick={onOpen} className="px-0">
-        Open full text →
+        {t('analyze.refs.open_full')} →
       </Button>
     </div>
   );

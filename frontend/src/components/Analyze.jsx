@@ -3,6 +3,25 @@ import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from './ui/button.jsx';
+
+// Static deadline-urgency tone classes (light + dark). Kept as a literal map so
+// the Tailwind JIT scanner sees every class string at build time — this lets us
+// drop the `bg-${tone}` interpolation that previously forced a safelist entry
+// AND adds the dark-mode variants the old `bg-${tone}-100` chips were missing.
+const DEADLINE_TONE = {
+  rose: {
+    text: 'text-rose-700 dark:text-rose-300',
+    pill: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+  },
+  amber: {
+    text: 'text-amber-700 dark:text-amber-300',
+    pill: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+  },
+  emerald: {
+    text: 'text-emerald-700 dark:text-emerald-300',
+    pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+  },
+};
 import { api } from '../api/client.js';
 import { useQuota, useAnalyze } from '../api/queries.js';
 import { toast } from '../lib/toast.jsx';
@@ -254,6 +273,7 @@ export default function Analyze({
 // (a few tests + the placeholder cases route prior to the shell switch).
 // The shell's TopBar/NavRail superset this when mounted inside AppShell.
 function Header({ session, onLogout, onSwitchView }) {
+  const { t } = useTranslation();
   return (
     <header className="border-b dark:border-slate-700 bg-white dark:bg-slate-900">
       <div className="mx-auto flex max-w-[1920px] items-center gap-4 px-6 py-3">
@@ -261,20 +281,20 @@ function Header({ session, onLogout, onSwitchView }) {
           <div className="flex h-8 w-8 items-center justify-center rounded bg-navy-900 text-sm font-bold text-white">
             PM
           </div>
-          <span className="font-semibold">PatentMind AI</span>
+          <span className="font-semibold">{t('app_title')}</span>
         </div>
-        <nav className="ml-6 flex gap-1">
+        <nav className="ml-6 flex gap-1" aria-label={t('nav.analyze')}>
           <button
             onClick={() => onSwitchView('analyze')}
             className="rounded bg-navy-50 dark:bg-navy-900/40 px-3 py-1.5 text-sm font-medium text-navy-700 dark:text-navy-200"
           >
-            分析
+            {t('nav.analyze')}
           </button>
           <button
             onClick={() => onSwitchView('audit')}
-            className="rounded px-3 py-1.5 text-sm hover:bg-slate-100"
+            className="rounded px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
           >
-            Audit
+            {t('nav.audit')}
           </button>
         </nav>
         <div className="ml-auto flex items-center gap-3 text-sm">
@@ -285,7 +305,7 @@ function Header({ session, onLogout, onSwitchView }) {
             </div>
           </div>
           <Button variant="secondary" size="xs" onClick={onLogout}>
-            登出
+            {t('buttons.logout')}
           </Button>
         </div>
       </div>
@@ -299,6 +319,7 @@ function Header({ session, onLogout, onSwitchView }) {
  * not duplicated inside each pane.
  */
 function ResultSummaryBar({ result }) {
+  const { t, i18n } = useTranslation();
   const policyChips = useMemo(
     () => [
       ['authz_passed', true],
@@ -313,11 +334,13 @@ function ResultSummaryBar({ result }) {
   const ds = result.deadline_summary;
   const dr = ds.days_remaining;
   const tone = dr < 14 ? 'rose' : dr < 30 ? 'amber' : 'emerald';
+  const toneCls = DEADLINE_TONE[tone];
 
   // ★ deadline 計算依據可解釋：後端已回傳順延理由 / 建議內部完成日 / 假日表版本，
   // 但原本只顯示日期+天數。期日算錯 = 喪失專利權，因此「為何是這天」必須可攤開。
   const [showDeadlineDetail, setShowDeadlineDetail] = useState(false);
-  const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString('zh-TW') : '—');
+  const locale = (i18n.language || 'zh-TW').startsWith('zh') ? 'zh-TW' : 'en-US';
+  const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString(locale) : '—');
   const warnings = Array.isArray(ds.warnings) ? ds.warnings : [];
 
   return (
@@ -344,11 +367,13 @@ function ResultSummaryBar({ result }) {
             );
           })}
         </div>
-        <div className={`ml-auto flex items-center gap-2 text-${tone}-700`}>
-          <span className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">期日 (Q17)</span>
+        <div className={`ml-auto flex items-center gap-2 ${toneCls.text}`}>
+          <span className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            {t('analyze.result.deadline_label')}
+          </span>
           <span className="font-mono">{fmt(ds.statutory_deadline)}</span>
-          <span className={`rounded bg-${tone}-100 px-2 py-0.5 font-semibold text-${tone}-700`}>
-            {dr} 天
+          <span className={`rounded px-2 py-0.5 font-semibold ${toneCls.pill}`}>
+            {dr} {t('analyze.result.days')}
           </span>
           {warnings.length > 0 && (
             <span
@@ -367,7 +392,7 @@ function ResultSummaryBar({ result }) {
             aria-expanded={showDeadlineDetail}
             className="px-1.5 py-0.5 text-slate-500 dark:text-slate-400 underline-offset-2 hover:underline"
           >
-            {showDeadlineDetail ? '收合' : '計算依據 / Why'}
+            {showDeadlineDetail ? t('analyze.result.collapse') : t('analyze.result.why')}
           </Button>
         </div>
       </div>
@@ -379,16 +404,16 @@ function ResultSummaryBar({ result }) {
         >
           <dl className="flex flex-wrap gap-x-6 gap-y-1">
             <div className="flex gap-1">
-              <dt className="text-slate-400 dark:text-slate-500">起算日 / Received</dt>
+              <dt className="text-slate-400 dark:text-slate-500">{t('analyze.result.received')}</dt>
               <dd className="font-mono text-slate-700 dark:text-slate-200">{fmt(ds.received_date)}</dd>
             </div>
             <div className="flex gap-1">
-              <dt className="text-slate-400 dark:text-slate-500">法定期日 / Statutory</dt>
+              <dt className="text-slate-400 dark:text-slate-500">{t('analyze.result.statutory')}</dt>
               <dd className="font-mono text-slate-700 dark:text-slate-200">{fmt(ds.statutory_deadline)}</dd>
             </div>
             {ds.recommended_internal_deadline && (
               <div className="flex gap-1">
-                <dt className="text-slate-400 dark:text-slate-500">建議內部完成 / Internal</dt>
+                <dt className="text-slate-400 dark:text-slate-500">{t('analyze.result.internal')}</dt>
                 <dd className="font-mono text-slate-700 dark:text-slate-200">
                   {fmt(ds.recommended_internal_deadline)}
                 </dd>
@@ -396,7 +421,7 @@ function ResultSummaryBar({ result }) {
             )}
             {ds.holiday_calendar_version && (
               <div className="flex gap-1">
-                <dt className="text-slate-400 dark:text-slate-500">假日表 / Calendar</dt>
+                <dt className="text-slate-400 dark:text-slate-500">{t('analyze.result.calendar')}</dt>
                 <dd className="font-mono text-slate-700 dark:text-slate-200">{ds.holiday_calendar_version}</dd>
               </div>
             )}
@@ -415,18 +440,21 @@ function ResultSummaryBar({ result }) {
 }
 
 function MobileTabBar({ activeTab, setActiveTab, hasResult }) {
+  const { t } = useTranslation();
   const tabs = [
-    { id: 'input', label: '輸入 / Input' },
-    { id: 'drafts', label: '草稿 / Drafts', disabled: !hasResult },
-    { id: 'refs', label: '引證 / Refs', disabled: !hasResult },
+    { id: 'input', label: t('analyze.result.tab_input') },
+    { id: 'drafts', label: t('analyze.result.tab_drafts'), disabled: !hasResult },
+    { id: 'refs', label: t('analyze.result.tab_refs'), disabled: !hasResult },
   ];
   return (
-    <div className="sticky top-0 z-10 flex border-b dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur">
+    <div className="sticky top-0 z-10 flex border-b dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur" role="tablist" aria-label={t('analyze.pane_input')}>
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
           <button
             key={tab.id}
+            role="tab"
+            aria-selected={isActive}
             onClick={() => !tab.disabled && setActiveTab(tab.id)}
             disabled={tab.disabled}
             className={`flex-1 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 ${

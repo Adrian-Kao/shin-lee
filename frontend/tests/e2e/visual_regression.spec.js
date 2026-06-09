@@ -12,6 +12,8 @@ import {
   mockLogin,
   mockQuota,
   mockAnalyze,
+  mockAuditRecent,
+  mockAuditVerify,
   loginAsAlice,
 } from './helpers/mock_backend.js';
 
@@ -89,8 +91,65 @@ test.describe('Visual regression', () => {
   test('mobile — tab bar visible after login', async ({ page, viewport }) => {
     test.skip(viewport && viewport.width >= 1280, 'mobile snapshot');
     await loginAsAlice(page);
-    // Wait for any of the three tabs to be rendered.
-    await expect(page.getByRole('button', { name: /輸入.*Input/ })).toBeVisible();
+    // Wait for any of the three tabs to be rendered. The mobile tab strip is
+    // an ARIA tablist (Day 12E), so the tabs expose role="tab".
+    await expect(page.getByRole('tab', { name: /輸入.*Input/ })).toBeVisible();
     await expect(page).toHaveScreenshot('mobile_tab_bar.png', screenshotOpts(page));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Day 12E — dark-mode visual regression.
+//
+// The ThemeProvider reads `localStorage.theme` on mount and toggles the `dark`
+// class on <html> before first paint, so seeding it via addInitScript gives a
+// deterministic dark render without depending on the (sm:+ only) toggle button
+// or its hover/focus timing. These baselines lock in the dark palette across
+// the two surfaces an attorney actually works in: the three-pane analyze grid
+// and the audit table.
+// ---------------------------------------------------------------------------
+test.describe('Visual regression — dark mode', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      try {
+        window.localStorage.setItem('theme', 'dark');
+      } catch {
+        /* private mode — non-fatal */
+      }
+    });
+  });
+
+  test('analyze — three panes, no result (desktop, dark)', async ({ page, viewport }) => {
+    test.skip(viewport && viewport.width < 1280, 'three-pane is desktop only');
+    await loginAsAlice(page);
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+    await expect(page.getByRole('heading', { name: /配額/ }).first()).toBeVisible();
+    await expect(page).toHaveScreenshot('analyze_empty_desktop_dark.png', screenshotOpts(page));
+  });
+
+  test('analyze — with mocked result (desktop, dark)', async ({ page, viewport }) => {
+    test.skip(viewport && viewport.width < 1280, 'three-pane is desktop only');
+    await loginAsAlice(page);
+    await mockAnalyze(page);
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+    await page.getByRole('button', { name: /^分析 OA/ }).filter({ visible: true }).click();
+    await expect(
+      page.getByText('答辯策略').filter({ visible: true }).first()
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(page).toHaveScreenshot('analyze_result_desktop_dark.png', screenshotOpts(page));
+  });
+
+  test('audit — table + hero metrics (desktop, dark)', async ({ page, viewport }) => {
+    test.skip(viewport && viewport.width < 1280, 'desktop snapshot');
+    await mockLogin(page, 'audit_dave');
+    await mockQuota(page);
+    await mockAuditRecent(page);
+    await mockAuditVerify(page);
+    await page.goto('/');
+    await page.getByRole('button', { name: /Dave/ }).click();
+    await page.waitForURL(/\/audit/);
+    await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+    await expect(page.getByRole('heading', { name: /Audit Log/ })).toBeVisible();
+    await expect(page).toHaveScreenshot('audit_table_desktop_dark.png', screenshotOpts(page));
   });
 });

@@ -25,8 +25,52 @@ and keeps the handler focused on the policy gates (auth, role, ACL, signoff).
 from __future__ import annotations
 
 import hashlib
+from typing import Optional
 
-from backend.shared.models import ProvenanceSegment, ProvenanceSummary
+from fastapi import HTTPException, status
+
+from backend.shared.models import ProvenanceSegment, ProvenanceSummary, User, UserRole
+
+# ---------------------------------------------------------------------------
+# Agent F (Day 13F) — sign-off authority is an ATTORNEY act.
+#
+# The /v1/oa/export route already role-gates the ENDPOINT to ATTORNEY via
+# require_roles(UserRole.ATTORNEY). This helper makes the authority an explicit,
+# unit-testable function so (a) any future caller (batch export, e-signature
+# webhook) can reuse the SAME rule rather than re-deriving it, and (b) the
+# decision is auditable in isolation. Defence-in-depth: even if a future
+# refactor loosened the endpoint gate, this check still refuses a non-attorney
+# sign-off.
+# ---------------------------------------------------------------------------
+SIGNOFF_AUTHORITY_ROLES: frozenset[UserRole] = frozenset({UserRole.ATTORNEY})
+
+
+def assert_signoff_authority(user: User) -> None:
+    """Raise 403 unless ``user`` holds a role permitted to sign off an export.
+
+    Q16 responsibility boundary: the legal accountability for the final filed
+    document rests with a licensed ATTORNEY. Paralegals assist with analysis but
+    cannot sign. AUDITOR / IT_ADMIN have no role in drafting at all.
+    """
+    if user.role not in SIGNOFF_AUTHORITY_ROLES:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Role '{user.role.value}' may not sign off an export. "
+            f"Sign-off authority: {sorted(r.value for r in SIGNOFF_AUTHORITY_ROLES)}.",
+        )
+
+
+def signoff_audit_fields(user: User, signed_off: bool) -> dict:
+    """Return the audit-row fields that record WHO exercised sign-off authority.
+
+    Pure (no I/O) so the export handler can splice these into its single audit
+    row. ``signed_off`` is the outcome (True only when the hard gate passed).
+    """
+    return {
+        "signoff_authority_role": user.role.value,
+        "signoff_by": user.user_id,
+        "signoff_passed": bool(signed_off),
+    }
 
 # Separator used when concatenating accepted segments into the final document.
 # A blank line between segments keeps paragraph boundaries readable and is

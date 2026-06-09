@@ -390,6 +390,55 @@ class Settings:
     # Set to 0 to make backoff fully deterministic (used by the retry tests).
     LLM_RETRY_JITTER_SEC: float = float(os.getenv("LLM_RETRY_JITTER_SEC", "1.0"))
 
+    # ------------------------------------------------------------------
+    # Agent F — enterprise IdP (OIDC / SAML) hardening (Q12, Day 13F)
+    # ------------------------------------------------------------------
+    # These flesh out the named `/v1/auth/oidc/callback` + `/v1/auth/saml/acs`
+    # stubs into testable, MOCKABLE paths. The identity provider is dependency-
+    # injected (backend/gateway/auth.py: OIDCProvider / SAMLProvider protocols),
+    # so the test suite verifies a SIGNED ASSERTION offline — no real network
+    # to Keycloak / Okta / ADFS. Production swaps the stub provider for a real
+    # one (Authlib for OIDC; python3-saml for SAML) WITHOUT touching the
+    # callback handlers, which only ever see a validated identity claim.
+    #
+    # OIDC: the stub provider validates an authorization code by HMAC-verifying
+    # a signed code blob (stands in for the real code->token exchange + ID-token
+    # signature check against the IdP JWKS). The state/nonce CSRF + replay
+    # guards live in the gateway handler and are provider-agnostic.
+    OIDC_ENABLED: bool = os.getenv("OIDC_ENABLED", "true").lower() in ("1", "true", "yes")
+    OIDC_PROVIDER: str = os.getenv("OIDC_PROVIDER", "stub")  # stub | authlib (prod)
+    OIDC_CLIENT_ID: str = os.getenv("OIDC_CLIENT_ID", "patentmind-spa")
+    OIDC_ISSUER: str = os.getenv("OIDC_ISSUER", "https://idp.example.com")
+    # Shared secret the stub OIDC provider HMAC-signs its code blobs with. In
+    # production this is replaced by the IdP's published JWKS public key — the
+    # stub uses a symmetric secret only so the suite needs no key material.
+    OIDC_STUB_SIGNING_SECRET: str = os.getenv(
+        "OIDC_STUB_SIGNING_SECRET", "oidc-stub-shared-secret-do-not-ship"
+    )
+    # TTL (seconds) of the server-issued `state` value that ties an OIDC
+    # callback back to the browser that began the flow (CSRF defence). Short
+    # because the round-trip through the IdP login page is interactive.
+    OIDC_STATE_TTL_SEC: int = int(os.getenv("OIDC_STATE_TTL_SEC", "600"))
+
+    # SAML: the stub provider validates an HMAC-signed assertion blob (stands in
+    # for the real XML-DSig signature check). Replay protection keys on the
+    # assertion ID (single-use, TTL-bounded) and the NotOnOrAfter window.
+    SAML_ENABLED: bool = os.getenv("SAML_ENABLED", "true").lower() in ("1", "true", "yes")
+    SAML_PROVIDER: str = os.getenv("SAML_PROVIDER", "stub")  # stub | python3-saml (prod)
+    SAML_AUDIENCE: str = os.getenv("SAML_AUDIENCE", "patentmind-sp")
+    SAML_STUB_SIGNING_SECRET: str = os.getenv(
+        "SAML_STUB_SIGNING_SECRET", "saml-stub-shared-secret-do-not-ship"
+    )
+    # How long a consumed SAML assertion ID is remembered for replay defence.
+    # Must exceed the assertion's own NotOnOrAfter window so a captured
+    # assertion can't be replayed after its single-use record would have been
+    # pruned but while the assertion is still inside its validity window.
+    SAML_REPLAY_TTL_SEC: int = int(os.getenv("SAML_REPLAY_TTL_SEC", "600"))
+    # Clock-skew tolerance (seconds) applied to both OIDC and SAML time-window
+    # checks so a few seconds of NTP drift between the IdP and the gateway does
+    # not reject an otherwise-valid assertion.
+    IDP_CLOCK_SKEW_SEC: int = int(os.getenv("IDP_CLOCK_SKEW_SEC", "30"))
+
 
 settings = Settings()
 

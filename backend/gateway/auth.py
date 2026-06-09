@@ -220,6 +220,38 @@ _PASSWORD_HASHES: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Agent F (Day 13F) — runtime registry for FEDERATED users (OIDC / SAML).
+#
+# A user who logs in via an enterprise IdP but is NOT in the demo ``_USERS``
+# table still needs a session: issue_token signs their JWT and verify_token must
+# accept it on subsequent requests. We register the resolved (least-privilege)
+# User here so verify_token can resolve ``sub`` -> User without a hard-coded
+# row. The role/tenant were already pinned by ``_resolve_idp_user`` (a federated
+# user can never self-assert AUDITOR/IT_ADMIN), so this registry only ever holds
+# safe, server-decided identities. POC: in-memory; production: a real user
+# directory keyed off the IdP subject.
+# ---------------------------------------------------------------------------
+_FEDERATED_USERS: dict[str, User] = {}
+
+
+def _register_federated_user(user: User) -> None:
+    """Record a federated User so verify_token can resolve it on later requests.
+
+    A demo user (already in ``_USERS``) is never shadowed — ``_USERS`` always
+    wins in ``_lookup_user`` — so this can't be used to override alice's role.
+    """
+    if user.user_id in _USERS:
+        return  # never shadow a server-controlled demo identity
+    _FEDERATED_USERS[user.user_id] = user
+
+
+def _lookup_user(user_id: str) -> Optional[User]:
+    """Resolve a user_id to a User, preferring the server-controlled ``_USERS``
+    table and falling back to the federated registry. ``_USERS`` always wins."""
+    return _USERS.get(user_id) or _FEDERATED_USERS.get(user_id)
+
+
 def _get_user(user_id: str) -> Optional[User]:
     """Lookup helper — returns the demo user or None.
 
@@ -277,10 +309,16 @@ def _verifying_key() -> str:
 
 
 def issue_token(user_id: str) -> str:
-    """Sign a short-lived JWT for the user."""
-    if user_id not in _USERS:
+    """Sign a short-lived JWT for a demo or federated user.
+
+    The user must be resolvable via ``_lookup_user`` (the ``_USERS`` demo table
+    OR the federated registry populated by the OIDC/SAML callbacks). An
+    unresolvable user_id raises 404 so a caller can never mint a usable token for
+    an identity the server has not vouched for.
+    """
+    user = _lookup_user(user_id)
+    if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"unknown user: {user_id}")
-    user = _USERS[user_id]
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user.user_id,
@@ -326,9 +364,10 @@ def verify_token(token: str) -> User:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token revoked")
 
     user_id = payload.get("sub")
-    if user_id not in _USERS:
+    user = _lookup_user(user_id)
+    if user is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "unknown user")
-    return _USERS[user_id]
+    return user
 
 
 def revoke_token(token: str) -> bool:
@@ -489,6 +528,491 @@ def consume_magic_token(token: str) -> str:
         raise uniform_401
     _CONSUMED_MAGIC_JTIS.add(jti)
     return user_id
+
+
+# ===========================================================================
+# Agent F — enterprise IdP: OIDC authorization-code + SAML ACS (Q12, Day 13F)
+# ===========================================================================
+#
+# The named stubs (`/v1/auth/oidc/callback`, `/v1/auth/saml/acs`) are fleshed
+# out here into testable, MOCKABLE paths. Two design rules keep the suite
+# offline AND the security real:
+#
+#   1. The identity provider is dependency-injected behind a small protocol
+#      (``OIDCProvider`` / ``SAMLProvider``). Tests inject a stub that validates
+#      a SIGNED assertion (HMAC) — the same control-flow a real provider runs,
+#      minus the network call to Keycloak/Okta/ADFS and the JWKS/XML-DSig
+#      crypto. Production sets ``OIDC_PROVIDER=authlib`` / ``SAML_PROVIDER=
+#      python3-saml`` and the callback handlers are UNCHANGED — they only ever
+#      see a validated ``IdpIdentity``.
+#
+#   2. The CSRF (state/nonce) + replay guards live in THIS module, provider-
+#      agnostic, so they protect every backend. A real IdP integration cannot
+#      forget them.
+#
+# What's still a stub (documented for the next contributor):
+#   * OIDC stub HMAC-signs the "authorization code" instead of doing a real
+#     code->token exchange + ID-token JWKS signature verification.
+#   * SAML stub HMAC-signs the assertion blob instead of verifying XML-DSig.
+#   Both are the ONLY shortcuts; state/nonce/replay/audience/expiry are real.
+# ---------------------------------------------------------------------------
+from dataclasses import dataclass
+
+
+class IdpError(Exception):
+    """Raised by an IdP provider when an assertion / code fails validation.
+
+    The gateway handler catches this and collapses it to a UNIFORM 401 so the
+    failure reason (bad signature vs expired vs wrong audience) is never an
+    oracle to the caller. The message is logged server-side for the operator.
+    """
+
+
+@dataclass(frozen=True)
+class IdpIdentity:
+    """The validated identity a provider hands back to the callback handler.
+
+    Deliberately minimal: a provider returns WHO the IdP authenticated, never a
+    role/tenant the caller could influence. Role/tenant resolution then runs
+    through the SAME server-controlled rules as the upstream-header path
+    (``_resolve_idp_user``) — a federated user can NEVER self-assert AUDITOR /
+    IT_ADMIN, exactly like the digiRunner header path.
+    """
+
+    subject: str                       # IdP 'sub' (OIDC) / NameID (SAML)
+    issuer: str                        # which IdP asserted this
+    tenant_hint: Optional[str] = None  # IdP-supplied tenant (honoured only for
+    #                                    unknown users; known users pin on-file)
+    role_hint: Optional[str] = None    # IdP-supplied role (subject to the same
+    #                                    assertable-role whitelist as upstream)
+
+
+# ---------------------------------------------------------------------------
+# OIDC provider protocol + offline stub.
+# ---------------------------------------------------------------------------
+class OIDCProvider:
+    """Protocol: exchange an authorization code for a validated identity.
+
+    The real implementation (Authlib) would POST the code to the IdP token
+    endpoint, receive an ID token (JWT), verify its signature against the IdP
+    JWKS, and check iss/aud/exp/nonce. The stub below does the moral equivalent
+    against an HMAC-signed code blob so the test suite needs no network or key
+    material.
+    """
+
+    def exchange_code(self, code: str, expected_nonce: str) -> IdpIdentity:  # pragma: no cover - interface
+        raise NotImplementedError
+
+
+class StubOIDCProvider(OIDCProvider):
+    """Offline OIDC provider.
+
+    A valid "authorization code" is ``base64url(payload_json).hmac`` where the
+    HMAC is over the payload using ``OIDC_STUB_SIGNING_SECRET``. The payload is
+    the claim set a real ID token would carry::
+
+        {"sub", "iss", "aud", "nonce", "exp", "tenant", "role"}
+
+    Validation mirrors a real ID-token check: constant-time signature compare,
+    issuer pin, audience pin, expiry (with clock skew), and nonce binding
+    (replay/CSRF: the nonce must equal the one the gateway minted for this
+    flow). Any failure raises ``IdpError`` with a specific reason for the log.
+    """
+
+    def __init__(self, secret: str, *, issuer: str, audience: str) -> None:
+        self._secret = secret
+        self._issuer = issuer
+        self._audience = audience
+
+    @staticmethod
+    def mint_code(
+        secret: str,
+        *,
+        sub: str,
+        iss: str,
+        aud: str,
+        nonce: str,
+        exp: int,
+        tenant: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> str:
+        """Test/helper: build a signed authorization code blob.
+
+        Production never calls this — the real IdP issues the code. It exists so
+        the suite (and a local demo) can produce a valid code without a live IdP.
+        """
+        import base64
+        import json
+
+        payload = {"sub": sub, "iss": iss, "aud": aud, "nonce": nonce, "exp": exp}
+        if tenant is not None:
+            payload["tenant"] = tenant
+        if role is not None:
+            payload["role"] = role
+        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+        b64 = base64.urlsafe_b64encode(body).decode().rstrip("=")
+        sig = hmac.new(secret.encode(), b64.encode(), hashlib.sha256).hexdigest()
+        return f"{b64}.{sig}"
+
+    def exchange_code(self, code: str, expected_nonce: str) -> IdpIdentity:
+        import base64
+        import json
+
+        if not code or code.count(".") != 1:
+            raise IdpError("oidc: malformed authorization code")
+        b64, sig = code.split(".", 1)
+        expected_sig = hmac.new(
+            self._secret.encode(), b64.encode(), hashlib.sha256
+        ).hexdigest()
+        # Constant-time compare — never leak how many bytes of the sig matched.
+        if not hmac.compare_digest(sig, expected_sig):
+            raise IdpError("oidc: bad code signature")
+        try:
+            padded = b64 + "=" * (-len(b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
+        except Exception as exc:  # noqa: BLE001
+            raise IdpError(f"oidc: undecodable code payload: {exc}")
+
+        # issuer pin — a code from a different IdP must not authenticate here.
+        if payload.get("iss") != self._issuer:
+            raise IdpError("oidc: issuer mismatch")
+        # audience pin — the ID token must be addressed to THIS client.
+        if payload.get("aud") != self._audience:
+            raise IdpError("oidc: audience mismatch")
+        # expiry, with clock-skew tolerance.
+        exp = payload.get("exp")
+        if not isinstance(exp, (int, float)) or exp + settings.IDP_CLOCK_SKEW_SEC < time.time():
+            raise IdpError("oidc: code expired")
+        # nonce binding — the ID token nonce MUST equal the one the gateway
+        # planted in the auth request for this exact flow. Defeats replay and
+        # token-injection (an attacker's stolen code carries the victim's nonce,
+        # not the attacker's session nonce).
+        nonce = payload.get("nonce")
+        if not nonce or not expected_nonce or not hmac.compare_digest(str(nonce), str(expected_nonce)):
+            raise IdpError("oidc: nonce mismatch")
+        sub = payload.get("sub")
+        if not sub:
+            raise IdpError("oidc: missing subject")
+        return IdpIdentity(
+            subject=str(sub),
+            issuer=str(payload["iss"]),
+            tenant_hint=payload.get("tenant"),
+            role_hint=payload.get("role"),
+        )
+
+
+# ---------------------------------------------------------------------------
+# SAML provider protocol + offline stub.
+# ---------------------------------------------------------------------------
+class SAMLProvider:
+    """Protocol: validate a SAML Response/assertion -> validated identity.
+
+    Real impl (python3-saml) verifies XML-DSig against the IdP cert, checks the
+    Audience, the NotBefore/NotOnOrAfter window, and the InResponseTo. The stub
+    does the moral equivalent over an HMAC-signed assertion blob.
+    """
+
+    def validate_assertion(self, assertion: str) -> tuple[IdpIdentity, str, int]:  # pragma: no cover - interface
+        """Return (identity, assertion_id, not_on_or_after_epoch)."""
+        raise NotImplementedError
+
+
+class StubSAMLProvider(SAMLProvider):
+    """Offline SAML provider.
+
+    A valid assertion is ``base64url(payload_json).hmac`` over
+    ``SAML_STUB_SIGNING_SECRET``. The payload carries::
+
+        {"id", "subject", "issuer", "audience", "not_before", "not_on_or_after",
+         "tenant", "role"}
+
+    Validation mirrors a real assertion check: signature, audience pin, the
+    NotBefore/NotOnOrAfter window (with clock skew). The single-use REPLAY guard
+    (keyed on ``id``) lives in the handler so it shares the TTL store with the
+    rest of the gateway and is provider-agnostic.
+    """
+
+    def __init__(self, secret: str, *, audience: str) -> None:
+        self._secret = secret
+        self._audience = audience
+
+    @staticmethod
+    def mint_assertion(
+        secret: str,
+        *,
+        assertion_id: str,
+        subject: str,
+        issuer: str,
+        audience: str,
+        not_before: int,
+        not_on_or_after: int,
+        tenant: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> str:
+        import base64
+        import json
+
+        payload = {
+            "id": assertion_id,
+            "subject": subject,
+            "issuer": issuer,
+            "audience": audience,
+            "not_before": not_before,
+            "not_on_or_after": not_on_or_after,
+        }
+        if tenant is not None:
+            payload["tenant"] = tenant
+        if role is not None:
+            payload["role"] = role
+        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+        b64 = base64.urlsafe_b64encode(body).decode().rstrip("=")
+        sig = hmac.new(secret.encode(), b64.encode(), hashlib.sha256).hexdigest()
+        return f"{b64}.{sig}"
+
+    def validate_assertion(self, assertion: str) -> tuple[IdpIdentity, str, int]:
+        import base64
+        import json
+
+        if not assertion or assertion.count(".") != 1:
+            raise IdpError("saml: malformed assertion")
+        b64, sig = assertion.split(".", 1)
+        expected_sig = hmac.new(
+            self._secret.encode(), b64.encode(), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(sig, expected_sig):
+            raise IdpError("saml: bad assertion signature")
+        try:
+            padded = b64 + "=" * (-len(b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
+        except Exception as exc:  # noqa: BLE001
+            raise IdpError(f"saml: undecodable assertion: {exc}")
+
+        if payload.get("audience") != self._audience:
+            raise IdpError("saml: audience mismatch")
+        now = time.time()
+        skew = settings.IDP_CLOCK_SKEW_SEC
+        nb = payload.get("not_before")
+        noa = payload.get("not_on_or_after")
+        if not isinstance(nb, (int, float)) or not isinstance(noa, (int, float)):
+            raise IdpError("saml: missing time window")
+        if now + skew < nb:
+            raise IdpError("saml: assertion not yet valid")
+        if now - skew >= noa:
+            raise IdpError("saml: assertion expired")
+        assertion_id = payload.get("id")
+        subject = payload.get("subject")
+        if not assertion_id or not subject:
+            raise IdpError("saml: missing id/subject")
+        identity = IdpIdentity(
+            subject=str(subject),
+            issuer=str(payload.get("issuer", "")),
+            tenant_hint=payload.get("tenant"),
+            role_hint=payload.get("role"),
+        )
+        return identity, str(assertion_id), int(noa)
+
+
+# ---------------------------------------------------------------------------
+# Provider factories — dependency-injection seam. Tests monkeypatch these (or
+# pass an explicit provider) to swap the stub for a fake; production switches
+# on the *_PROVIDER setting.
+# ---------------------------------------------------------------------------
+def get_oidc_provider() -> OIDCProvider:
+    if settings.OIDC_PROVIDER == "stub":
+        return StubOIDCProvider(
+            settings.OIDC_STUB_SIGNING_SECRET,
+            issuer=settings.OIDC_ISSUER,
+            audience=settings.OIDC_CLIENT_ID,
+        )
+    raise IdpError(
+        f"oidc: provider '{settings.OIDC_PROVIDER}' not wired in this build "
+        "(set OIDC_PROVIDER=stub for the POC, or implement the Authlib path)."
+    )
+
+
+def get_saml_provider() -> SAMLProvider:
+    if settings.SAML_PROVIDER == "stub":
+        return StubSAMLProvider(
+            settings.SAML_STUB_SIGNING_SECRET, audience=settings.SAML_AUDIENCE
+        )
+    raise IdpError(
+        f"saml: provider '{settings.SAML_PROVIDER}' not wired in this build "
+        "(set SAML_PROVIDER=stub for the POC, or implement python3-saml)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# OIDC CSRF state store (state -> nonce, TTL-bounded, single-use).
+#
+# Begin-flow mints a random `state` (returned to the browser, round-trips
+# through the IdP) bound to a random `nonce` (planted in the OIDC auth request,
+# echoed in the ID token). On callback the handler looks the state up: a missing
+# state => CSRF / forged callback => reject. The lookup is SINGLE-USE so a
+# captured state cannot be replayed. POC: in-memory; production: Redis with EX.
+# ---------------------------------------------------------------------------
+_OIDC_STATE_STORE: dict[str, tuple[str, float]] = {}  # state -> (nonce, expiry)
+
+
+def begin_oidc_login() -> tuple[str, str]:
+    """Mint a (state, nonce) pair for an OIDC authorization request.
+
+    The caller redirects the browser to the IdP with ``state`` + ``nonce`` in
+    the query; both come back (state in the callback query, nonce inside the ID
+    token) and are checked on /callback. Returns ``(state, nonce)``.
+    """
+    state = secrets.token_urlsafe(24)
+    nonce = secrets.token_urlsafe(24)
+    _OIDC_STATE_STORE[state] = (nonce, time.time() + settings.OIDC_STATE_TTL_SEC)
+    return state, nonce
+
+
+def consume_oidc_state(state: Optional[str]) -> str:
+    """Validate + single-use-consume an OIDC ``state``; return its bound nonce.
+
+    Raises ``IdpError`` if the state is missing, unknown, or expired — every one
+    of which is a CSRF / forged-callback signal. On success the entry is removed
+    so the same state cannot be replayed.
+    """
+    if not state:
+        raise IdpError("oidc: missing state (CSRF)")
+    entry = _OIDC_STATE_STORE.pop(state, None)
+    if entry is None:
+        raise IdpError("oidc: unknown state (CSRF / replay)")
+    nonce, expiry = entry
+    if expiry < time.time():
+        raise IdpError("oidc: state expired")
+    return nonce
+
+
+# ---------------------------------------------------------------------------
+# SAML replay store (assertion_id -> expiry). Single-use, TTL-bounded.
+# ---------------------------------------------------------------------------
+_SAML_CONSUMED_ASSERTIONS: dict[str, float] = {}
+
+
+def _saml_assertion_seen(assertion_id: str, not_on_or_after: int) -> bool:
+    """Record an assertion id as consumed; return True if it was ALREADY seen.
+
+    TTL is the assertion's own NotOnOrAfter plus the replay TTL so the record
+    outlives the assertion's validity window (a replay inside the window is
+    caught; once the assertion itself expires, validate_assertion rejects it
+    anyway and the record can be pruned). Lazy-prunes expired entries.
+    """
+    now = time.time()
+    # Lazy prune so the store stays bounded without a background sweeper.
+    if len(_SAML_CONSUMED_ASSERTIONS) > 0:
+        for k in [k for k, exp in _SAML_CONSUMED_ASSERTIONS.items() if exp < now]:
+            _SAML_CONSUMED_ASSERTIONS.pop(k, None)
+    if assertion_id in _SAML_CONSUMED_ASSERTIONS:
+        return True
+    _SAML_CONSUMED_ASSERTIONS[assertion_id] = (
+        max(not_on_or_after, now) + settings.SAML_REPLAY_TTL_SEC
+    )
+    return False
+
+
+def _clear_idp_state() -> None:
+    """Test-harness reset for the OIDC state + SAML replay stores."""
+    _OIDC_STATE_STORE.clear()
+    _SAML_CONSUMED_ASSERTIONS.clear()
+
+
+# ---------------------------------------------------------------------------
+# Role/tenant resolution for a federated identity.
+#
+# This is the SAME server-controlled policy the digiRunner upstream-header path
+# uses (_UPSTREAM_ASSERTABLE_ROLES + known-user-pins-on-file), reused so a
+# federated user can NEVER self-assert AUDITOR / IT_ADMIN and a known user's
+# role/tenant always come from _USERS. One policy, three doors (upstream header,
+# OIDC, SAML) — no second place to get the privilege boundary wrong.
+# ---------------------------------------------------------------------------
+def _resolve_idp_user(identity: IdpIdentity) -> User:
+    """Map a validated ``IdpIdentity`` to a runtime ``User``.
+
+    Known subject -> role/tenant/quota lifted from ``_USERS`` (IdP hints
+    ignored). Unknown subject -> least-privilege defaults; ``role_hint`` is
+    honoured ONLY if it is in ``_UPSTREAM_ASSERTABLE_ROLES`` (ATTORNEY /
+    PARALEGAL), otherwise silently downgraded to PARALEGAL.
+    """
+    known = _USERS.get(identity.subject)
+    if known is not None:
+        if identity.tenant_hint and identity.tenant_hint != known.tenant_id:
+            logger.warning(
+                "idp-auth: SECURITY tenant mismatch for known user_id=%s "
+                "(idp=%s, _USERS=%s) — IGNORING idp tenant, pinning on-file",
+                identity.subject, identity.tenant_hint, known.tenant_id,
+            )
+        return known
+
+    role = _UPSTREAM_DEFAULT_ROLE
+    if identity.role_hint:
+        try:
+            candidate = UserRole(identity.role_hint)
+        except ValueError:
+            candidate = _UPSTREAM_DEFAULT_ROLE
+        role = candidate if candidate in _UPSTREAM_ASSERTABLE_ROLES else _UPSTREAM_DEFAULT_ROLE
+    tenant_id = identity.tenant_hint or "tenant_federated"
+    return User(
+        user_id=identity.subject,
+        tenant_id=tenant_id,
+        role=role,
+        display_name=identity.subject,
+        daily_token_quota=100_000,
+    )
+
+
+def authenticate_oidc_callback(
+    code: Optional[str],
+    state: Optional[str],
+    provider: Optional[OIDCProvider] = None,
+) -> User:
+    """Complete an OIDC authorization-code callback -> session ``User``.
+
+    Order of checks (each a distinct threat):
+      1. OIDC enabled?                      (feature gate)
+      2. state present + known + unexpired  (CSRF / forged callback) — SINGLE-USE
+      3. code signature/iss/aud/exp/nonce   (provider, real crypto in prod)
+      4. role/tenant via _resolve_idp_user  (privilege boundary)
+
+    Raises ``IdpError`` on any failure; the handler collapses that to a uniform
+    401 so the specific reason is not a caller-visible oracle.
+    """
+    if not settings.OIDC_ENABLED:
+        raise IdpError("oidc: disabled")
+    # State first — a forged callback (no matching state) is rejected before we
+    # spend any work validating an attacker-supplied code.
+    nonce = consume_oidc_state(state)
+    prov = provider or get_oidc_provider()
+    identity = prov.exchange_code(code or "", nonce)
+    user = _resolve_idp_user(identity)
+    _register_federated_user(user)
+    return user
+
+
+def authenticate_saml_acs(
+    saml_response: Optional[str],
+    provider: Optional[SAMLProvider] = None,
+) -> User:
+    """Complete a SAML ACS POST -> session ``User``.
+
+    Order: feature gate -> signature/audience/time-window (provider) ->
+    single-use REPLAY check on the assertion id -> role/tenant resolution.
+    Raises ``IdpError`` on any failure (uniform 401 at the handler).
+    """
+    if not settings.SAML_ENABLED:
+        raise IdpError("saml: disabled")
+    prov = provider or get_saml_provider()
+    identity, assertion_id, not_on_or_after = prov.validate_assertion(
+        saml_response or ""
+    )
+    # Replay: a previously-consumed assertion id (even within its time window)
+    # must be refused. Checked AFTER signature/time so an attacker can't use the
+    # replay store as an assertion-id oracle with unsigned input.
+    if _saml_assertion_seen(assertion_id, not_on_or_after):
+        raise IdpError("saml: assertion replay")
+    user = _resolve_idp_user(identity)
+    _register_federated_user(user)
+    return user
 
 
 def authorize_case_access(user: User, case_id: Optional[str]) -> None:

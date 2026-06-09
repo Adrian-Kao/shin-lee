@@ -24,12 +24,16 @@ from pydantic import BaseModel, Field
 
 from backend.gateway import audit, audit_outbox, cache, masking, rate_limit, signoff
 from backend.gateway.auth import (
+    IdpError,
     _get_password_hash,
     _get_user,
     _internal_headers,
     _verify_password,
     auth_dependency,
+    authenticate_oidc_callback,
+    authenticate_saml_acs,
     authorize_case_access,
+    begin_oidc_login,
     consume_magic_token,
     issue_magic_token,
     issue_token,
@@ -622,6 +626,170 @@ def magic_consume(req: MagicConsumeBody, request: Request):
             completion_tokens=0,
             latency_ms=0,
             policy_decisions={"outcome": outcome, "magic_jti": jti},
+        )
+
+
+# ---------- Enterprise IdP: OIDC + SAML (Q12, Day 13F) ----------
+#
+# These flesh out the named `/v1/auth/oidc/callback` + `/v1/auth/saml/acs`
+# stubs. The identity provider is dependency-injected + MOCKABLE
+# (backend/gateway/auth.py), so the suite verifies a signed assertion offline —
+# no network to Keycloak/Okta/ADFS. Both converge on the SAME LoginResponse /
+# issue_token machinery as /v1/auth/login, so a federated user gets an ordinary
+# session JWT (revocable via /v1/auth/logout). Threat coverage:
+#   * OIDC: state (single-use CSRF token) + nonce (ID-token replay binding).
+#   * SAML: XML-DSig (stubbed as HMAC) + audience + time window + single-use
+#     replay guard on the assertion id.
+#   * Both: role/tenant resolved server-side — a federated user can NEVER
+#     self-assert AUDITOR / IT_ADMIN (same whitelist as the upstream-header path).
+# Each call writes exactly one audit row under the `_preauth_` sentinel tenant.
+
+
+class OIDCBeginResponse(BaseModel):
+    # The SPA redirects the browser to the IdP authorize endpoint carrying these.
+    state: str
+    nonce: str
+    authorize_url: str
+
+
+@app.get("/v1/auth/oidc/begin", response_model=OIDCBeginResponse)
+def oidc_begin(request: Request):
+    """Start an OIDC authorization-code flow: mint + return a (state, nonce).
+
+    The SPA sends the browser to the IdP authorize endpoint with ``state`` and
+    ``nonce``; both come back on /callback and are verified there. ``state`` is
+    a single-use CSRF token bound to ``nonce`` server-side, so a forged callback
+    (no matching state) is rejected. Per-IP rate-limited via the shared login
+    bucket so this can't be used to flood the state store.
+    """
+    if not settings.OIDC_ENABLED:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "OIDC is not enabled")
+    client_ip = request.client.host if request.client else ""
+    rate_limit.check_login_rpm(client_ip)
+    state, nonce = begin_oidc_login()
+    authorize_url = (
+        f"{settings.OIDC_ISSUER}/authorize"
+        f"?response_type=code&client_id={settings.OIDC_CLIENT_ID}"
+        f"&state={state}&nonce={nonce}&scope=openid"
+    )
+    return OIDCBeginResponse(state=state, nonce=nonce, authorize_url=authorize_url)
+
+
+class OIDCCallbackBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    code: str = Field(..., max_length=4096)
+    state: str = Field(..., max_length=256)
+
+
+@app.post("/v1/auth/oidc/callback", response_model=LoginResponse)
+def oidc_callback(req: OIDCCallbackBody, request: Request):
+    """Complete an OIDC authorization-code callback -> session JWT (Q12).
+
+    Verifies (in order) the single-use ``state`` (CSRF), then the provider
+    validates the authorization code (signature / iss / aud / exp / nonce — real
+    crypto in production, HMAC in the offline stub). On success returns the SAME
+    ``LoginResponse`` shape as /v1/auth/login. On ANY failure returns a uniform
+    401 so the specific reason is never an oracle. Exactly one audit row; the
+    raw code is never stored.
+    """
+    client_ip = request.client.host if request.client else ""
+    error: Optional[BaseException] = None
+    user: Optional[User] = None
+    try:
+        rate_limit.check_login_rpm(client_ip)
+        try:
+            user = authenticate_oidc_callback(req.code, req.state)
+        except IdpError as exc:
+            logger.warning("oidc/callback rejected: %s", exc)
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "OIDC authentication failed"
+            )
+        # authenticate_oidc_callback already registered a federated user (if
+        # not in _USERS) so issue_token can resolve them.
+        return LoginResponse(
+            token=issue_token(user.user_id),
+            user_id=user.user_id,
+            tenant_id=user.tenant_id,
+            role=user.role.value,
+            display_name=user.display_name,
+        )
+    except BaseException as exc:  # noqa: BLE001 — must reach finally
+        error = exc
+        raise
+    finally:
+        outcome = "authenticated" if (error is None and user is not None) else "rejected"
+        _safe_audit_write(
+            user=_audit_placeholder_user(user.user_id if user else ""),
+            case_id=None,
+            endpoint="/v1/auth/oidc/callback",
+            request_payload={"state": req.state},  # NOT the raw code
+            response_payload={"outcome": outcome},
+            masked_rules=[],
+            model_used=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=0,
+            policy_decisions={"outcome": outcome, "idp": "oidc"},
+        )
+
+
+class SAMLACSBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    # The base64 SAMLResponse a real IdP POSTs to the ACS endpoint. Stubbed as a
+    # signed assertion blob in the POC. 16KB cap bounds the body.
+    saml_response: str = Field(..., max_length=16384, alias="SAMLResponse")
+
+
+@app.post("/v1/auth/saml/acs", response_model=LoginResponse)
+def saml_acs(req: SAMLACSBody, request: Request):
+    """SAML Assertion Consumer Service -> session JWT (Q12).
+
+    The provider validates the assertion (signature / audience / time window —
+    XML-DSig in production, HMAC in the offline stub), then a single-use replay
+    guard on the assertion id refuses a captured-and-replayed assertion even
+    inside its validity window. On success returns the SAME ``LoginResponse``
+    shape as /v1/auth/login; on ANY failure a uniform 401. Exactly one audit row.
+    """
+    client_ip = request.client.host if request.client else ""
+    error: Optional[BaseException] = None
+    user: Optional[User] = None
+    try:
+        rate_limit.check_login_rpm(client_ip)
+        try:
+            user = authenticate_saml_acs(req.saml_response)
+        except IdpError as exc:
+            logger.warning("saml/acs rejected: %s", exc)
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "SAML authentication failed"
+            )
+        # authenticate_saml_acs already registered a federated user (if not in
+        # _USERS) so issue_token can resolve them.
+        return LoginResponse(
+            token=issue_token(user.user_id),
+            user_id=user.user_id,
+            tenant_id=user.tenant_id,
+            role=user.role.value,
+            display_name=user.display_name,
+        )
+    except BaseException as exc:  # noqa: BLE001 — must reach finally
+        error = exc
+        raise
+    finally:
+        outcome = "authenticated" if (error is None and user is not None) else "rejected"
+        _safe_audit_write(
+            user=_audit_placeholder_user(user.user_id if user else ""),
+            case_id=None,
+            endpoint="/v1/auth/saml/acs",
+            request_payload={},  # NOT the raw assertion
+            response_payload={"outcome": outcome},
+            masked_rules=[],
+            model_used=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=0,
+            policy_decisions={"outcome": outcome, "idp": "saml"},
         )
 
 
@@ -1509,6 +1677,14 @@ def export_draft(
             )
         authorize_case_access(user, body.case_id)
         policy_decisions["authz_passed"] = True
+
+        # 1b. Defence-in-depth: sign-off authority is an explicit, role-gated
+        #     decision. The endpoint dependency already gates to ATTORNEY, but
+        #     re-asserting here means a future refactor that loosened the
+        #     dependency still can't let a non-attorney sign. Records the
+        #     authority role into the audit row.
+        signoff.assert_signoff_authority(user)
+        policy_decisions.update(signoff.signoff_audit_fields(user, signed_off=False))
 
         # 2. THE HARD GATE. No document without an explicit, exactly-True
         #    sign-off. We always compute the provenance summary first (it's

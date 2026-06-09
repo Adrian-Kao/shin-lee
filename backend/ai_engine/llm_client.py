@@ -1051,7 +1051,16 @@ class AnthropicLLM:
 
         import anthropic
         self._sdk = anthropic
-        self._client = anthropic.AsyncAnthropic(api_key=key)
+        # max_retries=0: our own _call_with_retry owns the retry policy (so we
+        # control jitter + which error classes are transient). Leaving the SDK
+        # default (2) on top would compound into up to 6 attempts per call.
+        # timeout: explicit per-request wall-clock cap so a wedged connection
+        # can't pin a gateway worker for the SDK's 10-minute default.
+        self._client = anthropic.AsyncAnthropic(
+            api_key=key,
+            timeout=settings.LLM_REQUEST_TIMEOUT_SEC,
+            max_retries=0,
+        )
 
     # --------- Public sync entry point (matches MockLLM signature) ----------
 
@@ -1203,16 +1212,17 @@ class AnthropicLLM:
             cost = 0.0
 
         logger.info(
-            "anthropic call: model=%s input=%d output=%d cache_read=%d "
-            "cache_create=%d cost=$%.4f latency=%dms intent=%s",
+            "anthropic call: model=%s intent=%s security_level=%s input=%d "
+            "output=%d cache_read=%d cache_create=%d cost=$%.4f latency=%dms",
             model_hint,
+            intent,
+            security_level,
             input_tokens,
             output_tokens,
             cache_read,
             cache_create,
             cost,
             latency_ms,
-            intent,
         )
 
         return LLMResponse(
@@ -1372,7 +1382,7 @@ def reset_anthropic_singleton() -> None:
 
 # ---------- Retry helper -----------------------------------------------------
 
-def _parse_retry_after(hdr: str | None, default: float) -> float:
+def _parse_retry_after(hdr: str | None, default: float | None) -> float | None:
     """Parse the HTTP Retry-After header per RFC 7231.
 
     Two valid forms:
@@ -1401,14 +1411,56 @@ def _parse_retry_after(hdr: str | None, default: float) -> float:
             return default
 
 
-async def _call_with_retry(client: Any, *, max_retries: int = 3, **kwargs: Any):
-    """Retry RateLimitError + APIConnectionError with exponential backoff.
+def _backoff_seconds(attempt: int, *, retry_after: float | None = None) -> float:
+    """Exponential backoff + full jitter for retry attempt `attempt` (0-based).
 
-    Other anthropic.APIStatusError (4xx/5xx) bubble up unchanged so the
-    gateway audit row records the real failure mode rather than a generic
-    "retries exhausted" wrapper.
+    Base policy: wait = base * 2**attempt, capped at LLM_RETRY_MAX_SLEEP_SEC,
+    then a uniform full-jitter term in [0, LLM_RETRY_JITTER_SEC] is ADDED to
+    de-correlate retries across concurrent workers (AWS "Exponential Backoff
+    and Jitter"). When the server supplied a Retry-After value we HONOUR it as
+    the base (still capped + jittered) rather than guessing.
+
+    Jitter uses LLM_RETRY_JITTER_SEC, which the retry tests set to 0 to make
+    the schedule deterministic and assert exact attempt counts without flakes.
+    """
+    import random
+
+    base = retry_after if retry_after is not None else (
+        settings.LLM_RETRY_BASE_SEC * (2 ** attempt)
+    )
+    base = min(base, settings.LLM_RETRY_MAX_SLEEP_SEC)
+    jitter = random.uniform(0.0, settings.LLM_RETRY_JITTER_SEC) if settings.LLM_RETRY_JITTER_SEC > 0 else 0.0
+    return base + jitter
+
+
+async def _call_with_retry(client: Any, *, max_retries: int | None = None, **kwargs: Any):
+    """Call messages.create, retrying TRANSIENT failures with backoff + jitter.
+
+    Error taxonomy (Anthropic SDK), and what we do with each:
+
+      TRANSIENT — retried up to ``max_retries`` times, then re-raised:
+        * RateLimitError      (429) — honours the Retry-After header as the
+                                       backoff base when present.
+        * APITimeoutError            — request exceeded the per-call timeout.
+        * APIConnectionError         — DNS / TLS / socket drop (APITimeoutError
+                                       is a subclass; handled explicitly first
+                                       only for cleaner logging).
+        * APIStatusError, status>=500 — 500 InternalServerError, 529
+                                       OverloadedError, and any other 5xx.
+
+      NON-TRANSIENT — re-raised immediately, NO retry (a retry can't help and
+      would just burn quota / latency):
+        * APIStatusError, status<500 — 400/401/403/404/413 etc. The caller
+          (achat) special-cases BadRequestError for a friendlier message; the
+          rest bubble up so the gateway audit row records the true failure.
+
+    ``max_retries`` defaults to settings.LLM_MAX_RETRIES so the policy is
+    centrally tunable; tests pass it explicitly for speed.
     """
     import anthropic
+
+    if max_retries is None:
+        max_retries = settings.LLM_MAX_RETRIES
 
     for attempt in range(max_retries + 1):
         try:
@@ -1416,36 +1468,54 @@ async def _call_with_retry(client: Any, *, max_retries: int = 3, **kwargs: Any):
         except anthropic.RateLimitError as exc:
             if attempt == max_retries:
                 raise
-            # Anthropic returns retry-after in the response headers (may be
-            # delta-seconds OR an HTTP-date per RFC 7231). Cap at 60s so a
-            # misconfigured upstream can't stall us for hours.
+            # Retry-After may be delta-seconds OR an HTTP-date (RFC 7231).
             hdr = None
             try:
                 hdr = exc.response.headers.get("retry-after")
             except Exception:
                 pass
-            wait = _parse_retry_after(hdr, default=float(2 ** attempt))
-            wait = min(wait, 60.0)
+            retry_after = _parse_retry_after(hdr, default=None) if hdr else None
+            wait = _backoff_seconds(attempt, retry_after=retry_after)
             logger.warning(
-                "anthropic rate limited (attempt %d/%d), sleeping %.2fs",
+                "anthropic rate_limit (429) attempt %d/%d, sleeping %.2fs",
                 attempt + 1, max_retries + 1, wait,
+            )
+            await asyncio.sleep(wait)
+        except anthropic.APITimeoutError as exc:
+            if attempt == max_retries:
+                raise
+            wait = _backoff_seconds(attempt)
+            logger.warning(
+                "anthropic timeout attempt %d/%d, sleeping %.2fs: %s",
+                attempt + 1, max_retries + 1, wait, exc,
             )
             await asyncio.sleep(wait)
         except anthropic.APIConnectionError as exc:
             if attempt == max_retries:
                 raise
-            wait = 2 ** attempt
+            wait = _backoff_seconds(attempt)
             logger.warning(
-                "anthropic connection error (attempt %d/%d), sleeping %ds: %s",
+                "anthropic connection error attempt %d/%d, sleeping %.2fs: %s",
                 attempt + 1, max_retries + 1, wait, exc,
             )
             await asyncio.sleep(wait)
+        except anthropic.APIStatusError as exc:
+            # 5xx (500 InternalServerError / 529 OverloadedError / other) are
+            # transient; 4xx are caller errors and must NOT be retried.
+            status = getattr(exc, "status_code", None)
+            if status is None or status < 500 or attempt == max_retries:
+                raise
+            wait = _backoff_seconds(attempt)
+            logger.warning(
+                "anthropic server error (%s) attempt %d/%d, sleeping %.2fs",
+                status, attempt + 1, max_retries + 1, wait,
+            )
+            await asyncio.sleep(wait)
 
-    # Defensive: the last iteration always either returns or re-raises, so
-    # this line is theoretically unreachable. But if someone later changes
-    # the loop bound or the `if attempt == max_retries` guard, we want a
-    # loud failure instead of a silent `None` return that crashes deep in
-    # the caller's `.content` access.
+    # Defensive: every loop iteration either returns or re-raises, so this is
+    # unreachable. If someone later changes the loop bound or a guard, fail
+    # loud instead of returning a silent None that crashes in the caller's
+    # `.content` access.
     raise RuntimeError("unreachable: retry loop exhausted without return or raise")
 
 
@@ -1477,6 +1547,59 @@ def route_model(*, intent: str, security_level: str, circuit_open: bool) -> str:
         return settings.LLM_MODEL_REASONING
 
     return settings.LLM_MODEL_CHEAP
+
+
+class VerifierIndependenceError(RuntimeError):
+    """Q14: the verifier model is the SAME as the drafting model.
+
+    A second opinion from the same model grading its own homework is no
+    independent check at all. Raised by ``assert_verifier_independence`` (called
+    from oa_analyzer.verify_citations) so a misconfigured deployment fails
+    LOUD at the verify step rather than silently shipping a rubber-stamp.
+    """
+
+
+def assert_verifier_independence() -> None:
+    """Q14 hard guard: on the cloud path the verifier MUST be a different model
+    than the primary drafter.
+
+    Only enforced for ``LLM_MODE == "anthropic"`` and only against the
+    PUBLIC-path routing (the path the verifier actually takes — verify_citations
+    always calls with ``security_level="public"``). It compares the model the
+    verifier would use (``verify_citations``) against the model the drafter
+    uses in NORMAL operation (``draft_response`` with the cost circuit CLOSED =
+    LLM_MODEL_REASONING). If they are equal the "second opinion" is the same
+    model grading its own homework — refuse.
+
+    Deliberately compared against the *full reasoning* drafter only, NOT the
+    cost-degraded (circuit-open → LLM_MODEL_CHEAP) drafter. In the default prod
+    config LLM_MODEL_CHEAP == LLM_MODEL_VERIFIER (both Haiku) on purpose — when
+    the Q18 cost breaker trips, drafts degrade to the cheap model, and it is an
+    accepted, documented tradeoff that the verifier then shares that tier. The
+    independence requirement is about the PRIMARY drafting model, which mirrors
+    the existing ``LLM_MODEL_VERIFIER != LLM_MODEL_REASONING`` invariant.
+
+    Deliberately a NO-OP in mock mode (the deterministic _mock_verify is itself
+    a genuine independent re-extraction, not the drafting model) and in local
+    mode (on-prem Ollama has one model by design — independence is provided by
+    the separate deterministic regex hard wall, not a second model).
+    """
+    if settings.LLM_MODE != "anthropic":
+        return
+    verifier = route_model(
+        intent="verify_citations", security_level="public", circuit_open=False
+    )
+    drafter = route_model(
+        intent="draft_response", security_level="public", circuit_open=False
+    )
+    if verifier == drafter:
+        raise VerifierIndependenceError(
+            f"Q14 verifier independence violated: verifier model {verifier!r} "
+            f"is the same as the primary drafting model {drafter!r}. The "
+            f"verifier MUST differ from the drafter so it is an independent "
+            f"second opinion, not the same model grading its own homework. Fix "
+            f"LLM_MODEL_VERIFIER so it differs from LLM_MODEL_REASONING."
+        )
 
 
 def chat(

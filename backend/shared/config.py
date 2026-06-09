@@ -321,6 +321,37 @@ class Settings:
         "METRICS_USE_PROMETHEUS_CLIENT", ""
     ).strip().lower() in ("1", "true", "yes")
 
+    # ------------------------------------------------------------------
+    # Agent B — Anthropic production-path tuning (Day 12B)
+    # ------------------------------------------------------------------
+    # These ONLY take effect under LLM_MODE=anthropic. LLM_MODE=mock (the
+    # default used by the entire test suite) ignores them, so the suite stays
+    # fully offline and deterministic.
+    #
+    # Per-request wall-clock timeout (seconds) handed to AsyncAnthropic. The
+    # SDK default is 600s (10 min) — far too long for a synchronous OA parse: a
+    # wedged connection would pin a gateway worker for ten minutes. A real
+    # draft_response on Sonnet at 4096 max_tokens completes well under 120s, so
+    # 120s is a generous ceiling that still fails fast. On timeout the SDK
+    # raises anthropic.APITimeoutError, which our retry loop treats as transient.
+    LLM_REQUEST_TIMEOUT_SEC: float = float(os.getenv("LLM_REQUEST_TIMEOUT_SEC", "120"))
+    # Our own retry loop owns retry policy, so the SDK's built-in auto-retry is
+    # disabled (max_retries=0 at client construction) to avoid retry-on-retry
+    # amplification (SDK 2x × our 3 = up to 6 attempts otherwise). This is the
+    # number of RETRIES our loop makes on a transient failure
+    # (429 / 5xx / overloaded / connection drop / timeout); total attempts =
+    # LLM_MAX_RETRIES + 1.
+    LLM_MAX_RETRIES: int = int(os.getenv("LLM_MAX_RETRIES", "3"))
+    # Exponential-backoff base (seconds): sleep ≈ base * 2**attempt + jitter.
+    LLM_RETRY_BASE_SEC: float = float(os.getenv("LLM_RETRY_BASE_SEC", "1.0"))
+    # Hard cap on any single backoff sleep so a hostile/huge Retry-After header
+    # can't stall a worker for hours.
+    LLM_RETRY_MAX_SLEEP_SEC: float = float(os.getenv("LLM_RETRY_MAX_SLEEP_SEC", "60"))
+    # Full-jitter ceiling (seconds) added on top of each backoff to de-correlate
+    # retries across concurrent workers (AWS "Exponential Backoff and Jitter").
+    # Set to 0 to make backoff fully deterministic (used by the retry tests).
+    LLM_RETRY_JITTER_SEC: float = float(os.getenv("LLM_RETRY_JITTER_SEC", "1.0"))
+
 
 settings = Settings()
 

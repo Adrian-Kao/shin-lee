@@ -261,7 +261,18 @@ def verify_citations(
     for inv in invalid:
         cleaned = cleaned.replace(inv, "[CITATION_REMOVED]")
 
-    # (b) verifier LLM call (Q14 layer 3)
+    # (b) verifier LLM call (Q14 layer 3).
+    #
+    # The regex stage (a) above is the HARD WALL: `result["valid"]` is derived
+    # purely from `invalid`, so an ungrounded citation is rejected no matter
+    # what the verifier model returns. The verifier LLM is a SECOND, INDEPENDENT
+    # opinion (it only contributes verifier_confidence) and a defence against
+    # prompt injection escaping <untrusted_input>. For that second opinion to be
+    # meaningful it must use a DIFFERENT model than the drafter — assert that
+    # before spending a token on it (no-op in mock/local; enforced on the cloud
+    # path). Misconfig fails loud here instead of silently rubber-stamping.
+    llm_client.assert_verifier_independence()
+
     user_msg = (
         f"DRAFT:\n{_wrap_untrusted(cleaned)}\n\n"
         f"GROUNDED_SET keys: {list(grounded_refs.keys())}\n\n"

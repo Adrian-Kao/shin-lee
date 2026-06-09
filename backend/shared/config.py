@@ -390,6 +390,28 @@ class Settings:
     # Set to 0 to make backoff fully deterministic (used by the retry tests).
     LLM_RETRY_JITTER_SEC: float = float(os.getenv("LLM_RETRY_JITTER_SEC", "1.0"))
 
+    # ------------------------------------------------------------------
+    # Agent I — Q18 rate-limit / quota atomicity + Q9 cache hardening (Day 13I)
+    # ------------------------------------------------------------------
+    # Which counter backend the quota / cost-breaker accounting uses. `memory`
+    # (default) is a lock-protected in-process store — correct for a single
+    # gateway replica and the entire test suite, but counters are NOT shared
+    # across replicas. `redis` uses atomic INCR + Lua EVAL so a horizontally
+    # scaled gateway fleet shares one source of truth and concurrent requests
+    # cannot oversell a quota (the check-and-increment is a single atomic op).
+    RATE_LIMIT_BACKEND: str = os.getenv("RATE_LIMIT_BACKEND", "memory")  # memory | redis
+    # Degrade policy when the rate-limit Redis is unreachable. Quota / cost
+    # accounting is a SAFETY control (it protects spend + fair-use), so the
+    # safe default is FAIL-CLOSED: if we cannot atomically reserve quota we
+    # reject (429) rather than let an unbounded request through. Set to "open"
+    # ONLY if availability is valued over spend protection for your contract.
+    #   "closed" (default) — Redis down ⇒ 429 (protect the budget).
+    #   "open"             — Redis down ⇒ allow (protect availability).
+    # NB: the CACHE path is the opposite (fail-OPEN) — a cache outage must
+    # never 503 a request; it just means "no cache for that request". The two
+    # controls have different safe defaults on purpose (see redis_cache.py).
+    RATE_LIMIT_REDIS_DEGRADE: str = os.getenv("RATE_LIMIT_REDIS_DEGRADE", "closed")  # closed | open
+
 
 settings = Settings()
 

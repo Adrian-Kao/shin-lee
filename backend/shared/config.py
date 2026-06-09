@@ -299,7 +299,15 @@ class Settings:
     # PII_RULES or TENANT_DICTIONARIES (in backend/gateway/masking.py)
     # changes in a way that affects redaction output for a previously
     # served input.
-    REDACTION_VERSION: str = os.getenv("REDACTION_VERSION", "v1")
+    #
+    # Agent A — Day 12A: bumped v1 -> v2. The Day 12A masking hardening
+    # changes redaction OUTPUT for previously-served inputs (zero-width strip,
+    # homoglyph fold, and new PII rules: phone_tw_landline / phone_intl /
+    # tw_company_tax_id / passport / ipv4 / ipv6). Any response cached under v1
+    # may contain now-redactable PII (or differ in normalisation), so v1 cache
+    # entries MUST be invalidated. cache.hash_prompt's own default stays "v1"
+    # (function-level back-compat); the orchestrator passes this setting.
+    REDACTION_VERSION: str = os.getenv("REDACTION_VERSION", "v2")
 
 
 settings = Settings()

@@ -4,34 +4,37 @@ import { Loader2, ChevronRight, Mail, LogIn } from 'lucide-react';
 
 import { api } from '../api/client.js';
 
+// Role label + tenant stay as a stable technical identifier (the demo's
+// identity matrix); the human-readable capability blurb is localised via
+// `descKey`. Person names are kept verbatim — e2e tests match them by name.
 const DEMO_USERS = [
   {
     id: 'alice',
     initial: 'A',
     name: 'Alice',
     role: 'Attorney · tenant_a',
-    desc: '可上傳 OA、看分析、簽核草稿',
+    descKey: 'login.user_alice',
   },
   {
     id: 'bob',
     initial: 'B',
     name: 'Bob',
     role: 'Paralegal · tenant_a',
-    desc: '協助上傳；只能看 CASE-2025-001 / 002',
+    descKey: 'login.user_bob',
   },
   {
     id: 'carol',
     initial: 'C',
     name: 'Carol',
     role: 'IT Admin · tenant_b',
-    desc: '看儀表板、配額；無法存取 case',
+    descKey: 'login.user_carol',
   },
   {
     id: 'audit_dave',
     initial: 'D',
     name: 'Dave',
     role: 'Auditor · tenant_a',
-    desc: '唯讀 audit log；可驗 chain',
+    descKey: 'login.user_dave',
   },
 ];
 
@@ -75,7 +78,7 @@ export default function Login({ onLogin }) {
           </div>
           <div className="leading-tight">
             <div className="text-base font-semibold tracking-tight">{t('app_title')}</div>
-            <div className="text-xs text-navy-200">專利答辯協助系統</div>
+            <div className="text-xs text-navy-200">{t('login.subtitle')}</div>
           </div>
         </div>
       </header>
@@ -117,7 +120,7 @@ export default function Login({ onLogin }) {
                       <span className="font-medium text-slate-900 dark:text-slate-100">{u.name}</span>
                       <span className="truncate text-xs text-slate-500 dark:text-slate-400">{u.role}</span>
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{u.desc}</div>
+                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t(u.descKey)}</div>
                   </div>
                   {isBusy ? (
                     <Loader2

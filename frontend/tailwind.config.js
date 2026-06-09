@@ -7,23 +7,16 @@ export default {
     './index.html',
     './src/**/*.{js,jsx,ts,tsx}',
   ],
-  // Existing POC components build class names dynamically (e.g. `bg-${tone}-50`)
-  // for deadline urgency and rejection-type chips. Safelist ONLY the shades
-  // that actually appear via dynamic interpolation (grep `bg-${`). Static
-  // class names (e.g. `bg-navy-900` in AppShell) are picked up by the JIT
-  // scanner without help, so adding them here only inflates the CSS bundle.
-  //
-  // Dynamic call sites (grep `bg-\${`):
-  //   • Analyze.jsx ResultSummaryBar: tone ∈ {rose, amber, emerald} → 100/700
-  //   • DraftsPane.jsx tab chips: typeColor ∈ {rose, orange, amber, purple, slate}
-  //     → 100/800  (orange = §103 obviousness, the most common rejection type)
-  // Keep the regex tight; relaxing it later is cheap, shipping a +200 kB
-  // CSS bundle to attorneys on 4G is not.
-  safelist: [
-    {
-      pattern: /(bg|text)-(rose|orange|amber|emerald|purple|slate)-(100|700|800)/,
-    },
-  ],
+  // Day 12E — safelist removed. The deadline-urgency (Analyze.jsx
+  // DEADLINE_TONE) and rejection-type (DraftsPane.jsx REJECTION_TYPE_CHIP)
+  // chips no longer build class names via `bg-${tone}` interpolation; every
+  // tone variant — including the new dark: shades — is now a literal string in
+  // a static map, so the Tailwind JIT scanner picks them all up directly. With
+  // no dynamic call sites left (grep `bg-\${` / `text-\${` finds only comments),
+  // a safelist would only risk silently shipping unused utility classes. If a
+  // future feature reintroduces interpolated colour classes, re-add a TIGHT
+  // pattern here rather than a broad one — a loose safelist was the Day 9C
+  // +130 kB CSS bundle leak.
   theme: {
     container: {
       center: true,

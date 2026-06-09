@@ -208,10 +208,11 @@ test.describe('Analyze flow — mobile', () => {
   test('mobile shows tab strip and one pane', async ({ page }) => {
     await loginAsAlice(page);
 
-    // Tab strip with the three tabs.
-    const inputTab = page.getByRole('button', { name: /輸入.*Input/ });
-    const draftsTab = page.getByRole('button', { name: /草稿.*Drafts/ });
-    const refsTab = page.getByRole('button', { name: /引證.*Refs/ });
+    // Tab strip with the three tabs. The strip is an ARIA tablist, so the tabs
+    // expose role="tab" (Day 12E a11y pass) rather than the generic button role.
+    const inputTab = page.getByRole('tab', { name: /輸入.*Input/ });
+    const draftsTab = page.getByRole('tab', { name: /草稿.*Drafts/ });
+    const refsTab = page.getByRole('tab', { name: /引證.*Refs/ });
 
     await expect(inputTab).toBeVisible();
     await expect(draftsTab).toBeVisible();

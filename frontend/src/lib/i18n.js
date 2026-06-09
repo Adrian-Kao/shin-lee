@@ -195,6 +195,8 @@ const resources = {
         pane_refs: '引證 / References',
         input: {
           oa_full_text: 'OA 全文',
+          target_patent: '本案專利號',
+          case_id: '案件編號',
           preview_redaction: '預覽 redaction',
           analyze_oa: '分析 OA',
           analyzing: '分析中…',
@@ -230,6 +232,74 @@ const resources = {
             clean: '無駁回',
           },
         },
+        // Cross-pane result chrome (summary bar + mobile tab strip). The zh-TW
+        // values double as the e2e selectors, so the bilingual strings are kept
+        // verbatim here rather than scattered across components.
+        result: {
+          tab_input: '輸入 / Input',
+          tab_drafts: '草稿 / Drafts',
+          tab_refs: '引證 / Refs',
+          deadline_label: '期日 (Q17)',
+          days: '天',
+          why: '計算依據 / Why',
+          collapse: '收合',
+          received: '起算日 / Received',
+          statutory: '法定期日 / Statutory',
+          internal: '建議內部完成 / Internal',
+          calendar: '假日表 / Calendar',
+        },
+        refs: {
+          cited_title: '引證案 / Cited prior art',
+          rag_title: 'RAG retrieval (Q6, Q7, Q14 grounding)',
+          empty_title: '尚無引證',
+          empty_desc: '分析完成後此處顯示 examiner 引證案 + RAG 命中的先前技術',
+          no_hits: '此 rejection 沒有對應的 RAG 命中。',
+          open_full: '展開全文',
+          score: '分數',
+        },
+        verifier: {
+          // The English halves below are also the e2e assertions for the
+          // hallucination-defense banner — keep them verbatim in zh-TW.
+          heading: '幻覺防禦 / Citation verification',
+          removed_title: '{{count}} 個引用未通過驗證、已移除 / {{count}} citation(s) removed',
+          verified_title: '{{count}} 個引用全部驗證通過 / All {{count}} citation(s) verified',
+          no_data: '引用驗證資訊不足 / No citation verification data',
+          grounded: 'grounded {{count}}',
+          removed: 'removed {{count}}',
+          conf: 'conf {{pct}}%',
+          removed_list: '已移除 / removed: {{items}}',
+          verified_by: '由 {{model}} 把關 / verified by {{model}}',
+        },
+        drafts_meta: {
+          grounded: '已驗證引用 {{count}}',
+          verifier_conf: '驗證器信心 {{pct}}%',
+          requires_review: '需律師覆核：{{value}}',
+          confidence: '信心 {{pct}}%',
+        },
+      },
+      audit_table: {
+        // "Audit Log" / "User" / "Endpoint" stay in English in both locales:
+        // they are the auditor-facing technical column names AND the e2e
+        // selectors key off them. The rest are localised.
+        log_title: 'Audit Log',
+        log_desc: '唯讀附加式 SQLite，UPDATE／DELETE 由觸發器阻擋；正式環境另以 S3 Object Lock 每小時封存。',
+        refresh: '重新整理',
+        col_time: '時間 (UTC)',
+        col_user: 'User',
+        col_case: '案件',
+        col_endpoint: 'Endpoint',
+        col_model: '模型',
+        col_tokens: 'Token',
+        col_ms: '毫秒',
+        col_mask: '遮罩規則 (Q10)',
+        col_policy: '政策 (Q12/18)',
+      },
+      login: {
+        subtitle: '專利答辯協助系統',
+        user_alice: '可上傳 OA、看分析、簽核草稿',
+        user_bob: '協助上傳；只能看 CASE-2025-001 / 002',
+        user_carol: '看儀表板、配額；無法存取案件',
+        user_dave: '唯讀稽核紀錄；可驗證 chain',
       },
     },
   },
@@ -421,6 +491,8 @@ const resources = {
         pane_refs: 'References',
         input: {
           oa_full_text: 'OA full text',
+          target_patent: 'Target patent',
+          case_id: 'Case ID',
           preview_redaction: 'Preview redaction',
           analyze_oa: 'Analyze OA',
           analyzing: 'Analyzing…',
@@ -456,14 +528,91 @@ const resources = {
             clean: 'Clean',
           },
         },
+        result: {
+          tab_input: 'Input',
+          tab_drafts: 'Drafts',
+          tab_refs: 'Refs',
+          deadline_label: 'Deadline (Q17)',
+          days: 'days',
+          why: 'Why',
+          collapse: 'Collapse',
+          received: 'Received',
+          statutory: 'Statutory',
+          internal: 'Internal target',
+          calendar: 'Holiday calendar',
+        },
+        refs: {
+          cited_title: 'Cited prior art',
+          rag_title: 'RAG retrieval (Q6, Q7, Q14 grounding)',
+          empty_title: 'No references yet',
+          empty_desc: 'After analysis, examiner-cited art + RAG-retrieved prior art appear here.',
+          no_hits: 'No RAG hits for this rejection.',
+          open_full: 'Open full text',
+          score: 'score',
+        },
+        verifier: {
+          heading: 'Citation verification',
+          removed_title: '{{count}} citation(s) removed',
+          verified_title: 'All {{count}} citation(s) verified',
+          no_data: 'No citation verification data',
+          grounded: 'grounded {{count}}',
+          removed: 'removed {{count}}',
+          conf: 'conf {{pct}}%',
+          removed_list: 'removed: {{items}}',
+          verified_by: 'verified by {{model}}',
+        },
+        drafts_meta: {
+          grounded: 'grounded citations {{count}}',
+          verifier_conf: 'verifier confidence {{pct}}%',
+          requires_review: 'requires attorney review: {{value}}',
+          confidence: 'confidence {{pct}}%',
+        },
+      },
+      audit_table: {
+        log_title: 'Audit Log',
+        log_desc: 'Append-only SQLite with UPDATE/DELETE triggers blocking edits. Production adds hourly S3 Object Lock archival.',
+        refresh: 'Refresh',
+        col_time: 'Time (UTC)',
+        col_user: 'User',
+        col_case: 'Case',
+        col_endpoint: 'Endpoint',
+        col_model: 'Model',
+        col_tokens: 'Tokens',
+        col_ms: 'ms',
+        col_mask: 'Mask rules (Q10)',
+        col_policy: 'Policy (Q12/18)',
+      },
+      login: {
+        subtitle: 'Patent OA response assistant',
+        user_alice: 'Can upload OAs, view analysis, sign off drafts',
+        user_bob: 'Assists with upload; can only see CASE-2025-001 / 002',
+        user_carol: 'Views dashboards & quota; no case access',
+        user_dave: 'Read-only audit log; can verify the chain',
       },
     },
   },
 };
 
+// Restore the user's persisted language BEFORE first render so a returning
+// user who chose English doesn't flash zh-TW on the login page (the language
+// toggle in AppShell also writes this key, but it only mounts post-login).
+// localStorage may be unavailable (private mode / SSR) — fall back to zh-TW.
+const LANG_STORAGE_KEY = 'pm.lang';
+function initialLanguage() {
+  try {
+    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved === 'en' || saved === 'zh-TW') return saved;
+  } catch {
+    /* non-fatal */
+  }
+  return 'zh-TW';
+}
+
+const startLang = initialLanguage();
+
 i18n.use(initReactI18next).init({
   resources,
-  lng: 'zh-TW',
+  lng: startLang,
   fallbackLng: 'en',
   defaultNS: 'common',
   ns: ['common'],
@@ -474,5 +623,18 @@ i18n.use(initReactI18next).init({
     useSuspense: false,
   },
 });
+
+// Map the i18next language code to a BCP-47 html `lang` value. zh-TW → zh-Hant
+// (the script subtag is what assistive tech + font shaping key off).
+export function htmlLangFor(lng) {
+  return (lng || '').startsWith('zh') ? 'zh-Hant' : 'en';
+}
+
+// Keep the document language attribute in sync for assistive tech + correct
+// font shaping. Set the initial value here; the AppShell toggle updates it
+// on change.
+if (typeof document !== 'undefined') {
+  document.documentElement.lang = htmlLangFor(startLang);
+}
 
 export default i18n;

@@ -129,32 +129,35 @@ function shortType(t) {
   return `§${m[1]}`;
 }
 
+// Static rejection-type chip classes (light + dark). Literal map so the JIT
+// scanner sees every class — this drops the `bg-${typeColor}` interpolation
+// (and its safelist dependency) while adding the missing dark variants.
+const REJECTION_TYPE_CHIP = {
+  '102_novelty': 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300',
+  '103_obviousness': 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  '112_indefiniteness': 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  '101_subject_matter': 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+  _default: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
+};
+
 function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) {
   const { t } = useTranslation();
   // Export (Q16 sign-off) is an ATTORNEY act — the backend 403s a paralegal.
   // Only surface the sign-off gate to attorneys so the UI matches the policy.
   const canExport = session?.role === 'attorney';
-  const typeColor =
-    {
-      '102_novelty': 'rose',
-      '103_obviousness': 'orange',
-      '112_indefiniteness': 'amber',
-      '101_subject_matter': 'purple',
-    }[rejection.rejection_type] || 'slate';
+  const typeChip = REJECTION_TYPE_CHIP[rejection.rejection_type] || REJECTION_TYPE_CHIP._default;
 
   return (
     <div className="space-y-4 rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
-          <span
-            className={`rounded px-2 py-0.5 text-xs bg-${typeColor}-100 text-${typeColor}-800 mr-2 font-mono`}
-          >
+          <span className={`mr-2 rounded px-2 py-0.5 font-mono text-xs ${typeChip}`}>
             {rejection.rejection_type}
           </span>
           <span className="text-sm font-medium">Claims {rejection.affected_claims.join(', ')}</span>
         </div>
         <div className="text-xs text-slate-500 dark:text-slate-400">
-          confidence: {(rejection.confidence * 100).toFixed(0)}%
+          {t('analyze.drafts_meta.confidence', { pct: (rejection.confidence * 100).toFixed(0) })}
         </div>
       </div>
 
@@ -187,10 +190,12 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
             role={session?.role}
           />
           <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <span>grounded citations: {draft.grounded_citations.length}</span>
-            <span>verifier confidence: {(draft.confidence * 100).toFixed(0)}%</span>
+            <span>{t('analyze.drafts_meta.grounded', { count: draft.grounded_citations.length })}</span>
+            <span>{t('analyze.drafts_meta.verifier_conf', { pct: (draft.confidence * 100).toFixed(0) })}</span>
             <span className="ml-auto">
-              requires attorney review: {draft.requires_attorney_review ? 'true' : 'false'}
+              {t('analyze.drafts_meta.requires_review', {
+                value: draft.requires_attorney_review ? 'true' : 'false',
+              })}
             </span>
           </div>
         </div>
@@ -211,6 +216,7 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
  * 皆缺時回傳中性提示而非 crash（graceful degrade）。
  */
 function VerificationBanner({ draft }) {
+  const { t } = useTranslation();
   const invalidCitations = Array.isArray(draft?.invalid_citations)
     ? draft.invalid_citations
     : null;
@@ -234,15 +240,15 @@ function VerificationBanner({ draft }) {
   if (removedCount > 0) {
     tone = 'rose';
     Icon = ShieldAlert;
-    title = `${removedCount} 個引用未通過驗證、已移除 / ${removedCount} citation(s) removed`;
+    title = t('analyze.verifier.removed_title', { count: removedCount });
   } else if (groundedCount && groundedCount > 0) {
     tone = 'emerald';
     Icon = ShieldCheck;
-    title = `${groundedCount} 個引用全部驗證通過 / All ${groundedCount} citation(s) verified`;
+    title = t('analyze.verifier.verified_title', { count: groundedCount });
   } else {
     tone = 'slate';
     Icon = AlertTriangle;
-    title = '引用驗證資訊不足 / No citation verification data';
+    title = t('analyze.verifier.no_data');
   }
 
   const toneCls = {
@@ -259,23 +265,29 @@ function VerificationBanner({ draft }) {
       <div className="flex flex-wrap items-center gap-2">
         <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
         <span className="font-semibold uppercase tracking-wider">
-          幻覺防禦 / Citation verification
+          {t('analyze.verifier.heading')}
         </span>
         <span className="font-medium">{title}</span>
         <span className="ml-auto flex items-center gap-2 font-mono">
-          {groundedCount != null && <span>grounded {groundedCount}</span>}
-          {removedCount > 0 && <span className="text-rose-700 dark:text-rose-300">removed {removedCount}</span>}
-          {confidence != null && <span>conf {(confidence * 100).toFixed(0)}%</span>}
+          {groundedCount != null && <span>{t('analyze.verifier.grounded', { count: groundedCount })}</span>}
+          {removedCount > 0 && (
+            <span className="text-rose-700 dark:text-rose-300">
+              {t('analyze.verifier.removed', { count: removedCount })}
+            </span>
+          )}
+          {confidence != null && (
+            <span>{t('analyze.verifier.conf', { pct: (confidence * 100).toFixed(0) })}</span>
+          )}
         </span>
       </div>
       {invalidCitations != null && invalidCitations.length > 0 && (
         <div className="mt-1 break-words font-mono text-2xs text-rose-700 dark:text-rose-300">
-          已移除 / removed: {invalidCitations.join('、')}
+          {t('analyze.verifier.removed_list', { items: invalidCitations.join('、') })}
         </div>
       )}
       {verifierModel && (
         <div className="mt-1 text-2xs text-slate-500 dark:text-slate-400">
-          由 {verifierModel} 把關 / verified by {verifierModel}
+          {t('analyze.verifier.verified_by', { model: verifierModel })}
         </div>
       )}
     </div>

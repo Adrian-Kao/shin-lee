@@ -78,11 +78,11 @@ export default function AuditView({ session, onSwitchView, onLogout, embedded = 
             <div>
               <h2 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-slate-100">
                 <ScrollText className="h-4 w-4 text-navy-700" strokeWidth={1.75} aria-hidden="true" />
-                <span>Audit Log</span>
+                <span>{t('audit_table.log_title')}</span>
                 <span className="text-xs font-normal text-slate-500 dark:text-slate-400">(Q13)</span>
               </h2>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Append-only SQLite + UPDATE/DELETE trigger 阻擋。 Production 加 S3 Object Lock 每小時封存。
+                {t('audit_table.log_desc')}
               </p>
             </div>
             <Button
@@ -92,7 +92,7 @@ export default function AuditView({ session, onSwitchView, onLogout, embedded = 
               className="gap-1.5"
             >
               <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
-              重新整理
+              {t('audit_table.refresh')}
             </Button>
           </div>
 
@@ -153,15 +153,15 @@ export default function AuditView({ session, onSwitchView, onLogout, embedded = 
               <table className="min-w-full text-xs">
                 <thead className="bg-slate-100 dark:bg-slate-800 uppercase tracking-wider text-slate-600 dark:text-slate-300">
                   <tr>
-                    <th className="px-3 py-2 text-left">時間 (UTC)</th>
-                    <th className="px-3 py-2 text-left">User</th>
-                    <th className="px-3 py-2 text-left">Case</th>
-                    <th className="px-3 py-2 text-left">Endpoint</th>
-                    <th className="px-3 py-2 text-left">Model</th>
-                    <th className="px-3 py-2 text-right">Tokens</th>
-                    <th className="px-3 py-2 text-right">ms</th>
-                    <th className="px-3 py-2 text-left">Mask 規則 (Q10)</th>
-                    <th className="px-3 py-2 text-left">Policy (Q12/18)</th>
+                    <th scope="col" className="px-3 py-2 text-left">{t('audit_table.col_time')}</th>
+                    <th scope="col" className="px-3 py-2 text-left">{t('audit_table.col_user')}</th>
+                    <th scope="col" className="px-3 py-2 text-left">{t('audit_table.col_case')}</th>
+                    <th scope="col" className="px-3 py-2 text-left">{t('audit_table.col_endpoint')}</th>
+                    <th scope="col" className="px-3 py-2 text-left">{t('audit_table.col_model')}</th>
+                    <th scope="col" className="px-3 py-2 text-right">{t('audit_table.col_tokens')}</th>
+                    <th scope="col" className="px-3 py-2 text-right">{t('audit_table.col_ms')}</th>
+                    <th scope="col" className="px-3 py-2 text-left">{t('audit_table.col_mask')}</th>
+                    <th scope="col" className="px-3 py-2 text-left">{t('audit_table.col_policy')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -317,14 +317,14 @@ function LegacyHeader({ session, onSwitchView, onLogout, t }) {
           <div className="flex h-8 w-8 items-center justify-center rounded bg-navy-900 text-sm font-bold text-white">
             PM
           </div>
-          <span className="font-semibold">PatentMind AI</span>
+          <span className="font-semibold">{t('app_title')}</span>
         </div>
-        <nav className="ml-6 flex gap-1">
+        <nav className="ml-6 flex gap-1" aria-label={t('nav.audit')}>
           <button onClick={() => onSwitchView('analyze')} className="rounded px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">
-            分析
+            {t('nav.analyze')}
           </button>
           <button onClick={() => onSwitchView('audit')} className="rounded bg-navy-50 dark:bg-navy-900/40 px-3 py-1.5 text-sm font-medium text-navy-700 dark:text-navy-200">
-            Audit
+            {t('nav.audit')}
           </button>
         </nav>
         <div className="ml-auto flex items-center gap-3 text-sm">

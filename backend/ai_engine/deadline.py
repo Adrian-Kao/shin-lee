@@ -348,6 +348,340 @@ def reload_calendars() -> None:
 HOLIDAYS = _FALLBACK_HOLIDAYS
 
 
+# ---------- Pluggable HolidayProvider abstraction (Agent C) ----------
+#
+# The module-level loader above (get_holidays / _read_calendar / _calendar_cache)
+# IS, in effect, a caching provider with a bundled fallback. Agent C formalises
+# that as a swappable HolidayProvider so a cron job (or, eventually, a live
+# remote feed) can supply calendars without touching the deadline maths.
+#
+# Layering rule: the providers are an ADDITIVE wrapper. ``get_holidays`` and
+# ``calculate_deadline`` keep their exact prior behaviour by defaulting to the
+# StaticBundledProvider, which delegates to ``_read_calendar`` — so every
+# existing test stays green. Swap the active provider via ``set_holiday_provider``
+# or the HOLIDAY_SOURCE env flag; ``reload_calendars()`` drops both the
+# module-level cache AND any provider-internal cache.
+#
+# Resolution contract every provider obeys:
+#   resolve(jurisdiction, version) -> (holidays: dict[date,str], found: bool)
+#   ``found`` is False ONLY when the provider has NO source for that
+#   (jurisdiction, version) — the "missing calendar" case the caller must warn
+#   about. A provider MUST NOT raise for a merely-missing calendar; it returns
+#   ({}, False). It MAY raise for a genuinely broken backend (the CachingHoliday
+#   Provider swallows NotImplementedError specifically, so a stubbed remote
+#   backend degrades to inert rather than exploding).
+
+from abc import ABC, abstractmethod
+
+
+class HolidayProvider(ABC):
+    """A source of versioned holiday calendars, keyed by (jurisdiction, version)."""
+
+    @abstractmethod
+    def resolve(self, jurisdiction: str, version: str) -> tuple[dict[date, str], bool]:
+        """Return ``(holidays, found)``. Never raise for a merely-missing
+        calendar — return ``({}, False)`` instead."""
+        raise NotImplementedError
+
+    def reload(self) -> None:  # pragma: no cover - default no-op
+        """Drop any provider-internal cache. Overridden by caching providers."""
+
+
+class StaticBundledProvider(HolidayProvider):
+    """Default, hermetic provider: shipped JSON files in data/calendars/ with the
+    hard-coded ``_FALLBACK_HOLIDAYS`` mirror as the safety net. This is exactly
+    the behaviour the module shipped with — it just delegates to ``_read_calendar``
+    so version-locking + the file/fallback agreement are unchanged."""
+
+    def resolve(self, jurisdiction: str, version: str) -> tuple[dict[date, str], bool]:
+        return _read_calendar(jurisdiction, version)
+
+
+class JsonFileProvider(HolidayProvider):
+    """File-only provider: reads ONLY ``<dir>/<jurisdiction>_<version>.json`` with
+    NO hard-coded fallback. Use this when a cron job (scripts/fetch_holidays.py)
+    owns the calendars and you want a missing/clobbered file to surface loudly
+    rather than be papered over by the bundled mirror. Still fully offline."""
+
+    def __init__(self, calendars_dir: Optional[Path] = None):
+        self._dir = calendars_dir  # None -> read the live module CALENDARS_DIR
+
+    def _path(self, jurisdiction: str, version: str) -> Path:
+        base = self._dir if self._dir is not None else CALENDARS_DIR
+        return base / f"{jurisdiction}_{version}.json"
+
+    def resolve(self, jurisdiction: str, version: str) -> tuple[dict[date, str], bool]:
+        path = self._path(jurisdiction, version)
+        if not path.exists():
+            return {}, False
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("JsonFileProvider: failed to read %s (%s).", path, exc)
+            return {}, False
+        parsed = _parse_calendar_doc(jurisdiction, version, doc)
+        if parsed is None:
+            return {}, False
+        return parsed, True
+
+
+class RemoteHolidayProvider(HolidayProvider):
+    """STUB. Would pull live official feeds (data.gov.tw for TW, the USPTO
+    calendar for US, etc.) on demand. INTENTIONALLY unimplemented: enabling it is
+    safe-but-inert because the CachingHolidayProvider that wraps it swallows the
+    NotImplementedError and degrades to its fallback provider. The test suite
+    NEVER instantiates this against the network.
+
+    Real impl belongs in (or shares code with) scripts/fetch_holidays.py, which
+    already knows how to fetch + parse each jurisdiction. This class would call
+    that producer and return the parsed calendar, caching to data/calendars/ so
+    the offline providers pick it up. Until then it raises so nobody ships a
+    silent live dependency by accident."""
+
+    def __init__(self, source: str = "remote"):
+        self.source = source
+
+    def resolve(self, jurisdiction: str, version: str) -> tuple[dict[date, str], bool]:
+        raise NotImplementedError(
+            "RemoteHolidayProvider is a stub. Wire scripts/fetch_holidays.py to "
+            "pull from data.gov.tw (TW) / USPTO (US) and write data/calendars/. "
+            "Until then run with HOLIDAY_SOURCE=bundled (the default)."
+        )
+
+
+class CachingHolidayProvider(HolidayProvider):
+    """Thread-safe, version-locked cache in front of an inner provider, with an
+    optional fallback provider used when the inner provider raises or returns
+    not-found.
+
+    Two safety properties:
+      1. Version locking: the same (jurisdiction, version) always returns the
+         same object for the provider's lifetime (until ``reload()``).
+      2. Safe-but-inert remote: if the inner provider raises NotImplementedError
+         (the RemoteHolidayProvider stub) — or any other exception — the cache
+         logs it once and delegates to ``fallback`` (default: a
+         StaticBundledProvider). So flipping HOLIDAY_SOURCE=remote can NEVER take
+         the engine down; it quietly keeps using the bundled calendars."""
+
+    def __init__(
+        self,
+        inner: HolidayProvider,
+        fallback: Optional[HolidayProvider] = None,
+    ):
+        self._inner = inner
+        self._fallback = fallback if fallback is not None else StaticBundledProvider()
+        self._cache: dict[tuple[str, str], tuple[dict[date, str], bool]] = {}
+        self._lock = threading.Lock()
+
+    def resolve(self, jurisdiction: str, version: str) -> tuple[dict[date, str], bool]:
+        key = (jurisdiction, version)
+        cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+        with self._lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                return cached
+            result = self._resolve_uncached(jurisdiction, version)
+            self._cache[key] = result
+            return result
+
+    def _resolve_uncached(
+        self, jurisdiction: str, version: str
+    ) -> tuple[dict[date, str], bool]:
+        try:
+            holidays, found = self._inner.resolve(jurisdiction, version)
+        except NotImplementedError:
+            logger.warning(
+                "CachingHolidayProvider: inner provider %s is a stub for %s_%s; "
+                "degrading to fallback %s (safe-but-inert).",
+                type(self._inner).__name__, jurisdiction, version,
+                type(self._fallback).__name__,
+            )
+            return self._fallback.resolve(jurisdiction, version)
+        except Exception as exc:  # noqa: BLE001 — defensive: never let a backend kill the engine
+            logger.warning(
+                "CachingHolidayProvider: inner provider %s raised for %s_%s (%s); "
+                "degrading to fallback %s.",
+                type(self._inner).__name__, jurisdiction, version, exc,
+                type(self._fallback).__name__,
+            )
+            return self._fallback.resolve(jurisdiction, version)
+        if found:
+            return holidays, True
+        # Inner had no source — try the fallback before giving up.
+        return self._fallback.resolve(jurisdiction, version)
+
+    def reload(self) -> None:
+        with self._lock:
+            self._cache.clear()
+        self._inner.reload()
+        self._fallback.reload()
+
+
+def _build_provider_for_source(source: str) -> HolidayProvider:
+    """Map the HOLIDAY_SOURCE flag to a concrete (cached) provider.
+
+    Every branch is wrapped in CachingHolidayProvider so version-locking +
+    safe-but-inert degradation hold uniformly. ``bundled`` returns the plain
+    StaticBundledProvider behaviour (the historical default)."""
+    src = (source or "bundled").lower()
+    if src == "jsonfile":
+        return CachingHolidayProvider(JsonFileProvider())
+    if src == "remote":
+        # Remote inner, bundled fallback -> safe-but-inert until the stub lands.
+        return CachingHolidayProvider(
+            RemoteHolidayProvider(), fallback=StaticBundledProvider()
+        )
+    # default / "bundled"
+    return CachingHolidayProvider(StaticBundledProvider())
+
+
+# The active provider. Defaults from HOLIDAY_SOURCE but is overridable at runtime
+# (set_holiday_provider) for tests / ops. NOTE: get_holidays() above is the
+# historical entry point and intentionally keeps using the module-level
+# _read_calendar cache so its byte-for-byte behaviour + identity-caching
+# (test_get_holidays_version_locked_and_cached) are preserved. The provider is
+# consulted by the NEW strict/lenient v2 surface below. They share the same
+# underlying data, so results agree.
+_active_provider: HolidayProvider = _build_provider_for_source(
+    getattr(settings, "HOLIDAY_SOURCE", "bundled")
+)
+
+
+def get_holiday_provider() -> HolidayProvider:
+    return _active_provider
+
+
+def set_holiday_provider(provider: HolidayProvider) -> None:
+    """Swap the active provider (tests / ops). Also drops the module-level
+    loader cache so the next get_holidays() observes a consistent world."""
+    global _active_provider
+    _active_provider = provider
+    reload_calendars()
+
+
+# Wire the provider into reload so a single reload_calendars() clears everything.
+_reload_calendars_base = reload_calendars
+
+
+def reload_calendars() -> None:  # type: ignore[no-redef]
+    """Drop ALL holiday caches: the module-level loader cache AND the active
+    provider's internal cache. Call after dropping a new/updated JSON file."""
+    _reload_calendars_base()
+    try:
+        _active_provider.reload()
+    except Exception:  # noqa: BLE001 — reload must never raise
+        logger.exception("reload_calendars: provider reload failed (ignored).")
+
+
+# ---------- Observed-holiday shifting (Agent C) ----------
+#
+# Many calendars publish a fixed-date holiday and a SEPARATE "observed" day when
+# that date lands on a weekend. The US OPM rule shifts Sat->Fri and Sun->Mon.
+# JP (振替休日) and KR (대체공휴일) shift a Sunday holiday to the next non-holiday
+# weekday. The shipped JSON calendars ALREADY bake the observed days in (e.g. JP
+# 2025-02-24 振替休日, KR 2025-03-03 대체공휴일), so the roll-forward engine needs no
+# special-casing. These helpers are exposed for calendar PRODUCERS / validators
+# (scripts/fetch_holidays.py) and are unit-tested table-driven.
+
+
+def observed_us(holiday: date) -> date:
+    """US OPM in-lieu-of rule: a holiday on Saturday is observed the preceding
+    Friday; on Sunday, the following Monday. Weekday holidays are unchanged."""
+    if holiday.weekday() == 5:      # Saturday -> Friday
+        return holiday - timedelta(days=1)
+    if holiday.weekday() == 6:      # Sunday -> Monday
+        return holiday + timedelta(days=1)
+    return holiday
+
+
+def observed_substitute_next_weekday(
+    holiday: date, existing: set[date]
+) -> date:
+    """JP 振替休日 / KR 대체공휴일 style: if ``holiday`` falls on a Sunday (or on a day
+    already in ``existing``, i.e. overlapping another holiday), the substitute is
+    the next day that is neither a weekend nor already a holiday. Returns the
+    holiday unchanged when no substitution is required."""
+    if holiday.weekday() != 6 and holiday not in existing:
+        return holiday
+    d = holiday + timedelta(days=1)
+    for _ in range(_MAX_ROLL_DAYS):
+        if d.weekday() < 5 and d not in existing:
+            return d
+        d += timedelta(days=1)
+    raise ValueError("no substitute weekday within bound — bad calendar")
+
+
+# ---------- Typed errors + strict API (Agent C) ----------
+
+
+class DeadlineError(ValueError):
+    """Base class for all deadline-engine errors. Subclasses ValueError so
+    existing ``except ValueError`` handlers keep catching it."""
+
+
+class UnknownJurisdictionError(DeadlineError):
+    """Requested a jurisdiction with no rule. The lenient calculate_deadline
+    returns the 60-day naive stub instead of raising this."""
+
+
+class InvalidReceivedDateError(DeadlineError):
+    """received_date is not a timezone-aware datetime (naive datetimes are
+    rejected: an ambiguous wall-clock instant can shift the case-local date)."""
+
+
+class CalendarRangeError(DeadlineError):
+    """The computed deadline involves a year the loaded calendar can't cover, or
+    the calendar version has no source at all. The lenient path WARNS instead."""
+
+
+def calculate_deadline_strict(
+    received_date: datetime,
+    jurisdiction: str = "TW",
+    calendar_version: str = "2025.1",
+) -> dict:
+    """Validating wrapper around ``calculate_deadline``.
+
+    Same return dict as the lenient function on success. Differs in that the
+    conditions the lenient path merely WARNS about become RAISED, typed errors:
+
+      * unknown jurisdiction         -> UnknownJurisdictionError
+      * naive (tz-unaware) datetime  -> InvalidReceivedDateError
+      * missing calendar version     -> CalendarRangeError
+      * deadline lands in / rolls into an uncovered year -> CalendarRangeError
+
+    Use this on a write path where a wrong-but-silent deadline is unacceptable;
+    use the lenient ``calculate_deadline`` on a best-effort display path that
+    must always return SOMETHING (it surfaces the same problems via warnings)."""
+    if received_date.tzinfo is None or received_date.utcoffset() is None:
+        raise InvalidReceivedDateError(
+            "received_date must be timezone-aware (got a naive datetime). "
+            "Attach the sender's tz so the case-local date is unambiguous."
+        )
+    if jurisdiction not in RULES:
+        raise UnknownJurisdictionError(
+            f"Jurisdiction {jurisdiction!r} is not implemented. Supported: "
+            f"{', '.join(sorted(RULES))}."
+        )
+    result = calculate_deadline(received_date, jurisdiction, calendar_version)
+    if (jurisdiction, calendar_version) in _calendar_missing:
+        raise CalendarRangeError(
+            f"Holiday calendar {jurisdiction}_{calendar_version} has no source "
+            f"(no JSON file, no fallback). Refusing to return a deadline computed "
+            f"against an empty calendar. Load data/calendars/"
+            f"{jurisdiction}_{calendar_version}.json and retry."
+        )
+    sd = date.fromisoformat(result["statutory_deadline"][:10])
+    if not deadline_year_is_covered(jurisdiction, calendar_version, sd):
+        raise CalendarRangeError(
+            f"Statutory deadline {sd} falls in a year the loaded calendar "
+            f"{jurisdiction}_{calendar_version} does not cover. Load the matching "
+            f"year's calendar and recompute."
+        )
+    return result
+
+
 # ---------- Rule specs ----------
 
 @dataclass(frozen=True)

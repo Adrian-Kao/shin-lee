@@ -164,7 +164,37 @@ class Settings:
 
     # Holiday calendar (Q17)
     HOLIDAY_CALENDAR_VERSION: str = "2025.1"
-    SUPPORTED_JURISDICTIONS: tuple[str, ...] = ("TW", "US", "JP")  # 其他國家留 stub
+    # Six jurisdictions are now fully implemented in backend/ai_engine/deadline.py
+    # (TW/US with attorney-grade rules; JP/EP/CN/KR as documented POC
+    # approximations). Anything outside this set falls through to the 60-day
+    # naive stub + a loud warning.
+    SUPPORTED_JURISDICTIONS: tuple[str, ...] = ("TW", "US", "JP", "EP", "CN", "KR")
+
+    # ---- Agent C — holiday-provider source selection (Q17 production path) ----
+    # Selects which HolidayProvider backs the deadline engine. ADDITIVE: the
+    # default keeps the existing hermetic, version-locked behaviour byte-for-byte.
+    #   "bundled" — StaticBundledProvider: hard-coded fallback + shipped JSON
+    #               files in data/calendars/. Hermetic; what tests + CI use.
+    #   "jsonfile" — JsonFileProvider: ONLY data/calendars/*.json (no hard-coded
+    #               fallback), so a cron-refreshed file is authoritative and a
+    #               missing file surfaces loudly. Still offline.
+    #   "remote"  — RemoteHolidayProvider (STUB): would pull data.gov.tw (TW) /
+    #               USPTO (US) live. NotImplementedError is swallowed by the
+    #               caching layer so enabling it is safe-but-inert (falls through
+    #               to the bundled calendars) until the real fetcher is wired.
+    # Tests NEVER select "remote"; no network is ever touched by the suite.
+    HOLIDAY_SOURCE: str = os.getenv("HOLIDAY_SOURCE", "bundled")  # bundled|jsonfile|remote
+    # Remote endpoints (documentation only until RemoteHolidayProvider lands).
+    HOLIDAY_REMOTE_TW_URL: str = os.getenv(
+        "HOLIDAY_REMOTE_TW_URL",
+        "https://data.gov.tw/dataset/14718",  # 行政院人事行政總處 政府行政機關辦公日曆表
+    )
+    HOLIDAY_REMOTE_US_URL: str = os.getenv(
+        "HOLIDAY_REMOTE_US_URL",
+        "https://www.uspto.gov/about-us/uspto-locations/hours-and-holidays",
+    )
+    # Network timeout the (future) remote provider would use, seconds.
+    HOLIDAY_REMOTE_TIMEOUT_S: float = float(os.getenv("HOLIDAY_REMOTE_TIMEOUT_S", "10"))
 
     # Tenants（POC 預設兩家事務所做 demo）
     DEMO_TENANTS: dict[str, dict] = {

@@ -1,0 +1,33 @@
+{
+  "jurisdiction": "CN",
+  "version": "2025.1",
+  "source": "POC seed. China statutory public holidays for 2025 as published by the 国务院办公厅 (General Office of the State Council), including the 春节 (Spring Festival) and 国庆/中秋 (National Day) golden weeks. NOTE: China also designates 调休 make-up WORK days on adjacent weekends; those are NOT modelled here (the engine only rolls a deadline forward off a non-working day, so an extra working Saturday cannot pull a deadline earlier and is safe to omit). Production should pull the annual State Council notice.",
+  "holidays": {
+    "2025-01-01": "元旦",
+    "2025-01-28": "春节(除夕)",
+    "2025-01-29": "春节(初一)",
+    "2025-01-30": "春节(初二)",
+    "2025-01-31": "春节(初三)",
+    "2025-02-01": "春节",
+    "2025-02-02": "春节",
+    "2025-02-03": "春节",
+    "2025-02-04": "春节",
+    "2025-04-04": "清明节",
+    "2025-05-01": "劳动节",
+    "2025-05-02": "劳动节",
+    "2025-05-03": "劳动节",
+    "2025-05-04": "劳动节",
+    "2025-05-05": "劳动节",
+    "2025-05-31": "端午节",
+    "2025-06-01": "端午节",
+    "2025-06-02": "端午节",
+    "2025-10-01": "国庆节",
+    "2025-10-02": "国庆节",
+    "2025-10-03": "国庆节",
+    "2025-10-04": "国庆节",
+    "2025-10-05": "国庆节",
+    "2025-10-06": "中秋节",
+    "2025-10-07": "国庆节",
+    "2025-10-08": "国庆节"
+  }
+}

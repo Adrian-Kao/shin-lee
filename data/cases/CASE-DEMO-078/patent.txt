@@ -1,0 +1,22 @@
+[公開公報] US18000006 A
+中華民國智慧財產局   發明說明書公開本
+公開編號：US18000006 A
+公開日：中華民國 115 年 7 月 1 日（西元 2026-07-01）
+申請日：中華民國 113 年 9 月 9 日
+國際分類：H04L41/00  H04L45/00
+申請人：Stratum Networks Inc.（TW）
+發明人：George Brooks
+申請專利範圍項數：1 項
+
+【名稱】Software Defined Network Controller with Flow Caching
+
+【摘要】
+An SDN controller architecture employing flow caching to reduce switch-controller round-trip time for repeated flows.
+
+【說明書節錄】
+Background: SDN controllers introduce RTT overhead.
+Description: Cache reduces lookup time.
+
+
+【申請專利範圍】
+請求項 1：1. An SDN controller comprising: a flow table receiver; a flow rule generator; and a flow cache configured to store recently generated rules for repeated lookup.

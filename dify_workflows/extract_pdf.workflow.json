@@ -1,0 +1,220 @@
+{
+  "_meta": {
+    "purpose": "Convert uploaded PDF/DOCX bytes to text. Called before analyze_oa.workflow.json when the SPA's PDF upload path is used.",
+    "dify_version_required": ">=1.6.0",
+    "replaces": "backend/gateway/main.py:/v1/oa/upload + backend/ai_engine/pdf_parser.extract_pdf_text",
+    "required_dify_env_vars": [
+      "AI_ENGINE_URL",
+      "INTERNAL_TOKEN"
+    ],
+    "notes": [
+      "PDF/DOCX extraction logic stays in our AI engine — PyMuPDF + python-docx wire-compatibility is non-trivial to replicate in Dify code nodes.",
+      "Vision OCR for scanned PDF pages is delegated to ocr_page.workflow.json via Dify's Iteration node calling a sub-workflow.",
+      "Confidential files (case_id ending -CONF) are refused at this layer per CLAUDE.md §4 invariant #7 — Vision OCR cannot run on confidential PDFs (would require sending image to cloud LLM)."
+    ]
+  },
+  "app": {
+    "name": "PatentMind — Extract PDF/DOCX text",
+    "description": "Multipart upload → text. Branch on content-type, OCR fallback for scanned PDFs.",
+    "icon": "📄",
+    "icon_background": "#E8F5E9",
+    "mode": "workflow"
+  },
+  "kind": "app",
+  "version": "0.1.0",
+  "workflow": {
+    "features": {
+      "file_upload": {
+        "image": {"enabled": false},
+        "document": {"enabled": true, "transfer_methods": ["local_file"], "number_limits": 1}
+      },
+      "opening_statement": "",
+      "retriever_resource": {"enabled": false},
+      "sensitive_word_avoidance": {"enabled": false},
+      "speech_to_text": {"enabled": false},
+      "suggested_questions": [],
+      "text_to_speech": {"enabled": false}
+    },
+    "graph": {
+      "nodes": [
+        {
+          "id": "node-start-extract",
+          "type": "custom",
+          "position": {"x": 50, "y": 300},
+          "data": {
+            "title": "Start",
+            "type": "start",
+            "variables": [
+              {"variable": "file_b64", "label": "Base64-encoded file bytes", "type": "paragraph", "required": true, "max_length": 50000000},
+              {"variable": "content_type", "label": "MIME content type", "type": "select", "required": true, "options": ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]},
+              {"variable": "tenant_id", "label": "Tenant ID", "type": "text-input", "required": true, "max_length": 64},
+              {"variable": "case_id", "label": "Case ID", "type": "text-input", "required": true, "max_length": 128},
+              {"variable": "security_level", "label": "Security level", "type": "select", "required": true, "options": ["public", "confidential"]}
+            ]
+          }
+        },
+        {
+          "id": "node-confidential-gate",
+          "type": "custom",
+          "position": {"x": 400, "y": 300},
+          "data": {
+            "title": "Confidential refuse gate",
+            "type": "if-else",
+            "desc": "CLAUDE.md §4 invariant #7 — confidential files never go through Vision OCR. Mirror of backend/gateway/main.py:upload_oa rejection.",
+            "conditions": [
+              {
+                "id": "is-confidential",
+                "logical_operator": "and",
+                "conditions": [
+                  {
+                    "variable_selector": ["node-start-extract", "security_level"],
+                    "comparison_operator": "is",
+                    "value": "confidential"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "node-refuse-conf",
+          "type": "custom",
+          "position": {"x": 700, "y": 100},
+          "data": {
+            "title": "Refuse confidential upload",
+            "type": "end",
+            "desc": "True branch: refuse with explicit error.",
+            "outputs": [
+              {"variable": "text", "value": ""},
+              {"variable": "error", "value": "vision_ocr_blocked_for_confidential_case"},
+              {"variable": "pages", "value": 0}
+            ]
+          }
+        },
+        {
+          "id": "node-extract-ai-engine",
+          "type": "custom",
+          "position": {"x": 700, "y": 400},
+          "data": {
+            "title": "Extract text (HTTP → AI engine)",
+            "type": "http-request",
+            "desc": "Delegates to backend/ai_engine pdf_parser. Returns text per page + flag indicating which pages needed OCR.",
+            "method": "POST",
+            "url": "{{env.AI_ENGINE_URL}}/v1/ai/extract_text",
+            "authorization": {"type": "bearer", "config": {"api_key": "{{env.INTERNAL_TOKEN}}"}},
+            "headers": "Content-Type: application/json\nX-Internal-Token: {{env.INTERNAL_TOKEN}}",
+            "body": {
+              "type": "json",
+              "data": "{\"file_b64\": {{#node-start-extract.file_b64#}}, \"content_type\": {{#node-start-extract.content_type#}}, \"security_level\": {{#node-start-extract.security_level#}}, \"return_per_page\": true}"
+            },
+            "timeout": {"connect_timeout": 5, "read_timeout": 120, "write_timeout": 120},
+            "retry": {"max_retries": 1, "interval": 2000}
+          }
+        },
+        {
+          "id": "node-needs-ocr-check",
+          "type": "custom",
+          "position": {"x": 1050, "y": 400},
+          "data": {
+            "title": "Any pages need OCR?",
+            "type": "if-else",
+            "conditions": [
+              {
+                "id": "has-ocr-pages",
+                "logical_operator": "and",
+                "conditions": [
+                  {
+                    "variable_selector": ["node-extract-ai-engine", "body", "needs_ocr_pages"],
+                    "comparison_operator": "not empty"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "node-ocr-iteration",
+          "type": "custom",
+          "position": {"x": 1400, "y": 300},
+          "data": {
+            "title": "OCR each scanned page (sub-workflow)",
+            "type": "iteration",
+            "desc": "Call ocr_page.workflow.json per page that needs OCR. Bounded parallel = 3 to respect Anthropic Vision RPM.",
+            "iterator_input_variable_selector": ["node-extract-ai-engine", "body", "needs_ocr_pages"],
+            "iterator_input_type": "array[object]",
+            "output_selector": ["node-call-ocr-subworkflow", "body", "text"],
+            "output_type": "array[string]",
+            "parallel": {"enabled": true, "max_workers": 3},
+            "children": [
+              {
+                "id": "node-call-ocr-subworkflow",
+                "type": "custom",
+                "position": {"x": 1450, "y": 350},
+                "data": {
+                  "title": "Run ocr_page workflow",
+                  "type": "http-request",
+                  "desc": "Invokes ocr_page.workflow.json via Dify's workflow run API.",
+                  "method": "POST",
+                  "url": "{{env.DIFY_API_URL}}/v1/workflows/{{env.OCR_PAGE_WORKFLOW_ID}}/run",
+                  "authorization": {"type": "bearer", "config": {"api_key": "{{env.DIFY_INTERNAL_API_KEY}}"}},
+                  "headers": "Content-Type: application/json",
+                  "body": {
+                    "type": "json",
+                    "data": "{\"inputs\": {\"page_image_b64\": {{#iteration.item.image_b64#}}, \"security_level\": {{#node-start-extract.security_level#}}}, \"response_mode\": \"blocking\", \"user\": \"system-extract-pdf\"}"
+                  },
+                  "timeout": {"connect_timeout": 5, "read_timeout": 60, "write_timeout": 60},
+                  "_comment": "Alternative: configure ocr_page as a Dify tool and reference via 'tool' node type instead of HTTP. Dify 1.6+ supports tools-of-workflows."
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "node-merge-text",
+          "type": "custom",
+          "position": {"x": 1800, "y": 400},
+          "data": {
+            "title": "Merge native + OCR text",
+            "type": "template-transform",
+            "desc": "Splice OCR results back into per-page text array at the right page indices; join with the page-break separator used in gateway main.py:_PAGE_SEPARATOR.",
+            "template": "{% set pages = node-extract-ai-engine.body.pages %}\n{% set ocr_results = node-ocr-iteration.output %}\n{% set ocr_indices = node-extract-ai-engine.body.needs_ocr_pages | map(attribute='page_index') | list %}\n{% for page_idx in range(pages | length) %}{% if page_idx in ocr_indices %}{{ ocr_results[ocr_indices.index(page_idx)] }}{% else %}{{ pages[page_idx].text }}{% endif %}{% if not loop.last %}\n\n--- page break ---\n\n{% endif %}{% endfor %}",
+            "_comment": "If template-transform can't express this cleanly in your Dify version, replace with a code node (python3) doing the same join."
+          }
+        },
+        {
+          "id": "node-end-success",
+          "type": "custom",
+          "position": {"x": 2150, "y": 400},
+          "data": {
+            "title": "End — success",
+            "type": "end",
+            "outputs": [
+              {"variable": "text", "value_selector": ["node-merge-text", "output"]},
+              {"variable": "pages", "value_selector": ["node-extract-ai-engine", "body", "page_count"]},
+              {"variable": "used_ocr_pages", "value_selector": ["node-extract-ai-engine", "body", "needs_ocr_pages"]},
+              {"variable": "error", "value": ""}
+            ]
+          }
+        }
+      ],
+      "edges": [
+        {"id": "e1", "source": "node-start-extract", "target": "node-confidential-gate"},
+        {"id": "e2-true", "source": "node-confidential-gate", "sourceHandle": "true", "target": "node-refuse-conf"},
+        {"id": "e2-false", "source": "node-confidential-gate", "sourceHandle": "false", "target": "node-extract-ai-engine"},
+        {"id": "e3", "source": "node-extract-ai-engine", "target": "node-needs-ocr-check"},
+        {"id": "e4-true", "source": "node-needs-ocr-check", "sourceHandle": "true", "target": "node-ocr-iteration"},
+        {"id": "e4-false", "source": "node-needs-ocr-check", "sourceHandle": "false", "target": "node-merge-text"},
+        {"id": "e5", "source": "node-ocr-iteration", "target": "node-merge-text"},
+        {"id": "e6", "source": "node-merge-text", "target": "node-end-success"}
+      ]
+    },
+    "conversation_variables": [],
+    "environment_variables": [
+      {"name": "AI_ENGINE_URL", "value": "http://localhost:8011", "value_type": "string"},
+      {"name": "INTERNAL_TOKEN", "value": "REPLACE_AT_IMPORT", "value_type": "secret"},
+      {"name": "DIFY_API_URL", "value": "http://localhost:5001", "value_type": "string"},
+      {"name": "OCR_PAGE_WORKFLOW_ID", "value": "REPLACE_WITH_OCR_PAGE_WORKFLOW_ID_AFTER_IMPORT", "value_type": "string"},
+      {"name": "DIFY_INTERNAL_API_KEY", "value": "REPLACE_AT_IMPORT", "value_type": "secret"}
+    ]
+  }
+}

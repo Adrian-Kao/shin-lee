@@ -1,0 +1,33 @@
+經濟部智慧財產局
+審查意見通知函
+
+機關地址：臺北市大安區辛亥路 2 段 185 號 3 樓
+聯絡人：Michael J. Brennan
+聯絡電話：(02)23766050
+傳真：(02)23779875
+
+受文者：Lumosense Inc.
+發文日期：中華民國 115 年 4 月 3 日
+發文字號：（115）智專一（作）字第 USOA-2026-04001 號
+速別：速件
+密等及解密條件或保密期限：
+附件：如文
+
+主旨：第 US18000005 號專利申請案經審查有說明一所述情事，請於文到次日起 3 個月內提出申復說明或修正。屆期未申復說明或修正者，依專利法第46條第2項規定將不予專利，請查照。
+
+說明：
+
+一、本案經審查認為：
+
+    (一) 本案「Solid-state LiDAR with MEMS Mirror」，申請日為 中華民國 113 年 6 月 26 日，本案依申請人申請時所送內容審查，就其申請專利範圍所載，其請求項共計 2 項，合先敘明。
+
+    (二) 本案請求項 1、2 有不符 35 U.S.C. § 102 之情形。
+        引證資料：US10765111。
+        Claims 1 and 2 are rejected under 35 U.S.C. § 102 as being anticipated by US10765111. Element-by-element mapping: (a) the 905 nm laser diode (US10765111 col 3 lines 10-15); (b) the MEMS mirror with scan angle exceeding 60 degrees (col 4 lines 20-30); (c) the SPAD receiver array (col 5 lines 5-12). Each and every element of the claims is disclosed in a single reference; the claims therefore lack novelty.
+
+二、本案如有修正、訂正，應依專利法第43條、第44條第3項、專利法施行細則第36條至第38條之規定辦理，並請依專利修正申請書、專利誤譯訂正申請書之規定撰寫。
+
+三、檢送本案檢索報告 1 份。
+
+正本：Lumosense Inc.
+副本：

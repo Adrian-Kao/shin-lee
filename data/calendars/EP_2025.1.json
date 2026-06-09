@@ -1,0 +1,19 @@
+{
+  "jurisdiction": "EP",
+  "version": "2025.1",
+  "source": "POC seed (APPROXIMATE). EPO closure days for 2025, approximated from the public holidays at the EPO's main filing locations (Munich / The Hague). The EPO publishes its own annual list of days on which its filing offices are not open; production must load that authoritative list (it differs from any single country's public-holiday set and changes year to year). Hand-curated, no clean machine-readable upstream — see scripts/fetch_holidays.py EP note.",
+  "holidays": {
+    "2025-01-01": "New Year's Day (EPO closed, approx.)",
+    "2025-04-18": "Good Friday (EPO closed, approx.)",
+    "2025-04-21": "Easter Monday (EPO closed, approx.)",
+    "2025-05-01": "Labour Day (EPO closed, approx.)",
+    "2025-05-08": "Liberation Day (NL, EPO closed, approx.)",
+    "2025-05-29": "Ascension Day (EPO closed, approx.)",
+    "2025-06-09": "Whit Monday (EPO closed, approx.)",
+    "2025-10-03": "German Unity Day (EPO closed, approx.)",
+    "2025-12-24": "Christmas Eve (EPO closed, approx.)",
+    "2025-12-25": "Christmas Day (EPO closed, approx.)",
+    "2025-12-26": "Boxing Day (EPO closed, approx.)",
+    "2025-12-31": "New Year's Eve (EPO closed, approx.)"
+  }
+}

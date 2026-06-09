@@ -341,3 +341,501 @@ M backend/shared/models.py           ← 本 session Phase A 改 RejectionType e
 ## 8. 給接手 Claude 的一句話
 
 > Phase A 已驗證可跑，請從第 5 節的步驟 1 開始：直接動手寫 `data/cases/synthetic_cases.py` 的 CASES list，按第 4 節 taxonomy 表逐案造資料。先不用太完美，30 案造完後再回頭微調。沒問題就接著做 render + extractor + 冒煙測。Mock 模式（`LLM_MODE=mock EMBEDDING_BACKEND=mock VECTOR_BACKEND=memory`）就足夠驗證，不用 Ollama。
+
+---
+
+# 2026-05-30 session — Phase 1 + Day 1-6 wrap-up
+
+> 這 session 把 POC 推進到「下週可上線 internal demo」狀態。
+> 11 commits 落地，pytest 12/12 + vite build 全綠。
+> Section 0-8 是 2026-05-12 的歷史，下面 9-15 是這 session 的全部產出。
+> Section 12 (presenter notes) 是 demo 當天直接念的台本。
+
+## 9. 完成的 commit (11 個，都在 local feature/patentmind-poc — 卡 push auth 見 §11)
+
+```
+0dfdfca Day 6: mock LLM rewrite (53% → 100% rejection_type) + ngrok demo helper
+a343cea Day 5: Sentry observability — backend + frontend (env-gated, no-op without DSN)
+17613af Day 4: one-click local demo launcher + pre-demo smoke validator
+06d2ef6 Day 3: frontend polish — landing page, error/empty/loading UX, toast
+73c1245 Day 2B: drag-drop PDF upload UI + preview pane
+3552e50 Day 2A: PDF/DOCX upload endpoint with Vision OCR fallback
+b93354a Day 1B: eval harness over 30 synthetic cases
+3c1adae Day 1A: wire real Anthropic LLM (LLM_MODE=anthropic)
+7153e89 Phase 1C: pytest + Playwright + GitHub Actions CI + pre-commit
+3e26e35 Phase 1B: real Tailwind build + shadcn foundation + router + i18n + dark mode
+0f7cb74 Phase 1A: docker-compose infra + env template + config knobs
+```
+
+### Per-commit summary
+- **Phase 1A**: docker-compose (PG/Redis/Qdrant 都 loopback-bound + healthchecked), `.env.example` 全改, JWT secret runtime guardrail (非 mock/test 模式若用 placeholder 啟動會 raise)
+- **Phase 1B**: 移除 Tailwind CDN → 正規 Vite+PostCSS, shadcn Button + cn helper + components.json, react-router-dom v6 routes (/login /analyze /audit /cases), ThemeProvider (localStorage-backed, FOUC-proof), react-i18next (zh-TW default + en fallback)
+- **Phase 1C**: `pyproject.toml` (pytest + ruff + mypy), `tests/` (6 pytest passes), Playwright config + 1 smoke spec, `.github/workflows/ci.yml` (3 parallel jobs, main-safe concurrency), `.pre-commit-config.yaml`
+- **Day 1A**: `AnthropicLLM` (AsyncAnthropic, Sonnet 4.6 reasoning + Haiku 4.5 cheap/verifier, prompt caching ephemeral on system, retry-after RFC 7231 HTTP-date parsing, threadsafe `_session_usage`, defense-in-depth confidential routing 3 層), `_MODEL_PRICING_USD_PER_M` 真實 Anthropic 價格表
+- **Day 1B**: `scripts/eval_cases.py` 跑 30 案 → 寫 `data/eval_results/<TS-uuid6>/{CASE-DEMO-NN.json, REPORT.md}` (mode mock | anthropic, asyncio.gather + Semaphore, hermetic in-process orchestrator)
+- **Day 2A**: `POST /v1/oa/upload` multipart (max 30MB, content-type whitelist), AI engine `/v1/ai/extract_text` (base64 JSON), `pdf_parser.extract_pdf_text` (PyMuPDF + bounded-parallel Vision OCR), `python-docx`. Defense-in-depth: gateway refuse confidential cases → AI engine 也 refuse → AnthropicLLM.vision_ocr 也 refuse
+- **Day 2B**: `OAUpload.jsx` (state machine: idle→file-selected→uploading→server-extracting→success/error), XHR upload progress + real cancel, PDF preview via `<embed>`, integrated into `Analyze.jsx` as additive path (toggle 「📋 改貼文字」保留 fallback)
+- **Day 3**: Login 變正規 landing (gradient hero + 4 value bullets + role cards w/ hover lift), `ErrorBanner` (8 status codes — 401 給登入按鈕, 429 給 30s countdown), `Skeleton`/`SkeletonText`/`SkeletonCard`/`EmptyState`/`toast`, /cases 變正式 coming-soon, favicon SVG + meta description + theme-color
+- **Day 4**: `scripts/start_demo.sh` (python deps check → ai_engine + gateway + seed + frontend → auto-open browser → Ctrl+C tear-down), `scripts/smoke_demo.sh` (6-step pre-demo e2e validator)
+- **Day 5**: `backend/shared/observability.py` (init_sentry with FastAPI + Starlette integrations), `frontend/src/lib/sentry.jsx` (initSentry + SentryErrorBoundary with friendly fallback UI), env-gated VITE_SENTRY_DSN / SENTRY_DSN
+- **Day 6**: `_mock_parse_oa` 重寫 — 改正 5 個 weakness (102_novelty TW Chinese, other / 101 catch, multi-rejection emission, parsed affected_claims, antecedent_basis 近鄰判斷)；`scripts/start_ngrok.sh` 單 tunnel 暴露 frontend
+
+## 10. 怎麼跑 — one-click demo
+
+### 最常用 (mock 模式，不用 key)
+```bash
+bash scripts/start_demo.sh
+# Auto: deps → ai_engine:8011 → gateway:8010 → seed → vite:5173 → open browser
+# Ctrl+C cleanup all 3
+
+# 另一 terminal:
+bash scripts/smoke_demo.sh
+# 6 GREEN = demo ready
+```
+
+### Real LLM (週日 key 到手後)
+```bash
+ANTHROPIC_API_KEY=sk-... bash scripts/start_demo.sh
+# 自動切 LLM_MODE=anthropic (start_demo.sh 偵測 env)
+
+# 跑 30 案 real LLM eval (對比 mock baseline):
+ANTHROPIC_API_KEY=sk-... python scripts/eval_cases.py --mode anthropic
+# 預計 token cost ~$2-5 (30 案 × ~50K tokens with cache)
+# 報告: data/eval_results/<ts>/REPORT.md
+```
+
+### Remote demo audience
+```bash
+# Terminal 1:
+bash scripts/start_demo.sh
+# Terminal 2:
+bash scripts/start_ngrok.sh
+# → 印 https://<random>.ngrok.app URL，audience 開這個
+```
+
+## 11. Push status — 卡 GitHub auth (你還沒修)
+
+Remote `https://github.com/Adrian-Kao/shin-lee.git`，password auth 已被 GitHub 停用。**11 commit 卡 local，沒 backup**。
+
+修法（任一即可）：
+1. **PAT (Personal Access Token)** — 最快
+   ```bash
+   # GitHub → Settings → Developer settings → Personal access tokens → Generate (scope: repo)
+   git remote set-url origin https://Adrian-Kao:<TOKEN>@github.com/Adrian-Kao/shin-lee.git
+   git push
+   ```
+2. **SSH key**
+   ```bash
+   ssh-keygen -t ed25519 -C "your@email.com"   # 貼 ~/.ssh/id_ed25519.pub 到 GitHub SSH keys
+   git remote set-url origin git@github.com:Adrian-Kao/shin-lee.git
+   git push
+   ```
+3. **GitHub CLI**
+   ```bash
+   gh auth login
+   gh repo set-default Adrian-Kao/shin-lee
+   git push
+   ```
+
+修好告訴下個 Claude session 「push 修好了」，它會幫推。
+
+## 12. Demo presenter notes — 拿來直接念
+
+### 12.1 Pre-demo checklist (T-30 min)
+
+- [ ] `git pull` 最新（push 修好的話）
+- [ ] 確認 `.env`: `JWT_SECRET` 不是 placeholder + `ANTHROPIC_API_KEY` 有值
+- [ ] `bash scripts/start_demo.sh` — 等「Demo ready」訊息
+- [ ] `bash scripts/smoke_demo.sh` — 6 個 GREEN
+- [ ] 瀏覽器 http://localhost:5173 — 登入 Alice 跑一次確認流暢
+- [ ] `docs/初審審查意見通知函.pdf` 放桌面備用
+- [ ] 若用 ngrok：`bash scripts/start_ngrok.sh`，URL 貼 chat
+
+### 12.2 The pitch (5 分鐘)
+
+1. **問題 (1 min)** — 台灣 TIPO 每年 71,965 件專利申請 (2025 數字), 平均 8 個月才收到第一次 OA, 律師收到 OA 必須 2 個月內答辯, 每件人工平均 4-8 小時; 案件量+人力不足 → 答辯品質下滑風險
+2. **解法 (1 min)** — PatentMind = OA 答辯草擬 AI 助手, 上傳 OA PDF → 自動 (a) 分類核駁理由 (b) RAG 找佐證 (c) 起草申復書 (d) 算法定期日, 律師審核+簽核+送件, AI 是放大器不取代律師
+3. **差異化 (1 min)** — vs 競品 DeepIP / Solve Intelligence / Harvey / Lexis+ Protégé:
+   - **TW 特化**: 中文 OA + 民國日期 + TIPO 公文格式 + 第26條第2項先行詞獨立 enum
+   - **隱私可控**: redaction (Q10) + audit chain (Q13) + 機密案件強制地端 LLM (Q15)
+   - **可驗證**: 每段 citation 必來自 grounded set (Q14), 防 hallucination
+4. **架構 (1 min)** — 厚 Gateway + AI Engine 分層 (Q1+FU), 8 條鐵律 (CLAUDE.md §4)
+5. **狀態 (1 min)** — POC 已 30 案 corpus + 真 Anthropic 接通 + PDF upload 含 Vision OCR + 一鍵 demo
+
+### 12.3 The demo (5-10 分鐘) — 照順序操作
+
+**段 1: Landing + login (30s)**
+- 開 http://localhost:5173 — 看 gradient hero + value bullets
+- 點 Alice (Attorney, tenant_a)
+- 講: 「Bob paralegal 同租戶但案件 ACL 不同; Carol IT admin 無 case 權限; Dave auditor 只能讀 audit」
+
+**段 2: 上傳 OA + 分析 (3-5 min)** — 核心 demo
+- 拖 `docs/初審審查意見通知函.pdf` 到 drop zone
+- 看 PDF preview (左) + status pane (右) 出現
+- 點「上傳」— 進度條
+- 講: 「PyMuPDF 萃取, 掃描頁 fallback 到 Claude Vision OCR」
+- 出 success: 「已抽出 2 頁 / 1234 字」
+- 點「使用此文字」— textarea 自動填
+- 點「預覽 redaction」— 看 PII + 客戶識別碼被 redact (Q10)
+- 點「分析 OA」— RunningPanel 動畫 (mock 即時; real LLM 約 30-60 秒)
+- 出結果:
+  - **Deadline card**: 2025-07-28 (從民國 114 年 5 月 29 日算出 +60 天)
+  - **Rejection block**: antecedent_basis, claim=[9], confidence 0.93
+  - **Examiner argument**: 中文原文
+  - **RAG**: TW202617461#claim_2 (我們種的 patent, retrieval 命中)
+  - **Draft**: 完整 TIPO 申復書格式, DraftEditor 可逐句簽核 (Q16)
+
+**段 3: Audit + chain verify (1-2 min)** — 合規賣點
+- 登出，登入 Dave (Auditor)
+- 進 /audit → 看剛才兩筆 (upload + analyze) 都記錄
+- 注意 `mask 規則` 欄 — 證明 redaction 真的觸發
+- 注意 `policy` 欄 — 證明 authz/quota/RPM 都 pass
+- 點「驗證 hash chain」— 綠燈 + 「N 列全部通過 hash 驗證」
+- 講: 「Production 加 S3 Object Lock 每小時封存」
+
+**段 4: 案件 ACL (30s)** — 隱私賣點
+- 登出，登入 Carol (IT Admin, tenant_b)
+- 嘗試輸入 CASE-2025-001 (tenant_a 的) + 分析
+- 看 ErrorBanner 「您沒有此案件的存取權限」
+- 講: 「防線在 gateway middleware (Q12), AI Engine 永遠收不到請求」
+
+### 12.4 邊角值得提
+
+- **Citation 必須 grounded**: verifier 砍編造引用 (Q14)
+- **機密案件強制地端 LLM**: case_id 以 `-CONF` 結尾自動 route Ollama (Q15)
+- **30 案 eval**: `python scripts/eval_cases.py --mode mock` 0.2s 出 markdown 報告
+- **Sentry 接好 no-op**: 設 `SENTRY_DSN` 即啟用
+
+### 12.5 Backup plan
+
+| 故障 | 備案 |
+|------|------|
+| Anthropic API 掛 | mock mode 仍 work — 「切回 mock 證明架構解耦」 |
+| Vite 卡 | refresh, 不行就 Ctrl+C + 重啟 start_demo.sh |
+| PDF upload 失敗 | 改貼文字 toggle, 貼 `data/oa_samples/sample_oa_tw.txt` 內容 |
+| Backend 死 | 看 `tmp/gateway.log` / `tmp/ai_engine.log`, 通常重啟 |
+| Backend 起不來 | 確認 `.env` JWT_SECRET 不是 placeholder (Day 1A guardrail) |
+| ngrok 限速 | free tier 同時 1 條 tunnel, 多人連會慢 — 用螢幕分享代替 |
+
+## 13. External research (2026-05-30 web search snapshots)
+
+### 13.1 Taiwan TIPO market 2025
+- 71,965 patent applications (-1% YoY), 97,411 trademark (+8% YoY)
+- First OA average: 8 months (improved from 2024)
+- Total pendency: 13.8 months
+- Foreign filings +0.6%, domestic -2.7% — foreign 比重持續增加
+- **Implication**: 外國申請 → 英/日文 OA 需 TW 律師翻譯, i18n + 多語言 LLM 很重要
+
+### 13.2 Competitive landscape
+
+| 工具 | 形式 | 價格 | 強項 | 弱項 |
+|------|------|------|------|------|
+| **Harvey** | Web | $1000+/user/mo | broad legal, Assistant+Vault+Workflow, AmLaw 採用 | 不是 patent-specific, $$$ |
+| **Westlaw/CoCounsel** | Web+Word | $200-500/user/mo | source-grounded, patent 模組 | US-focused, 無 TW |
+| **Lexis+ Protégé** (rebranded Feb 2026) | Web | $200-400/user/mo | source-grounding | US-focused |
+| **DeepIP** | Word add-in | n/a | full-lifecycle patent, drafting→prosecution | 無 on-prem |
+| **Solve Intelligence** | Web | n/a | browser-based, claim charts + figures | 無 TW 中文, 無 on-prem |
+| **PatentPal** | Web | <$1000/mo | terminology + flow diagrams | paralegal 為主, 非 OA |
+| **PatentMind (us)** | Vite SPA | TBD | **TW-specific + on-prem + redaction + audit chain + grounded citations** | POC, 未實戰 |
+
+**Pitch 差異化**:
+- vs Harvey/Westlaw/Lexis: 「他們是 general legal, patent 不是核心」
+- vs DeepIP/Solve: 「美式 prosecution 為主, 沒 TW §22/§26/§32 分類, 沒民國日期, 沒 TIPO 公文」
+- 我們: 「TW 事務所專用 + 合規 + 機密不上雲 + 開放 30 案 baseline」
+
+### 13.3 Anthropic 最佳實務 (對我們 demo / prod 直接相關)
+
+**Prompt caching (Day 1A 已接好)**
+- TTL: 預設 5 分鐘 (2026 初從 60 分鐘改的; 某些 workload cost +30-60%)
+- 1 小時 cache 額外付費可用 (API/Bedrock/Vertex/Foundry)
+- 我們把 patent-specific system prompt (2-4 KB) 標 ephemeral cache_control → 重複 case 第二次省 ~25% cost
+- Workspace-level isolation (Feb 5, 2026): demo+prod 同 key 可控
+
+**1M context window (Sonnet 4.6, GA March 2026)**
+- 我們 oa_analyzer 一次只塞 OA + top-3 RAG hits (~10K tokens) — headroom 大
+- 未來可一次塞整本 spec (~46 頁約 30K tokens) 給 draft step → 引用更準
+
+**Batch API (50% cost savings, 300K output tokens beta)**
+- 適合 eval pipeline: 30 案 batch → 一次 submit、隔天拿結果
+- 適合定期 audit: 律師事務所每月把過去所有案件 re-analyze 看新 prior art
+
+**Pricing (week 1 launch budget)**
+- Sonnet 4.6: $3/M input + $15/M output, cache 90% off + batch 50% off
+- Haiku 4.5: $1/M input + $5/M output (我們的 verifier + Vision OCR)
+- 30 案 eval (real, no batch, no cache): ~$2-5
+- 100 案/天 prod (with caching + batch): ~$5-10/day
+
+**Sources** (research done 2026-05-30):
+- [Union Patent TIPO 2025 stats](https://en.unionpatent.com.tw/overview-of-2025-taiwan-patent-and-trademark-filing-statistics)
+- [DeepIP vs Solve Intelligence comparison](https://www.lexology.com/library/detail.aspx?g=a945581a-89b2-45ca-9a37-894711af9cdc)
+- [Best AI Patent Drafting Tools 2026](https://blog.patentext.com/blog-posts/best-ai-patent-drafting-tools)
+- [Claude prompt caching docs](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)
+- [Claude Sonnet 4.6 1M context guide](https://www.aiforanything.io/blog/claude-sonnet-4-6-1m-context-window-guide)
+- [Anthropic 1M context GA announcement](https://dev.to/onsen/claudes-1m-context-window-is-now-generally-available-95f)
+
+## 14. Next steps (週日 → 上線)
+
+### 週日 (2026-05-31): real LLM smoke
+1. 拿 ANTHROPIC_API_KEY → 加 `.env`
+2. `bash scripts/start_demo.sh` → 看 「LLM_MODE=anthropic」 訊息
+3. 上傳 `docs/初審審查意見通知函.pdf` → 看 real LLM output 品質
+4. `python scripts/eval_cases.py --mode anthropic` → 跑 30 案 (~$2-5)
+5. 比對 mock vs anthropic REPORT.md
+6. 若 anthropic > 90% rejection_type + > 80% affected_claims → demo ready
+
+### 週一 (2026-06-01): demo rehearsal
+1. 跑 §12.3 demo flow (5-10 min)
+2. 念 §12.2 talking points
+3. 找朋友 mock 觀眾, 問會問什麼問題
+4. 預備 §12.5 backup answers
+
+### 週二-週六: buffer + soft launch
+- T-3: 確認 internal 觀眾名單
+- T-1: 重 smoke 一遍
+- T-0: demo
+
+### Phase 2 (上線後): production hardening
+1. **Postgres audit** (current SQLite OK for pilot, swap > 1K rows/day)
+2. **Redis cache** (Phase 2A 已開始 — 看 backend/gateway/redis_cache.py)
+3. **Qdrant vector** (current numpy OK for < 1000 patents)
+4. **OIDC** (Keycloak in docker-compose)
+5. **Real PDF figure analysis** (Claude Vision 已接, 可擴大用途)
+6. **Quality eval pipeline** (週/月律師抽樣評分)
+7. **Prometheus + Grafana** (Sentry 是 error 層, 這是 metric 層)
+
+## 15. 給接手 Claude 的一句話 (2026-05-30 版)
+
+> POC 已推進到「下週可上線 internal demo」, 11 commit 落地但 push auth 卡 (§11). real LLM 路徑已接通但 demo 時還沒實機驗 (key 預定週日到手). 下個 session 優先序: (1) 確認 push 修好否 → push; (2) 真 LLM smoke (§14 週日 checklist); (3) demo rehearsal (§12 直接念); (4) 若還有時間 → Phase 2 chunks (從 backend/gateway/redis_cache.py 開始). §12 presenter notes 可以直接念給觀眾。
+
+---
+
+# 2026-06-01 session — Day 8 autonomous overnight sprint
+
+> User asked for "資安和權限管理 + 前端 UIUX 產品等級 + 競品研究 + code review on
+> everything" before going to sleep for 8 hours. This section documents what
+> landed. 9 Day 8 commits, **120 pytests passing** (was 18 at session start),
+> 0 breaking regressions on baseline.
+
+## 16. Day 8 commit log
+
+```
+aa1e1e4 Day 8I: Security Chunks A/B post-review fixes — login rate limit + warnings
+10775ee Day 8H: Security Chunk C — defense-in-depth headers + body caps + role gates
+f389bc6 Day 8G: Security Chunk B — ACL bypass fix + audit row on every exit path (C-3 + H-7)
+423520a Day 8F: Security Chunk A — lock front door (C-1 + C-2 + C-4 + H-8)
+04071cf Day 8E: Three-pane Analyze workspace (UX_RESEARCH §5 #1 must-have)
+95ad810 Day 8D: docs/UX_RESEARCH.md (competitor walkthroughs + workflow analysis)
+9ac2356 Day 8C: Compat Refactor 3 — upstream-header auth for digiRunner front-line
+492750f Day 8B: Compat Refactor 2 — first-class /v1/redact + /v1/audit/append
+780bef3 Day 8A: Compat Refactor 1 — externalize prompts to YAML for Dify migration
+```
+
+Plus committed earlier this session: docs/SECURITY_AUDIT.md (30 findings), docs/UX_RESEARCH.md (8 must-have UX items).
+
+## 17. What the Day 8 sprint accomplished
+
+### digiRunner + Dify compatibility (user said "一定要能相容")
+- **Day 8A**: All AI engine prompts (parse_oa / draft_response / verify_citations) moved from Python constants into `backend/ai_engine/prompts/*.yaml`. Dify workflows can `paste-import` these directly when migration happens. `GET /v1/prompts/{intent}` endpoint exposes them HTTP-style. Env-gated by `EXPOSE_PROMPT_API` (set false in prod once Dify import done).
+- **Day 8B**: `/v1/debug/redaction_preview` promoted to first-class `/v1/redact` (deprecated alias kept with RFC 9745-compliant `Deprecation: @<unix>` header + Sunset + Link). New `/v1/audit/append` for digiRunner post-LLM hooks to push audit rows HTTP-style; `extra="forbid"` schema prevents identity forgery via body extras; `_AUDIT_APPEND_ROLES` whitelist.
+- **Day 8C**: Gateway accepts `x-user-id` / `x-tenant-id` / `x-user-role` upstream headers from trusted IPs (digiRunner-validated identity), falls back to JWT for local dev. Role whitelist: AUDITOR / IT_ADMIN must come from local `_USERS` — upstream can only assert ATTORNEY / PARALEGAL (defense against confused-deputy via trusted-IP foothold). IPv4-mapped IPv6 normalized. CIDR rejected at config-load time (silent CIDR support would be a foot-gun). Boot guard refuses non-loopback trust without `UPSTREAM_AUTH_SHARED_SECRET` in non-mock mode.
+
+### Product-grade UX (user said "前端 UIUX 要有產品等級")
+- **Day 8D**: `docs/UX_RESEARCH.md` (2832 words, 56 URLs cited) — competitor walkthroughs (DeepIP / Solve Intelligence / Harvey / PatentPal / Lexis+ Protégé / Westlaw CoCounsel / NLPatent), patent attorney workflow analysis, 5-pattern UI library, 8 must-have + 6 nice-to-have UX recommendations with impact/effort ratings.
+- **Day 8E**: Three-pane Analyze workspace (UX_RESEARCH §5 #1 must-have). Universal pattern across DeepIP / Solve / Patlytics — "tab switching" was the #1 cited UX pain. Desktop `≥xl`: 3-pane grid `[3fr 4fr 3fr]` (InputPane / DraftsPane / ReferencesPane), each scrolls independently, shared `activeRejectionId` state, sticky pane headers. Tablet/mobile `<xl`: tabbed single-column. `Analyze.jsx` slimmed 588 → 310 lines. Bundle +6KB raw / +1.5KB gz. ZERO new deps.
+
+### Security + permission hardening (user said "資安和權限管理")
+- **Day 8 audit deliverable**: `docs/SECURITY_AUDIT.md` — 30 findings (4 Critical, 8 High, 11 Medium, 7 Low) with file:line evidence + attack scenarios + recommended fixes + effort estimates.
+- **Day 8F (Chunk A)**: Fixed C-1 (login mints token for any user_id with no credential — anyone reaching gateway could dump audit_dave's audit chain), C-2 (AI engine `:8011` had zero auth — anyone reachable could poison RAG / force public on -CONF / burn Anthropic budget), C-4 (JWT placeholder guardrail disabled in mock mode, which is the demo config), H-8 (login user enumeration via 404 vs 200). Added `_internal_headers()` on every gateway→AI engine httpx call; AI engine middleware refuses without `X-Internal-Token`. Demo passwords `demo-{user_id}` (sha256+salt+hmac.compare_digest; **POC ONLY** docstring per Day 8I), or `X-Demo-Secret` header for click-Alice frictionless UX (when `DEMO_LOGIN_SECRET` env set). `scripts/start_demo.sh` auto-generates secrets via `openssl rand` on first boot.
+- **Day 8G (Chunk B)**: Fixed C-3 (ACL bypass — `auth.py` had a dead `_cached_body` read for body-bound case_id ACL that never fired; ACL silently passed for JSON POSTs omitting X-Case-Id) by gutting the branch + explicit `authorize_case_access(user, body.case_id)` after Pydantic parse. Fixed H-7 (invariant #4 violated on error path — only success/cache paths wrote audit row) via try/finally on every gateway endpoint. Added `_safe_audit_write` (swallows audit-DB errors so audit failure doesn't mask response). Header-vs-body case_id mismatch → 400 (confused-deputy defence).
+- **Day 8H (Chunk C)**: SecurityHeadersMiddleware (CSP / HSTS / X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy on every response, even 4xx — clickjacking via 404 is still clickjacking). MaxBodySizeMiddleware (rejects > MAX_BODY_BYTES via Content-Length BEFORE Pydantic parse so 1GB attack doesn't burn memory). `extra="forbid"` + Pydantic `Field(..., max_length=N)` on every BaseModel. New `require_roles(*roles)` dependency factory. Role gates: /v1/oa/analyze + /v1/oa/upload + /v1/redact → ATTORNEY + PARALEGAL; /v1/quota → any; /v1/audit/* → AUDITOR. Env-driven CORS (specific methods+headers, no `*`). `LISTEN_HOST=127.0.0.1` default (was 0.0.0.0 — relied on dev firewalls).
+- **Day 8I (post-review fixes)**: Login pre-auth rate limit (per-IP, default 10/min) — closes brute-force window on demo passwords. VITE_DEMO_LOGIN_SECRET loud warning ("dev builds only — vite inlines into JS bundle"). sha256 docstring loud warning ("POC ONLY — switch to argon2id/bcrypt for real user passwords").
+
+### Code review on EVERYTHING (user mandate)
+Each chunk got a dedicated reviewer agent before commit:
+- Phase 1A/B/C (earlier sessions): 3 reviewers
+- Day 1A LLM wiring: reviewer (threadsafe / retry-after / etc.)
+- Day 1B eval harness: reviewer (concurrency / badness comparison / etc.)
+- Compat Refactor 1/2/3: 3 reviewers (Day 8 ran with stale-base mitigation)
+- Security Chunks A+B combined: reviewer (verdict "Ship as-is, 6 Important deferred")
+- Day 8I addresses the 3 highest-impact Important findings; remaining 3 are documented design tradeoffs
+
+## 18. Status snapshot (post Day 8I)
+
+| Metric | Value |
+|---|---|
+| pytest | **120 passed** (1 warning, pre-existing pydantic protected_namespace, silenced for AuditEntry+CostMeta in 8H) |
+| Frontend build | `vite build` 269 → 275 KB (+6KB raw, +1.5KB gz) |
+| Local commits ahead of origin | **22** (still NOT pushed — auth issue from §11 not resolved) |
+| Compat-with-digiRunner+Dify | All Hard Blockers from `docs/COMPAT_AUDIT` resolved (prompts externalized, /v1/redact + /v1/audit/append first-class, upstream-header auth ready). Migration plan ready in §16-17. |
+| Security findings closed | 4/4 Critical (C-1 C-2 C-3 C-4) + 4/8 High (H-1 H-2 H-6 H-7 H-8) + 2/11 Medium (M-1 M-9) |
+| Security findings open | 4/8 High (H-3 H-4 H-5 — chunk D never spawned) + 9/11 Medium + 7/7 Low |
+| UX recommendations shipped | 1/8 must-have (#1 three-pane). 7 must-have + 6 nice-to-have remaining. |
+
+## 19. What you should do when you wake up
+
+### 1. Push to origin (still blocked — §11 has 3 recipes)
+22 commits sit local. Until pushed, lose laptop = lose 1 weekend of work.
+```bash
+# Pick one of:
+git remote set-url origin https://Adrian-Kao:<PAT>@github.com/Adrian-Kao/shin-lee.git && git push
+# OR set up SSH and: git remote set-url origin git@github.com:Adrian-Kao/shin-lee.git && git push
+# OR: gh auth login + git push
+```
+
+### 2. Get the Anthropic API key into `.env`
+Day 8F's `scripts/start_demo.sh` auto-generates JWT_SECRET / INTERNAL_TOKEN /
+DEMO_LOGIN_SECRET on first boot. ANTHROPIC_API_KEY you set manually:
+```bash
+echo "ANTHROPIC_API_KEY=sk-ant-..." >> .env
+bash scripts/start_demo.sh   # auto-detects key → switches LLM_MODE=anthropic
+```
+Then `python scripts/eval_cases.py --mode anthropic` to A/B against the mock baseline. Cost: ~$2-5 for all 30 cases.
+
+### 3. Stakeholder demo dry-run
+§12 presenter notes still valid. Day 8E's three-pane layout changes the visual — re-walk the demo flow once. Mobile fallback works at < 1280px.
+
+### 4. Outstanding security work (if pre-pilot)
+Open findings from `docs/SECURITY_AUDIT.md`:
+- **H-3** (mock embeddings same vector across tenants) — Chunk D scope
+- **H-4** (cross-tenant audit verify missing) — Chunk D scope
+- **H-5** (JWT HS256 single secret, no rotation/revocation) — defer to OIDC migration
+- **M-2..M-8 / M-10..M-11** (assorted: in-memory rate state reset on restart, missing CSP nonces in prod, sqlite check_same_thread, Unicode normalize before redaction, cache key uses raw text, etc.) — none blocking pilot
+- **L-1..L-7** — all defer
+
+### 5. Outstanding UX work (post-demo)
+From `docs/UX_RESEARCH.md` §5, must-have items NOT yet shipped:
+- **#2** Claim dependency tree in left rail (S effort, High impact — backend has the data)
+- **#3** Inline citation hover-preview + click-to-source-pane (S effort, High impact — Q14 data exists)
+- **#4** USPTO underline/strikethrough export from DraftEditor (S effort, High impact)
+- **#5** Cmd/Ctrl+K command palette (M effort — Harvey baseline)
+- **#6** Examiner-style review pre-submit check (S effort)
+- **#7** Shared "Workroom" view (M effort — Lexis+ Workrooms is new bar)
+- **#8** Bilingual UX hardening (S effort — language switcher in header)
+
+## 20. 給接手 Claude 的一句話 (2026-06-01 版 — overnight wrap)
+
+> 22 commits ahead of origin, 120/120 pytests pass, all 4 Critical security findings closed + 4 High + 2 Medium, three-pane UX live, digiRunner+Dify migration unblocked (prompts externalized + /v1/redact + /v1/audit/append + upstream-header auth ready), HANDOFF §16-20 has the complete play-by-play. Push auth still blocks (§11). Priorities when you wake up: (1) push to origin §19.1; (2) ANTHROPIC_API_KEY + real LLM smoke §19.2; (3) demo dry-run §12 (visuals refreshed by 8E); (4) Phase 2 Chunk D (H-3 + H-4 cross-tenant) if time. UX_RESEARCH §5 items #2-#8 are the next sprint after demo.
+
+---
+
+# 2026-06-05 session — Phase 3 migration planning
+
+## 21. Phase 3 migration plan
+
+> User explicitly chose digiRunner + Dify as the production landing stack
+> ("我要使用 digirunner 和 dify"). This session produced planning + artefacts
+> only — no backend or frontend code changed.
+
+- **Comprehensive plan:** [`docs/PHASE3_MIGRATION.md`](docs/PHASE3_MIGRATION.md) — 11 sections covering goals/non-goals, target architecture (3-layer → 5-layer), stays-vs-moves table with file:line evidence, 4-phase rollout (3.1 design + shadow → 3.2 digiRunner front-line → 3.3 cutover → 3.4 cleanup), risk register, open questions for TPIsoftware contact.
+- **Generated Dify workflow artefacts:** [`dify_workflows/`](dify_workflows/)
+  - `analyze_oa.workflow.json` — main orchestrator DAG (replaces `backend/gateway/orchestrator.py`)
+  - `extract_pdf.workflow.json` — PDF/DOCX upload → text (replaces `/v1/oa/upload` path)
+  - `ocr_page.workflow.json` — per-page Vision OCR sub-workflow (refuses confidential)
+  - `prompts_export.md` — paste-ready system prompts + JSON schemas, manual-setup fallback
+- **Generated digiRunner config templates:** [`digirunner/`](digirunner/)
+  - `routes.yaml` — design-intent route definitions + auth + rate-limit + AI policy refs
+  - `oidc.yaml` — OIDC provider template with claim mapping + audit hook forwarding
+  - `ai-gateway-models.yaml` — Anthropic + Ollama provider config, routing rules, cost tracking, confidential-routing rule
+- **Design invariants preserved:** all 8 from `CLAUDE.md §4`. Audit chain stays authoritative in our thin gateway; redaction mapping table stays on-prem; verifier stays as Dify HTTP node calling our `/v1/verify_citations` (Q14 hard wall); confidential routing has three walls (digiRunner AI gateway rule + Dify IF/ELSE branch + our `llm_client.py:556-563` assert).
+- **Next steps:** (1) socialise the plan with TPIsoftware contact — see §10 of PHASE3_MIGRATION.md for the 10 open questions; (2) stand up Dify sandbox + import workflow JSONs; (3) Phase 3.1 shadow mode against 30 synthetic cases via `scripts/eval_cases.py`.
+- **No code changed.** Backend gateway/ai_engine/orchestrator paths untouched. 120 pytests should still pass — no edits to any tested path.
+
+
+# 2026-06-05 to 06-07 session — Day 9 autonomous multi-agent sprint
+
+## 22. Day 9 sprint wrap
+
+> User mandate this session: "盡量使用 token" + "繼續研究如何產品化" + "我覺得
+> 要多研究使用者體驗或設計". Pattern: spawn 4-5 agents in parallel (worktree-
+> isolated), cherry-pick on completion, fall back to file-copy when agents
+> leak to main tree (recurring pattern documented in §22.pattern below).
+
+**9 commits**, pytest **120 → 163 + 1 xfail** (+43), frontend e2e **1 → 50**
++ 6 visual baselines, ~**55k words** new research docs across 8 files.
+
+### Commits
+| Commit | Day | Deliverable | Tests |
+|--------|-----|-------------|-------|
+| `75f4f17` | 9A | UX #2 claim dependency tree (parser + `ClaimTree.jsx` in InputPane) | +13 |
+| `cd56d8a` | 9B | Security Chunk D — tenant isolation (H-3+H-4+M-3+M-6+M-7+M-8) | +14 |
+| `33bb19d` | 9D | Anthropic eval comparison harness | +7 |
+| `6e6fd2c` | 9F | 7 productization + UX research docs (~50k words) | — |
+| `3a85536` | 9G | Test data 30→80 cases + 12 adversarial fixtures | +10 |
+| `663a953` | 9H | `docs/AI_TRANSPARENCY_UX.md` (8th research doc) | — |
+| `fdf9bd8` | 9C | Frontend CHUNK-1 app shell + CHUNK-8 trust band | gzip −14kB |
+| `f5f4749` | 9I | Playwright e2e 1→50 + visual regression baselines + CI | +49 e2e |
+
+(Day 9E ops runbook content was rolled into the 9F multi-doc commit; the
+file is `docs/OPERATIONS_AND_ONBOARDING.md`.)
+
+### Backend hardening highlights (Day 9B, `cd56d8a`)
+- `Embedder.embed_one` / `embed` / `index_patent` / `retrieve` salt mock SHA-256 with `f"{tenant_id}:{text}"` — cross-tenant mock embeddings no longer collide (verified < 1.0 sim).
+- `verify_global_chain()` in `backend/gateway/audit.py` walks rows in **global rowid order** (the original `verify_chain(tenant)` was flawed when tenants interleaved — fixed + documented). `GET /v1/audit/verify?scope=global` is **auditor-only** (IT_ADMIN refused).
+- `_pricing_for(model)` returns `(prices, provenance ∈ {exact, mock, fallback})`. Unknown-model fallback logs WARNING. `cost_provenance` propagates through orchestrator into `cost_meta` (rank: `exact < mock < fallback`, worst-case wins).
+- `masking.redact()` runs **NFKC normalisation BEFORE regex** (fullwidth digits, ligatures, superscripts now caught). Mapping table stores normalised form (one-way, documented).
+- `cache.hash_prompt(prompt, model, redaction_version)` — key now includes `settings.REDACTION_VERSION` (default `"v1"`). `_MemoryCache` rewritten with per-tenant FIFO eviction at `MAX_CACHE_ENTRIES_PER_TENANT` (default 1000).
+- `CLAUDE.md §9 "Don't cache responses cross-user"` now **provably enforced via key derivation**, not just namespacing.
+
+### Frontend shipped (Day 9C, `fdf9bd8`)
+- New `frontend/src/components/AppShell.jsx`: top bar (navy `#1e3a8a`) + trust band + collapsible nav rail.
+- Trust band exposes three previously-invisible differentiators:
+  - Redaction chip (Shield, live count from new `RedactionSummary` model)
+  - Mapping-table chip (Server, tooltip explains on-prem requirement)
+  - Routing chip (Cloud/Lock, switches to purple `Routing: Local LLM (confidential)` for `-CONF` cases)
+- Audit-chain header badge polls `/v1/audit/verify?scope=global` every 60s; clickable → AuditView.
+- AuditView gained hero metric block (rows / mismatches / last-verified, JetBrains Mono).
+- Google Fonts (Inter / Noto Sans TC / JetBrains Mono) via `index.html`.
+- lucide-react replacing all emoji.
+- **Tailwind safelist tightened from 216 → 15 candidates** — caught a 130kB CSS leak. Net gzip −14 kB despite shipping a whole new shell.
+- New `backend/shared/models.py::RedactionSummary` exposed on `AnalysisResponse.redaction_summary`. Populated in `backend/gateway/orchestrator.py`.
+
+### 8 research docs (~55k words, all in `docs/`)
+
+**Productization (~30k)**
+- `MARKET_AND_PRICING.md` (8.1k, 53 URLs) — top-20 TIPO firms, 3 pricing models (recommend Model C: platform + per-OA, 30% on-prem premium), 90-day GTM, 5 named design partners (NAIPO / Jianq Chyun / Top Team / Formosa Transnational / Longriver). **Key insight**: Lawbank v Lawsnote ruling (June 2025) makes "training-data lineage" the TW procurement entry question.
+- `LEGAL_COMPLIANCE.md` (8.7k, 29 URLs) — bilingual disclosure clause (§1.5), 24-month cert pipeline, invariant→clause matrix (ABA 1.6 / ISO 27001 / ISO 42001 / PDPA §27). **Catastrophic risk**: confidential leak to cloud LLM = Mata v Avianca for TW.
+- `OPERATIONS_AND_ONBOARDING.md` (7.3k) — Day 0 due-diligence → 90-day playbook. **3 P0 gaps**: `scripts/import_patents.py` missing (1 eng-day), backup cron unwired (0.5 eng-day), argon2 KDF swap (0.5 eng-day, avoidable if customer picks Path B). **~1.5-2 eng-days** to unblock customer #1.
+- `BUILD_VS_BUY.md` (8.3k, 40+ URLs) — 24 components. TPIsoftware covers 5/24 (digiRunner, digiLism, digiLogs). **Wrong-choice-kills-us**: digiRunner / audit storage / confidential routing. **Surprising partner**: digiLogs for audit archival tier.
+
+**UX / design (~25k)**
+- `UX_PERSONA_JOURNEYS.md` (8.5k) — 5 named personas (陳麗華 partner / 林冠廷 mid-career / Jessica Wang bilingual / 王俊豪 paralegal / Marcus Lin IT). 3 journeys (iPad sign-off / fresh §103 / TW↔US handoff). 10 PatentMind Design Principles. **Riskiest persona**: Marcus Lin (kills tier-1 deals if procurement signals invisible). **Under-invested moment**: scaffold-mode draft with `[ATTORNEY_FILL]` placeholders — converts 林冠廷 from ChatGPT side-tab.
+- `DESIGN_SYSTEM.md` (7.3k) — three-layer tokens (primitives → semantic → component), 20 component anatomy specs, CJK line-height 1.6 / Pangu-space verdict / `radius.brand = 6px`, motion cap 250ms. Audit chip + confidential lock **never invert** in dark mode.
+- `ACCESSIBILITY_AND_I18N.md` (7.6k, ~50 URLs) — WCAG 2.2 AA (Audit + Sign-off AAA), keyboard maps + IME-safe shortcuts, NVDA/JAWS/VO matrix, zh-TW typography (Pangu-space: **NO for drafts, OK for UI labels**), 民國 calendar, iPad review-only mode. **3 a11y lurkers** flagged for review: ClaimTree roving tabindex, hover-only citation preview, Tailwind preflight stripping focus rings.
+- `AI_TRANSPARENCY_UX.md` (4.6k) — 8 citation patterns, multi-signal confidence (**never single 0-1 score**), 5-rung verification ladder, AI-as-junior-associate framing, 6 competitor teardowns, 7 transparency principles. **Do NOT copy**: Solve's single confidence number.
+
+### Test data + harness (Day 9G, `3a85536`)
+- 50 new cases CASE-DEMO-031..080 across 12 TW + US rejection types + edge cases (079 zero rejections, 080 six rejections hostile examiner).
+- 12 adversarial fixtures + 10 hardening tests in `tests/integration/test_adversarial_inputs.py`.
+- `test_zero_width_chars_redacted_around` **xfail-gated on `_ZW_STRIP_LANDED` probe** — flips to XPASS when `re.sub(r'[​-‍﻿]', '', text)` is added BEFORE the NFKC step in `backend/gateway/masking.py`.
+- `scripts/generate_test_data.py` regenerates binary fixtures idempotently.
+- Mock-LLM weaknesses surfaced (documented in `data/cases/README.md`): case 079 falls back to default 103, `§26-1/§26-4/§32` collapse to `other`, multi-rejection claim aggregation mis-attributes across categories, Cyrillic homoglyph yields generic. These are the **regression baseline** for the Anthropic eval (Day 9D).
+
+### Eval pipeline productionised (Day 9D, `33bb19d`)
+- `scripts/eval_cases.py` writes `summary.json` alongside existing `REPORT.md` (additive, byte-identical REPORT).
+- `scripts/eval_compare.py BASELINE CANDIDATE` → `data/eval_compare/<ts-uuid>/COMPARE.md` + `per_case_delta.json`. Tolerant of disjoint case sets + missing summary.json. Cost projection reads canonical `_MODEL_PRICING_USD_PER_M` at compute time (single source of truth).
+- `scripts/anthropic_smoke.py` 4 assertions (auth / prompt caching / pricing / confidential routing). Gated on `ANTHROPIC_API_KEY` — exits 0 with SKIP banner when unset (CI-safe). Distinct exit codes mapped to playbook (3/4/5/6).
+- `docs/EVAL_PLAYBOOK.md` — key-arrival runbook + delta interpretation + troubleshooting.
+
+### Playwright e2e (Day 9I, `f5f4749`)
+- 1 smoke → 5 new spec files + visual regression: `login_flow / analyze_flow / audit_flow / upload_flow / visual_regression / trust_band`.
+- 64 tests = 32 desktop (chromium 1440×900) + 32 mobile (Pixel 5 375×812, Chromium-only). 50 passing + 14 intentional viewport-conditional skips. ~42s wall.
+- 6 visual baselines @ 5% threshold.
+- `frontend/tests/e2e/helpers/mock_backend.js` — shared `page.route()` interceptors + `loginAsAlice` + `DEMO_USERS`.
+- `.github/workflows/ci.yml` `frontend-build` job: playwright cache, artifact upload on failure, PR-comment diff PNG list.
+- Friction: **two `<main>` in DOM** (Analyze.jsx renders mobile + desktop concurrent, toggles via display:none — must scope to visible) — documented in `visibleMain()` helper.
+
+### Pattern lessons (recurring)
+1. **Agents leak to main tree** — 5/9 Day 9 agents wrote directly to `D:\patentmind-poc\` instead of their worktree. Mitigation that worked: `git add` selectively (e.g., `git add docs/` while leaving in-flight `frontend/*` mods unstaged). Always `git status -s` before commit.
+2. **Stale-base worktrees** — Day 9G agent reported "Already up to date" against `ffc4cc3` (pre-9A/9B/9D), giving 120 not 147 baseline. Adding `git merge --no-edit feature/patentmind-poc` to every agent prompt mostly works but isn't bulletproof.
+3. **Cherry-pick of merge commit fails** — when an agent merges feature/patentmind-poc but never commits its file, worktree HEAD is just the merge. `cp worktree/path main/path` is the workhorse.
+4. **Bundle hygiene wins compound** — 9C agent caught a 130kB Tailwind safelist leak that had been bleeding into every page. `PRODUCT_STRATEGY §11` talks palette but never audits bundle — open P0 for next strategy refresh.
+5. **Token-liberal autonomous mode produces breadth** — 9 agents in ~36 hours, ~55k words research + 50 e2e tests + new shell + tenant isolation. Quality holds because each agent gets a tight, citation-required brief.
+
+### Pending after Day 9
+- **4 orphan files** untracked in main: `LICENSE` (Apache 2.0), `NOTICE`, `SECURITY.md`, `CONTRIBUTING.md` + small `README.md` / `pyproject.toml` diffs. Unknown origin (no Day 9 agent claimed). Possibly user-added or earlier session. **Awaiting user decision** to commit or revert.
+- **Push 39 commits to origin** — still blocked on user-side GitHub auth (HANDOFF §11 recipes unchanged).
+- **`anthropic_smoke.py`** ready to run the moment the key arrives. SKIP banner fires currently.
+- **3 P0 build gaps** from `OPERATIONS_AND_ONBOARDING.md`: `scripts/import_patents.py`, backup cron, argon2 swap. ~1.5-2 eng-days for customer #1.
+- **Zero-width strip pre-pass** in `backend/gateway/masking.py` — one-line fix flips `test_zero_width_chars_redacted_around` from xfail to XPASS.
+- **CHUNK-2..12** from `docs/PRODUCT_STRATEGY.md §9` not yet executed (CHUNK-1 + CHUNK-8 shipped Day 9C). Next per strategy: CHUNK-3 (cases list), CHUNK-7 (onboarding tour), CHUNK-2 (dashboard).
+- **Real Anthropic + Dify integration** — Phase 3 plan + workflow JSONs ready; awaiting TPIsoftware contact (HANDOFF §21).

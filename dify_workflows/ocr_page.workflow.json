@@ -1,0 +1,148 @@
+{
+  "_meta": {
+    "purpose": "Vision OCR for ONE scanned PDF page. Called from extract_pdf.workflow.json's iteration node.",
+    "dify_version_required": ">=1.6.0",
+    "replaces": "backend/ai_engine/llm_client.py:AnthropicLLM.vision_ocr",
+    "required_dify_env_vars": [
+      "AI_ENGINE_URL — optional fallback if you want a hybrid (vision LLM via our own client)"
+    ],
+    "required_llm_provider_config": {
+      "anthropic": {
+        "models": ["claude-haiku-4-5-20251001"],
+        "vision_enabled": true
+      }
+    },
+    "notes": [
+      "This workflow is intentionally short so the operator can A/B test vision providers (Claude Vision vs. Tesseract local) without touching extract_pdf.",
+      "The security_level branch is the second wall of CLAUDE.md §4 invariant #7 — even if extract_pdf misses, this workflow STILL refuses to call Vision on confidential bytes.",
+      "When/if Dify ships a first-class vision-LLM node type, replace the HTTP fallback with that."
+    ]
+  },
+  "app": {
+    "name": "PatentMind — Vision OCR (one page)",
+    "description": "Per-page Vision OCR. Confidential pages refused.",
+    "icon": "👁",
+    "icon_background": "#FFF3E0",
+    "mode": "workflow"
+  },
+  "kind": "app",
+  "version": "0.1.0",
+  "workflow": {
+    "features": {
+      "file_upload": {"image": {"enabled": false}},
+      "opening_statement": "",
+      "retriever_resource": {"enabled": false},
+      "sensitive_word_avoidance": {"enabled": false},
+      "speech_to_text": {"enabled": false},
+      "suggested_questions": [],
+      "text_to_speech": {"enabled": false}
+    },
+    "graph": {
+      "nodes": [
+        {
+          "id": "node-start-ocr",
+          "type": "custom",
+          "position": {"x": 50, "y": 300},
+          "data": {
+            "title": "Start",
+            "type": "start",
+            "variables": [
+              {"variable": "page_image_b64", "label": "Base64-encoded page image (PNG/JPEG)", "type": "paragraph", "required": true, "max_length": 20000000},
+              {"variable": "security_level", "label": "Security level (must be public)", "type": "select", "required": true, "options": ["public", "confidential"]}
+            ]
+          }
+        },
+        {
+          "id": "node-conf-block",
+          "type": "custom",
+          "position": {"x": 400, "y": 300},
+          "data": {
+            "title": "Confidential block",
+            "type": "if-else",
+            "desc": "Mirror of llm_client.py:vision_ocr's assert at line 695-700.",
+            "conditions": [
+              {
+                "id": "is-confidential",
+                "logical_operator": "and",
+                "conditions": [
+                  {
+                    "variable_selector": ["node-start-ocr", "security_level"],
+                    "comparison_operator": "is",
+                    "value": "confidential"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "node-refuse-ocr",
+          "type": "custom",
+          "position": {"x": 700, "y": 100},
+          "data": {
+            "title": "Refuse OCR for confidential",
+            "type": "end",
+            "outputs": [
+              {"variable": "text", "value": ""},
+              {"variable": "error", "value": "vision_ocr_blocked_for_confidential_case"}
+            ]
+          }
+        },
+        {
+          "id": "node-vision-llm",
+          "type": "custom",
+          "position": {"x": 700, "y": 400},
+          "data": {
+            "title": "Vision OCR (Claude Haiku)",
+            "type": "llm",
+            "desc": "Haiku is cost-efficient for OCR. System prompt extracts text only, no interpretation.",
+            "model": {
+              "provider": "anthropic",
+              "name": "claude-haiku-4-5-20251001",
+              "mode": "chat",
+              "completion_params": {"temperature": 0.0, "max_tokens": 8000}
+            },
+            "vision": {
+              "enabled": true,
+              "configs": {
+                "detail": "high",
+                "variable_selector": ["node-start-ocr", "page_image_b64"]
+              }
+            },
+            "prompt_template": [
+              {
+                "role": "system",
+                "text": "You are an OCR engine for patent office action documents. Extract ALL visible text from the image, preserving line breaks and reading order. Do not interpret, summarise, or add commentary. Output the raw text only. If a section is illegible, output [illegible] in its place."
+              },
+              {
+                "role": "user",
+                "text": "Extract the text from this page."
+              }
+            ]
+          }
+        },
+        {
+          "id": "node-end-ocr",
+          "type": "custom",
+          "position": {"x": 1050, "y": 400},
+          "data": {
+            "title": "End — OCR result",
+            "type": "end",
+            "outputs": [
+              {"variable": "text", "value_selector": ["node-vision-llm", "text"]},
+              {"variable": "error", "value": ""}
+            ]
+          }
+        }
+      ],
+      "edges": [
+        {"id": "e1", "source": "node-start-ocr", "target": "node-conf-block"},
+        {"id": "e2-true", "source": "node-conf-block", "sourceHandle": "true", "target": "node-refuse-ocr"},
+        {"id": "e2-false", "source": "node-conf-block", "sourceHandle": "false", "target": "node-vision-llm"},
+        {"id": "e3", "source": "node-vision-llm", "target": "node-end-ocr"}
+      ]
+    },
+    "conversation_variables": [],
+    "environment_variables": []
+  }
+}

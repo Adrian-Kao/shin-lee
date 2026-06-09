@@ -1,13 +1,71 @@
+# Compose v2 — no `version:` key. Networks named so future services
+# (Keycloak, OTel collector, Grafana, …) can join `patentmind-net`.
 services:
   qdrant:
     image: qdrant/qdrant:v1.12.4
     container_name: patentmind-qdrant
     ports:
-      - "6333:6333"   # REST
-      - "6334:6334"   # gRPC
+      # Bind to loopback only — POC has no auth on Qdrant; LAN exposure unsafe.
+      - "127.0.0.1:6333:6333"   # REST
+      - "127.0.0.1:6334:6334"   # gRPC
     volumes:
       - qdrant_storage:/qdrant/storage
+    networks:
+      - patentmind-net
+    # No container healthcheck: the official qdrant/qdrant image is distroless
+    # (no bash, no curl, no wget, no /dev/tcp). Any in-container probe would
+    # report `unhealthy` forever. scripts/check_docker.sh probes /healthz from
+    # the host instead, which is the canonical readiness signal.
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: patentmind-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-patentmind}
+      POSTGRES_USER: ${POSTGRES_USER:-patentmind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-patentmind}
+    ports:
+      # Loopback only — credentials are dev defaults; not safe on LAN.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - patentmind-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-patentmind} -d ${POSTGRES_DB:-patentmind}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: patentmind-redis
+    # No auth — dev only. In prod, set --requirepass and pass REDIS_URL with password.
+    # maxmemory 256mb + LRU eviction prevents a runaway test eating host RAM.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      # Loopback only — Redis is unauthenticated; LAN exposure is RCE-grade bad.
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - patentmind-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
 
 volumes:
   qdrant_storage:
+  postgres_data:
+  redis_data:
+
+networks:
+  patentmind-net:
+    driver: bridge

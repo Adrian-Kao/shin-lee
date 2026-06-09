@@ -1,0 +1,17 @@
+經濟部智慧財產局
+審查意見通知函
+
+聯絡人：陳暉文
+
+申復人代理人 email (NFD decomposed): ale&#769;xis-patent@e&#769;xample-ip.com
+申復人代理人 email (NFC normalized): aléxis-patent@éxample-ip.com
+
+The first email uses Unicode NFD (decomposed) form where 'é' is encoded
+as 'e' (U+0065) + COMBINING ACUTE ACCENT (U+0301). The current email
+redaction regex `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}` does
+NOT match because:
+  - 'é' has a combining character that breaks [a-zA-Z]+
+  - Even after NFC composition, é (U+00E9) is not in [a-zA-Z]
+A correct redactor should normalize NFKC + use Unicode-aware classes.
+
+本案請求項 1 因不符 專利法第26條第2項 而駁回。

@@ -169,15 +169,70 @@ DEMO_PATENTS = [
         "is_local": False,
         "spec_text": "FIELD: wireless power transfer.\nBACKGROUND: misalignment reduces efficiency.",
     },
+    # CN prior-art reference cited by sample_oa_cn.txt (对比文件1).
+    {
+        "tenant_id": "tenant_b",
+        "patent_no": "CN101234567",
+        "title": "电动车充电站负载管理方法",
+        "abstract": (
+            "一种电动车充电站的负载管理方法，服务器依据各充电站的装置资料动态"
+            "调整可供电功率，以在充电负载集中时避免超过场域契约容量。"
+        ),
+        "claims": [
+            "一种电动车充电站的负载管理方法，包括：服务器执行能源管理方案，"
+            "取得第一充电站的装置资料，并据以确定可变动的参考值；以及当充电资料"
+            "超过参考值时停止对该第一充电站执行负载管理作业。",
+        ],
+        "publication_date": "2017-03-08T00:00:00+00:00",
+        "jurisdiction": "CN",
+        "is_local": False,
+        "spec_text": (
+            "技术领域\n本发明涉及电动车充电站的能源与负载管理技术。\n\n"
+            "背景技术\n现有充电场域多采固定上限分配电力，负载集中时易超过契约容量。\n"
+        ),
+    },
+    # KR prior-art reference cited by sample_oa_kr.txt (인용발명 1).
+    {
+        "tenant_id": "tenant_b",
+        "patent_no": "KR1020210012345",
+        "title": "전기차 충전소 부하관리 방법",
+        "abstract": (
+            "전기차 충전소의 부하관리 방법으로서, 서버가 각 충전소의 장치 데이터에"
+            "기초하여 가변적인 기준값을 결정하고 충전 데이터가 기준값을 초과하면"
+            "해당 충전소에 대한 부하관리 작업을 중지한다."
+        ),
+        "claims": [
+            "전기차 충전소의 부하관리 방법으로서, 서버가 에너지 관리 방안을 실행하여"
+            "제1 충전소의 장치 데이터를 취득하고 이에 기초하여 가변적인 기준값을"
+            "결정하는 단계; 및 충전 데이터가 상기 기준값을 초과하면 상기 제1 충전소에"
+            "대한 부하관리 작업을 중지하는 단계를 포함하는, 부하관리 방법.",
+        ],
+        "publication_date": "2018-11-20T00:00:00+00:00",
+        "jurisdiction": "KR",
+        "is_local": False,
+        "spec_text": (
+            "기술분야\n본 발명은 전기차 충전소의 에너지 및 부하관리 기술에 관한 것이다.\n\n"
+            "배경기술\n기존 충전장은 고정 상한으로 전력을 분배하여 부하 집중 시 계약용량을 초과한다.\n"
+        ),
+    },
 ]
 
 
 def main():
     url = f"{settings.AI_ENGINE_URL}/v1/index/patent"
+    # AI Engine requires a matching X-Internal-Token whenever INTERNAL_TOKEN
+    # is configured (main.py middleware). Send it so seeding works against a
+    # secured engine; empty token (local-dev/pytest mock) sends no header,
+    # matching the engine's "empty + mock = permit" rule.
+    headers = (
+        {"X-Internal-Token": settings.INTERNAL_TOKEN}
+        if settings.INTERNAL_TOKEN
+        else {}
+    )
     print(f"Seeding patents → {url}")
     with httpx.Client(timeout=30.0) as client:
         for p in DEMO_PATENTS:
-            r = client.post(url, json=p)
+            r = client.post(url, json=p, headers=headers)
             if r.status_code != 200:
                 print(f"  ✗ {p['patent_no']}: HTTP {r.status_code} {r.text}")
                 sys.exit(1)

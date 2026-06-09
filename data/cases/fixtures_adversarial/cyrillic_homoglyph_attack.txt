@@ -1,0 +1,17 @@
+USPTO Office Action
+
+Сlaims 1-3 are rejected under 35 U.S.С. § 103 as being unpatentable over
+US10876543 in view of EP3654321.
+
+Note: the first character of "Сlaims" is Cyrillic Capital С (U+0421),
+not Latin Capital C (U+0043). The "С" in "U.S.С." is the same trick.
+A naive keyword scanner looking for "Claims" or "U.S.C." will skip
+this whole block as if it were unrelated text.
+
+Element-by-element mapping shows that US10876543 discloses each and
+every element of the rejected сlaims (also Cyrillic "с"). One of
+ordinary skill in the art at the time the application was effectively
+filed would have found the combination obvious.
+
+申請人地址：123 Маin Street, Anytown (the "М" is U+041C Cyrillic)
+applicant email: jоhn@apex-ip.com (the "о" is U+043E Cyrillic)

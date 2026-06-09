@@ -363,5 +363,125 @@ class AuditWriter:
             "by_tenant": by_tenant,
         }
 
+    # ------------------------------------------------------------------
+    # Cross-tenant verification helper (CLAUDE.md §7 pitfall #4).
+    #
+    # ``verify_chain`` walks ONE tenant. ``verify_global_chain`` walks the
+    # whole table in rowid order. Neither answers the specific auditor
+    # question "are tenant A and tenant B each internally well-formed, and
+    # is there any structural anomaly that ONLY shows up when you compare
+    # two tenants side by side?" — e.g. a row of tenant B whose row_hash
+    # collides with a tenant A row (a sign of a copy-paste injection), or a
+    # tenant present in the data that the caller did not expect.
+    #
+    # ``verify_cross_tenant`` is that purpose-built helper. It is additive:
+    # it does NOT replace the other two. It runs the authoritative global
+    # walk once (so the hash chain is reconstructed faithfully — the global
+    # chain spans tenants), then layers cross-tenant–only assertions on top.
+    # ------------------------------------------------------------------
+    def verify_cross_tenant(self, tenant_ids: Optional[list[str]] = None) -> dict:
+        """Verify two-or-more tenants' chains side by side.
+
+        Runs the global walk (authoritative for the spanning hash chain),
+        then surfaces anomalies that are only visible when comparing tenants:
+
+        1. **Per-tenant integrity** — each requested tenant's rows must all
+           verify under the global walk (no broken rows attributed to it).
+        2. **row_hash uniqueness across tenants** — a ``row_hash`` value that
+           appears under two *different* tenant_ids is flagged
+           ``cross_tenant_hash_collision``. Because the chain hash commits to
+           ``tenant``, an honest writer can never mint the same ``row_hash``
+           for two tenants; a collision means a row was copied across tenant
+           boundaries (injection) or the chain was forged.
+        3. **Expected-tenant set** — when ``tenant_ids`` is given, any tenant
+           found in the data but NOT requested is reported under
+           ``unexpected_tenants`` (the auditor asked about A and B but the
+           table also holds C — worth knowing). Conversely a requested tenant
+           with zero rows is reported under ``missing_tenants``.
+
+        Args:
+            tenant_ids: the tenants the auditor expects/cares about. When
+                ``None``, every tenant present is verified and the
+                expected-set checks are skipped.
+
+        Returns::
+
+            {
+              "ok": bool,                       # no anomalies at all
+              "tenants_verified": [tenant_id, ...],
+              "per_tenant": {tid: {"verified": int, "broken": [audit_id,...]}},
+              "anomalies": [ {type, ...}, ... ],
+              "global_verified": int,           # passthrough from global walk
+              "global_broken": [(tid, audit_id), ...],
+            }
+        """
+        global_result = self.verify_global_chain()
+        by_tenant = global_result["by_tenant"]
+        global_broken = global_result["broken"]
+
+        anomalies: list[dict] = []
+
+        # Determine the tenant universe we report on.
+        present_tenants = set(by_tenant.keys())
+        if tenant_ids is None:
+            target = sorted(present_tenants)
+        else:
+            target = list(tenant_ids)
+            requested = set(tenant_ids)
+            # Tenants present in the data but the auditor didn't ask about.
+            for tid in sorted(present_tenants - requested):
+                anomalies.append({"type": "unexpected_tenant", "tenant_id": tid})
+            # Tenants asked about but with no rows at all.
+            for tid in sorted(requested - present_tenants):
+                anomalies.append({"type": "missing_tenant", "tenant_id": tid})
+
+        # (1) Per-tenant integrity: any broken row in a target tenant is an
+        # anomaly attributed to that tenant.
+        per_tenant: dict[str, dict] = {}
+        for tid in target:
+            rep = by_tenant.get(tid, {"verified": 0, "broken": []})
+            per_tenant[tid] = {
+                "verified": rep.get("verified", 0),
+                "broken": list(rep.get("broken", [])),
+            }
+            for aid in rep.get("broken", []):
+                anomalies.append(
+                    {"type": "tenant_chain_break", "tenant_id": tid, "audit_id": aid}
+                )
+            if rep.get("unknown_tenant"):
+                anomalies.append({"type": "unknown_tenant", "tenant_id": tid})
+
+        # (2) row_hash uniqueness across tenants. Build (row_hash ->
+        # {tenant_id, ...}) over ALL rows and flag any hash seen under >1
+        # tenant. We scan the table directly rather than re-walking so this is
+        # O(rows) regardless of how many tenants were requested.
+        cur = self._conn.execute(
+            "SELECT row_hash, tenant_id, audit_id FROM audit ORDER BY rowid ASC"
+        )
+        hash_owners: dict[str, set[str]] = {}
+        hash_to_audit_ids: dict[str, list[tuple[str, str]]] = {}
+        for row_hash, tid, audit_id in cur.fetchall():
+            hash_owners.setdefault(row_hash, set()).add(tid)
+            hash_to_audit_ids.setdefault(row_hash, []).append((tid, audit_id))
+        for row_hash, owners in hash_owners.items():
+            if len(owners) > 1:
+                anomalies.append(
+                    {
+                        "type": "cross_tenant_hash_collision",
+                        "row_hash": row_hash,
+                        "tenants": sorted(owners),
+                        "rows": hash_to_audit_ids[row_hash],
+                    }
+                )
+
+        return {
+            "ok": not anomalies and not global_broken,
+            "tenants_verified": target,
+            "per_tenant": per_tenant,
+            "anomalies": anomalies,
+            "global_verified": global_result["verified"],
+            "global_broken": global_broken,
+        }
+
 
 writer = AuditWriter()

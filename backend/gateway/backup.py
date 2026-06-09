@@ -155,7 +155,7 @@ def _timestamp_id(now_iso: Optional[str]) -> tuple[str, str]:
     return backup_id, created_at
 
 
-def snapshot(now_iso: Optional[str] = None) -> dict:
+def snapshot(now_iso: Optional[str] = None, prune_keep: Optional[int] = None) -> dict:
     """Back up every stateful store into a timestamped backup set.
 
     Stores captured:
@@ -170,6 +170,12 @@ def snapshot(now_iso: Optional[str] = None) -> dict:
     relative path, size, sha256 — plus ``backup_id``, ``created_at``, and the
     schema/version note. Returns the manifest dict (with an absolute
     ``backup_path``).
+
+    When ``prune_keep`` is not None, retention pruning runs AFTER the new
+    snapshot is durably written (so the fresh set always survives its own
+    prune): all but the ``prune_keep`` most-recent sets are deleted and the
+    result is surfaced under ``out["prune"]``. This mirrors the production cron
+    "snapshot then sweep" cadence — keep it None to snapshot without pruning.
     """
     backup_id, created_at = _timestamp_id(now_iso)
     dest_root = _backup_dir() / backup_id
@@ -236,7 +242,82 @@ def snapshot(now_iso: Optional[str] = None) -> dict:
     out = dict(manifest)
     out["backup_path"] = str(dest_root)
     out["file_count"] = len(files)
+
+    # Retention: snapshot-then-sweep. Runs only when the caller opted in; the
+    # just-written set is the newest, so it always survives its own prune
+    # (keep >= 1). keep == 0 would delete everything including this snapshot —
+    # we treat that as a no-op here to avoid a surprising self-delete; an
+    # operator who really wants to clear all backups calls prune(0) directly.
+    if prune_keep is not None and prune_keep >= 1:
+        out["prune"] = prune(prune_keep)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Retention pruning (keep the N most-recent backup sets).
+# ---------------------------------------------------------------------------
+def _is_backup_set(path: Path) -> bool:
+    """A directory is a backup set iff it holds a manifest.json."""
+    return path.is_dir() and (path / _MANIFEST_FILENAME).exists()
+
+
+def list_backups() -> list[str]:
+    """Return all backup ids present under ``BACKUP_DIR``, oldest → newest.
+
+    The backup_id is the lexically-sortable ``YYYYmmddTHHMMSS`` timestamp, so a
+    plain ``sorted()`` is chronological. Only directories that actually contain a
+    manifest are counted — a half-written / interrupted snapshot dir is ignored.
+    """
+    root = _backup_dir()
+    if not root.exists():
+        return []
+    return sorted(p.name for p in root.iterdir() if _is_backup_set(p))
+
+
+def prune(keep: int) -> dict:
+    """Delete all but the ``keep`` most-recent backup sets (retention policy).
+
+    Production Q20 retention is 7 years of hourly logical backups offsite; this
+    is the local POC of the prune half of that cron: keep the N newest sets,
+    delete the rest. The newest are determined by the lexically-sortable
+    backup_id (timestamp), so this is robust without reading every manifest.
+
+    ``keep`` must be >= 0. ``keep=0`` deletes every backup (used by an operator
+    explicitly clearing a backup target; the CLI requires it to be passed
+    deliberately). Returns ``{kept, pruned, pruned_ids, remaining_ids}``.
+
+    A delete failure on one set (e.g. a file locked on Windows) is recorded but
+    does NOT abort the prune of the others — retention is best-effort sweeping,
+    not a transaction.
+    """
+    if keep < 0:
+        raise ValueError("keep must be >= 0")
+    all_ids = list_backups()  # oldest → newest
+    if keep == 0:
+        to_delete = list(all_ids)
+        survivors = []
+    else:
+        to_delete = all_ids[:-keep] if len(all_ids) > keep else []
+        survivors = all_ids[-keep:] if keep else []
+
+    pruned_ids: list[str] = []
+    errors: list[dict[str, str]] = []
+    root = _backup_dir()
+    for bid in to_delete:
+        target = root / bid
+        try:
+            shutil.rmtree(target)
+            pruned_ids.append(bid)
+        except OSError as exc:  # pragma: no cover — platform-specific lock case
+            errors.append({"backup_id": bid, "error": str(exc)})
+
+    return {
+        "kept": len(survivors),
+        "pruned": len(pruned_ids),
+        "pruned_ids": pruned_ids,
+        "remaining_ids": list_backups(),
+        "errors": errors,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +617,23 @@ def _main(argv: list[str]) -> int:
 
     cmd = argv[1] if len(argv) > 1 else "drill"
     if cmd == "snapshot":
-        result = snapshot()
+        # Optional retention: `snapshot --keep N` snapshots then sweeps.
+        keep: Optional[int] = None
+        if "--keep" in argv:
+            i = argv.index("--keep")
+            if i + 1 < len(argv):
+                keep = int(argv[i + 1])
+        result = snapshot(prune_keep=keep)
+    elif cmd == "prune":
+        if len(argv) < 3:
+            print(
+                "usage: python -m backend.gateway.backup prune <keep_n>",
+                file=sys.stderr,
+            )
+            return 2
+        result = prune(int(argv[2]))
+    elif cmd == "list":
+        result = {"backups": list_backups()}
     elif cmd == "restore":
         if len(argv) < 4:
             print(
@@ -559,7 +656,8 @@ def _main(argv: list[str]) -> int:
     else:
         print(
             f"unknown command {cmd!r}. usage: python -m backend.gateway.backup "
-            f"snapshot|restore <id> <dir>|drill|erase <user_id>",
+            f"snapshot [--keep N]|list|prune <keep_n>|restore <id> <dir>|"
+            f"drill|erase <user_id> [--dry-run]",
             file=sys.stderr,
         )
         return 2

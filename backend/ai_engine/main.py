@@ -20,18 +20,25 @@ from typing import Any, Optional
 
 import base64
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from backend.ai_engine import deadline as deadline_mod
 from backend.ai_engine import oa_analyzer, pdf_parser, rag
 from backend.ai_engine.prompt_loader import list_intents, load_prompt
+from backend.shared import metrics
 from backend.shared.config import settings
 from backend.shared.models import Rejection, RetrievalHit
-from backend.shared.observability import init_sentry
+from backend.shared.observability import (
+    REQUEST_ID_HEADER,
+    bind_request_id,
+    configure_logging,
+    init_sentry,
+)
 
 # Day 5: init Sentry before FastAPI() so import-time exceptions are caught.
+configure_logging("ai_engine")  # Q19: structured JSON logs + request-id binding
 _SENTRY_ACTIVE = init_sentry("ai_engine")
 
 
@@ -76,9 +83,17 @@ app = FastAPI(
 #     either generate a token (`openssl rand -hex 32`) or explicitly stay
 #     on mock.
 # ---------------------------------------------------------------------------
+# Paths reachable without the internal token: liveness (`/v1/health`) and the
+# Prometheus scrape target (`/metrics`). A Prometheus job can't mint the
+# server-side internal token, so /metrics is network-gated in prod (bind to an
+# internal listener / scrape-credential at the proxy), exactly like the
+# gateway's /metrics — see that endpoint's SECURITY NOTE.
+_TOKEN_EXEMPT_PATHS = frozenset({"/v1/health", "/metrics"})
+
+
 @app.middleware("http")
 async def _internal_token_middleware(request: Request, call_next):
-    if request.url.path == "/v1/health":
+    if request.url.path in _TOKEN_EXEMPT_PATHS:
         return await call_next(request)
     expected = settings.INTERNAL_TOKEN
     if not expected and settings.LLM_MODE == "mock":
@@ -96,6 +111,44 @@ async def _internal_token_middleware(request: Request, call_next):
             content={"detail": "Unauthorized"},
         )
     return await call_next(request)
+
+
+# ---------------------------------------------------------------------------
+# Q19 — correlation id + request-duration metrics middleware.
+#
+# Registered AFTER the internal-token middleware, so in Starlette's reverse
+# execution order it wraps it: the request id is bound at the OUTERMOST layer
+# and is therefore present even on the 401 the token middleware returns. The
+# gateway propagates X-Request-ID on its outbound call (see
+# observability.request_id_headers); we read it back here and bind it so this
+# service's JSON log lines carry the SAME id as the gateway's — one request,
+# one trace id, both services.
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def _observability_middleware(request: Request, call_next):
+    rid = bind_request_id(request.headers.get(REQUEST_ID_HEADER))
+    started = time.monotonic()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        elapsed = time.monotonic() - started
+        # Use the route TEMPLATE (e.g. /v1/prompts/{intent}) not the concrete
+        # path, so a high-cardinality path param can't explode the label set.
+        route = request.scope.get("route")
+        endpoint = getattr(route, "path", None) or request.url.path
+        metrics.HTTP_REQUEST_DURATION.observe(
+            elapsed,
+            {"endpoint": endpoint, "method": request.method, "status": str(status_code)},
+        )
+        # Echo the correlation id so a caller / proxy can stitch the trace. The
+        # `response` local may be unset if call_next raised — guard for that.
+        try:
+            response.headers[REQUEST_ID_HEADER] = rid  # type: ignore[name-defined]
+        except (NameError, AttributeError):
+            pass
 
 
 # ---------- Schemas ----------
@@ -166,6 +219,22 @@ def health():
     return {"ok": True, "service": "ai_engine", "rag_stats": rag.stats()}
 
 
+@app.get("/metrics")
+def metrics_endpoint():
+    """Prometheus scrape target for the AI Engine (Q19).
+
+    Same in-process exposition format (v0.0.4) as the gateway's /metrics, from
+    this process's own registry: per-route request latency (recorded by the
+    observability middleware) plus LLM token throughput / route mix / errors fed
+    from the inference endpoints via ``metrics.record_llm_usage``. Left ungated
+    for the same reason as the gateway endpoint (network-restricted in prod).
+    """
+    return Response(
+        content=metrics.render_prometheus(),
+        media_type=metrics.content_type(),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Prompt introspection (intra-VPC ONLY — see CLAUDE.md §1 / §6).
 #
@@ -213,6 +282,7 @@ def parse_oa(req: ParseOARequest):
         oa_text=req.oa_text,
         rejections=rejections,
     )
+    metrics.record_llm_usage(meta)  # Q19 cost/route/token metrics
     return {"oa": oa_doc.model_dump(mode="json"), **meta}
 
 
@@ -237,6 +307,7 @@ def draft_response_endpoint(req: DraftRequest):
     draft, meta = oa_analyzer.draft_response(
         rej, grounded, req.user_hint, req.security_level, circuit_open=req.circuit_open
     )
+    metrics.record_llm_usage(meta)  # Q19 cost/route/token metrics
     return {"draft": draft.model_dump(mode="json"), **meta}
 
 
@@ -246,6 +317,7 @@ def verify_citations_endpoint(req: VerifyRequest):
     draft = DraftResponse(**req.draft)
     grounded = [RetrievalHit(**g) for g in req.grounded_set]
     result, meta = oa_analyzer.verify_citations(draft, grounded)
+    metrics.record_llm_usage(meta)  # Q19 cost/route/token metrics
     return {**result, **meta}
 
 

@@ -397,6 +397,26 @@ LLM_COST_USD = REGISTRY.register(
         labels=("tenant", "model"),
     )
 )
+# LLM token throughput, split prompt/completion, per model. Bounded cardinality:
+# `model` is a small fixed router set; `kind` is two values. No tenant label
+# here (would multiply the series by every tenant) — tenant spend lives on the
+# cost gauge/counter where USD matters more than raw tokens.
+LLM_TOKENS = REGISTRY.register(
+    Counter(
+        "llm_tokens_total",
+        "Total LLM tokens processed, split by kind (prompt|completion) and model.",
+        labels=("model", "kind"),
+    )
+)
+# Which model the Q15 router actually picked for a call. Lets the dashboard chart
+# the local↔cloud↔cheap split (confidential routing, cost degrade, canary).
+LLM_ROUTE = REGISTRY.register(
+    Counter(
+        "llm_route_total",
+        "Count of LLM calls per model the router selected (Q15 routing mix).",
+        labels=("model",),
+    )
+)
 
 # 業務 (business)
 OA_ANALYZED = REGISTRY.register(
@@ -456,6 +476,53 @@ def observe(name: str, value: float, labels: Optional[Dict[str, str]] = None) ->
     metric = REGISTRY.get(name)
     if isinstance(metric, Histogram):
         metric.observe(value, labels)
+
+
+def record_llm_usage(meta: Optional[Dict[str, object]]) -> None:
+    """Fold an AI-Engine endpoint's ``meta``/``usage`` dict into the LLM metrics.
+
+    Accepts the loosely-typed dict the single-step inference endpoints already
+    return (``model_used`` + token counts under either the meta root or a nested
+    ``usage`` block). Records tokens (prompt+completion), the route taken, and —
+    when the meta surfaces an error flag — an LLM error. Every field is optional
+    and defensively coerced so a malformed/absent meta is a silent no-op rather
+    than a 500 inside a request handler.
+
+    Cardinality guard: ``model`` is coerced to a string and capped so a
+    surprising value (None / huge string) can't explode the series count.
+    """
+    if not isinstance(meta, dict):
+        return
+    model_raw = meta.get("model_used") or meta.get("model")
+    model = (str(model_raw) if model_raw else "unknown")[:64]
+
+    usage = meta.get("usage")
+    if isinstance(usage, dict):
+        prompt = usage.get("prompt_tokens", meta.get("prompt_tokens", 0))
+        completion = usage.get("completion_tokens", meta.get("completion_tokens", 0))
+    else:
+        prompt = meta.get("prompt_tokens", 0)
+        completion = meta.get("completion_tokens", 0)
+
+    try:
+        prompt_n = float(prompt or 0)
+        completion_n = float(completion or 0)
+    except (TypeError, ValueError):
+        prompt_n = completion_n = 0.0
+
+    # Only count a route/token call when the model actually did inference
+    # (non-zero tokens) OR the meta explicitly names a model — avoids inflating
+    # the route counter on the pure-lookup endpoints (retrieve / claim_tree) that
+    # return model_used=None and zero tokens.
+    if model_raw:
+        LLM_ROUTE.inc({"model": model})
+    if prompt_n:
+        LLM_TOKENS.inc({"model": model, "kind": "prompt"}, prompt_n)
+    if completion_n:
+        LLM_TOKENS.inc({"model": model, "kind": "completion"}, completion_n)
+
+    if meta.get("llm_error"):
+        LLM_ERRORS.inc({"model": model})
 
 
 # ---------------------------------------------------------------------------

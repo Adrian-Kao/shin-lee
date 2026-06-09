@@ -48,7 +48,16 @@ from backend.shared.models import (
     UserRole,
 )
 from backend.shared import metrics
-from backend.shared.observability import init_sentry
+from backend.shared.observability import (
+    REQUEST_ID_HEADER,
+    bind_request_id,
+    configure_logging,
+    init_sentry,
+    request_id_headers,
+)
+
+# Q19: structured JSON logs + request-id binding, configured before FastAPI().
+configure_logging("gateway")
 
 logger = logging.getLogger(__name__)
 
@@ -248,6 +257,31 @@ async def security_headers_middleware(request: Request, call_next):
         # specific header for a one-off (e.g. an iframe-friendly preview
         # page in the future). Today no handler overrides any of these.
         response.headers.setdefault(header, value)
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Q19 — correlation / request-id middleware (the END-TO-END trace anchor).
+#
+# Registered LAST among the @app.middleware decorators, so in Starlette's
+# reverse execution order it is the OUTERMOST layer: the request id is bound
+# before any other middleware or handler runs (so even a 413 from the
+# max-body-size middleware is logged WITH the id) and echoed on every response
+# (including 4xx/5xx error responses).
+#
+# Inbound: accept an upstream-supplied X-Request-ID (digiRunner / reverse proxy
+# can set it) or mint a fresh one. The bound id is read by the JSON log filter
+# (observability.RequestIdLogFilter) so every gateway log line carries it, and
+# propagated onto the gateway→ai_engine call via request_id_headers (see the
+# upload endpoint; the orchestrator needs the same one-liner — tracked as a
+# cross-file follow-up). The ai_engine binds the SAME id, so one request is
+# traceable across both services' logs.
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    rid = bind_request_id(request.headers.get(REQUEST_ID_HEADER))
+    response = await call_next(request)
+    response.headers[REQUEST_ID_HEADER] = rid
     return response
 
 
@@ -995,7 +1029,15 @@ async def upload_oa(
             try:
                 # Security Chunk A — C-2. AI Engine refuses requests lacking
                 # X-Internal-Token. Gateway is the only legitimate caller.
-                ai_resp = await client.post(ai_url, json=payload, headers=_internal_headers())
+                # Q19: propagate the correlation id (request_id_headers merges it
+                # onto the internal-token headers) so the AI Engine binds the
+                # SAME X-Request-ID and the upload is traceable across both
+                # services' logs end to end.
+                ai_resp = await client.post(
+                    ai_url,
+                    json=payload,
+                    headers=request_id_headers(_internal_headers()),
+                )
             except httpx.HTTPError as exc:
                 raise HTTPException(
                     status.HTTP_502_BAD_GATEWAY,

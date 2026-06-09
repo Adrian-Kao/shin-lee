@@ -301,6 +301,26 @@ class Settings:
     # served input.
     REDACTION_VERSION: str = os.getenv("REDACTION_VERSION", "v1")
 
+    # -----------------------------------------------------------------------
+    # Agent D — Q19 observability + Q20 DR/backup retention.
+    # -----------------------------------------------------------------------
+    # Structured logging (observability.configure_logging): "json" (default,
+    # for log shippers) or "text" (human-readable dev). LOG_LEVEL gates verbosity.
+    LOG_FORMAT: str = os.getenv("LOG_FORMAT", "json")
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    # Q20 retention: how many most-recent backup sets to keep when an operator
+    # runs `python -m backend.gateway.backup snapshot --keep N` (or wires the
+    # equivalent cron). Default 168 == one week of hourly snapshots; production
+    # streams WAL + keeps 7yr offsite (see ops/DR_RUNBOOK.md). Pruning is opt-in
+    # so a bare `snapshot` never deletes anything by surprise.
+    BACKUP_RETENTION_KEEP: int = int(os.getenv("BACKUP_RETENTION_KEEP", "168"))
+    # Opt-in to the official prometheus_client lib instead of the hand-rolled
+    # registry (multiprocess / pushgateway features). Mirrored here for
+    # discoverability; metrics.py reads the env var directly at import time.
+    METRICS_USE_PROMETHEUS_CLIENT: bool = os.getenv(
+        "METRICS_USE_PROMETHEUS_CLIENT", ""
+    ).strip().lower() in ("1", "true", "yes")
+
 
 settings = Settings()
 

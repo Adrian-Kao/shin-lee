@@ -66,7 +66,132 @@ class MaskRule:
     description: str
 
 
+# ---------------------------------------------------------------------------
+# Unicode pre-normalisation: zero-width strip + homoglyph/confusable folding
+# (Agent A — Day 12A hardening of the M-6 Unicode-bypass defence)
+# ---------------------------------------------------------------------------
+#
+# The threat model: an attacker (or a sloppy Word export) interleaves invisible
+# code points or substitutes look-alike characters into PII so the ASCII-anchored
+# regex inventory in PII_RULES never matches. Two distinct evasion classes:
+#
+#   1. ZERO-WIDTH / invisible code points splitting a token, e.g.
+#        ``09<U+200B>12-345-678``  → phone_tw never matches the broken digit run.
+#      NFKC does NOT remove these (U+200B is not a compatibility decomposition),
+#      so they MUST be stripped in a separate pre-pass BEFORE NFKC.
+#
+#   2. HOMOGLYPH / confusable substitution, e.g.
+#        ``jоhn@apex-ip.com`` where ``о`` is Cyrillic U+043E, not Latin ``o`` →
+#      the email local-part class ``[a-zA-Z0-9._%+-]`` rejects the Cyrillic
+#      letter and the address is only partially (or not) redacted. NFKC does NOT
+#      fold cross-script confusables (they are distinct characters, not
+#      compatibility variants), so we apply an explicit confusables map.
+#
+# Ordering is load-bearing:  strip_zero_width → fold_confusables → NFKC.
+# (Confusable folding before NFKC so the folded ASCII then survives NFKC; NFKC
+#  last so fullwidth/ligature compatibility variants still collapse.)
+
+# Invisible / zero-width / bidi-control code points to delete outright. NFKC
+# does NOT remove these, so this is a mandatory separate pre-pass:
+#   U+00AD SOFT HYPHEN            U+180E MONGOLIAN VOWEL SEPARATOR
+#   U+200B ZERO WIDTH SPACE       U+200C ZERO WIDTH NON-JOINER
+#   U+200D ZERO WIDTH JOINER      U+200E/200F LEFT/RIGHT-TO-LEFT MARK
+#   U+202A-202E bidi embed/override   U+2060 WORD JOINER
+#   U+2061-2064 invisible math ops    U+FEFF ZWNBSP / BOM
+_ZERO_WIDTH_RE = re.compile(
+    "[­᠎​‌‍‎‏"
+    "‪‫‬‭‮"
+    "⁠⁡⁢⁣⁤﻿]"
+)
+
+
+def strip_zero_width(text: str) -> str:
+    """Delete zero-width / invisible / bidi-control code points.
+
+    Run BEFORE NFKC and confusable folding so a PII token split by invisible
+    characters (``09<U+200B>12...``) is rejoined into a matchable run. NFKC does
+    not remove these, so this is a mandatory separate pre-pass.
+    """
+    return _ZERO_WIDTH_RE.sub("", text)
+
+
+# Homoglyph / confusables fold map. Deliberately SCOPED to characters that
+# confuse the ASCII alphabet + digits the PII rules rely on (Latin a-z / A-Z /
+# 0-9 and the email punctuation ``@ . -``). We do NOT attempt a full Unicode
+# confusables table — that risks corrupting legitimate CJK / accented prose. The
+# entries are the high-frequency Cyrillic + Greek look-alikes plus a few
+# confusable punctuation marks. Folding maps to the canonical ASCII so the
+# existing regexes fire and the placeholder maps back to ASCII (consistent with
+# the already-documented NFKC lossy round-trip).
+_CONFUSABLE_MAP: dict[str, str] = {
+    # --- Cyrillic capitals that look like Latin capitals ---
+    "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
+    "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
+    "Х": "X", "І": "I", "Ј": "J", "Ѕ": "S", "Ї": "I",
+    "Ү": "Y",
+    # --- Cyrillic smalls that look like Latin smalls ---
+    "а": "a", "в": "v", "с": "c", "е": "e", "н": "h",
+    "к": "k", "м": "m", "о": "o", "р": "p", "т": "t",
+    "х": "x", "і": "i", "ј": "j", "ѕ": "s", "у": "y",
+    # --- Greek capitals that look like Latin capitals ---
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H",
+    "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O",
+    "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
+    # --- Greek smalls that look like Latin smalls ---
+    "α": "a", "ο": "o", "ρ": "p", "υ": "u", "ν": "v",
+    "χ": "x",
+    # --- Confusable punctuation used in emails / IDs ---
+    "＠": "@", "﹫": "@",
+    "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
+    "―": "-", "−": "-", "－": "-",
+    "․": ".", "．": ".",
+}
+
+# Single translation table compiled once (str.translate is C-fast).
+_CONFUSABLE_TABLE = {ord(k): v for k, v in _CONFUSABLE_MAP.items()}
+
+
+def fold_confusables(text: str) -> str:
+    """Fold a scoped set of homoglyph / confusable code points to their ASCII
+    look-alikes so PII hidden behind cross-script substitution is detectable.
+
+    Scoped on purpose (see ``_CONFUSABLE_MAP``): only characters that imitate
+    the ASCII alphabet/digits/email-punctuation the PII rules depend on. CJK and
+    legitimate accented characters are untouched.
+    """
+    return text.translate(_CONFUSABLE_TABLE)
+
+
+def normalize_for_detection(text: str) -> str:
+    """Canonicalise inbound text for PII detection.
+
+    Pipeline (order matters):
+      1. ``strip_zero_width`` — delete invisible separators that split tokens.
+      2. ``fold_confusables`` — map homoglyphs to ASCII look-alikes.
+      3. NFKC — collapse fullwidth / ligature / compatibility variants.
+
+    The result is the canonical form the regexes run against AND the form stored
+    as the mapping ``original`` (so ``unmask`` returns this canonical spelling —
+    the already-documented NFKC lossy round-trip, now also lossy w.r.t. stripped
+    invisibles and folded homoglyphs, which is the intended hardening).
+    """
+    text = strip_zero_width(text)
+    text = fold_confusables(text)
+    return unicodedata.normalize("NFKC", text)
+
+
 # --- Built-in PII rules (Q10 layer 1) ---
+#
+# Regex design notes (Agent A — Day 12A coverage expansion):
+#   * Patterns run AFTER ``normalize_for_detection`` (zero-width stripped,
+#     homoglyphs folded, NFKC), so they only need to match canonical ASCII.
+#   * Every rule is tuned to AVOID over-redacting ordinary patent prose:
+#     patent numbers (``US10876543``, ``TW201912345``), claim refs (``Claim 1``),
+#     figure refs (``FIG. 3``), and statute cites (``35 U.S.C. § 103``) must
+#     pass through untouched — they are not PII and the AI Engine needs them.
+#   * The egress guard (orchestrator._scan_value_for_pii) REUSES PII_RULES, so a
+#     rule that over-matches would also wrongly BLOCK legitimate outbound
+#     payloads. Precision here is a hard requirement, not a nicety.
 
 PII_RULES: list[MaskRule] = [
     MaskRule(
@@ -82,10 +207,32 @@ PII_RULES: list[MaskRule] = [
         description="Taiwan mobile phone",
     ),
     MaskRule(
+        # Taiwan landline: area code in parens or with a separator, then 7-8
+        # digits. Anchored on the leading ``(0X)`` / ``0X-`` shape so it does
+        # NOT swallow bare 8-digit patent-ish numbers. Examples it must catch:
+        #   (02)23766050   (02)2376-6050   02-2376-6050   (07)123-4567
+        rule_id="phone_tw_landline",
+        pattern=re.compile(
+            r"\(0\d{1,2}\)\s?\d{3,4}[-\s]?\d{4}\b"
+            r"|\b0\d{1,2}-\d{3,4}-\d{4}\b"
+        ),
+        placeholder_prefix="PHONE",
+        description="Taiwan landline (area code + number)",
+    ),
+    MaskRule(
         rule_id="phone_us",
         pattern=re.compile(r"\b\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"),
         placeholder_prefix="PHONE",
         description="US phone (loose)",
+    ),
+    MaskRule(
+        # International phone in E.164-ish form: a leading ``+`` then 8-15 digits
+        # with optional separators. Anchored on the ``+`` so it never collides
+        # with patent numbers (which have no leading ``+``).
+        rule_id="phone_intl",
+        pattern=re.compile(r"(?<!\w)\+\d[\d\-\s().]{7,16}\d\b"),
+        placeholder_prefix="PHONE",
+        description="international phone (E.164-ish, +-anchored)",
     ),
     MaskRule(
         rule_id="tw_id",
@@ -94,10 +241,59 @@ PII_RULES: list[MaskRule] = [
         description="Taiwan national ID",
     ),
     MaskRule(
+        # ROC 統一編號 (business/company tax ID): exactly 8 digits. To avoid
+        # over-redacting arbitrary 8-digit runs (which appear in patent
+        # numbers, dates, etc.) we REQUIRE an explicit contextual marker
+        # immediately preceding. A bare ``23766050`` is NOT redacted, but
+        # ``統一編號：23766050`` is. match.group(0) (incl. the marker) is masked.
+        rule_id="tw_company_tax_id",
+        pattern=re.compile(
+            r"(?:統一編號|統編|營利事業(?:統一)?編號|公司統編|Tax\s*ID|Uniform\s*(?:Business\s*)?No\.?)"
+            r"\s*[:：#＃]?\s*\d{8}\b",
+            re.IGNORECASE,
+        ),
+        placeholder_prefix="TW_TAX_ID",
+        description="ROC company uniform (tax) ID, context-anchored",
+    ),
+    MaskRule(
+        # Passport number: contextual marker + 7-9 digits (optionally 1-2
+        # leading letters). Context-anchored to avoid catching patent /
+        # publication numbers.
+        rule_id="passport",
+        pattern=re.compile(
+            r"(?:護照(?:號碼|號)?|Passport(?:\s*(?:No|Number))?\.?)"
+            r"\s*[:：#＃]?\s*[A-Z]{0,2}\d{7,9}\b",
+            re.IGNORECASE,
+        ),
+        placeholder_prefix="PASSPORT",
+        description="passport number, context-anchored",
+    ),
+    MaskRule(
         rule_id="ssn",
         pattern=re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
         placeholder_prefix="SSN",
         description="US SSN",
+    ),
+    MaskRule(
+        # IPv4 address with strict 0-255 octets. Patent numbers are not
+        # dotted-quads, so no collision with patent prose.
+        rule_id="ipv4",
+        pattern=re.compile(
+            r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b"
+        ),
+        placeholder_prefix="IP",
+        description="IPv4 address",
+    ),
+    MaskRule(
+        # IPv6 address (full or compressed). Requires >=2 colon-separated hex
+        # groups so it can't match ordinary prose.
+        rule_id="ipv6",
+        pattern=re.compile(
+            r"\b(?:[0-9A-Fa-f]{1,4}:){2,7}[0-9A-Fa-f]{1,4}\b"
+            r"|\b(?:[0-9A-Fa-f]{1,4}:){1,7}:(?!\d)"
+        ),
+        placeholder_prefix="IP",
+        description="IPv6 address",
     ),
 ]
 
@@ -466,10 +662,16 @@ def redact(text: str, tenant_id: str) -> tuple[str, list[str]]:
 
     Q11 spotlight handling is in oa_analyzer; this layer is purely pattern-based.
 
-    Unicode normalisation (M-6 fix)
-    -------------------------------
-    The input is normalised to **NFKC** (compatibility composition) BEFORE
-    any regex applies. The regex tables target ASCII characters (``a-zA-Z``,
+    Unicode normalisation (M-6 fix + Day 12A hardening)
+    ---------------------------------------------------
+    The input is canonicalised via ``normalize_for_detection`` BEFORE any
+    regex applies:  zero-width strip → confusable fold → **NFKC**. The first
+    two steps close evasions NFKC alone does NOT (invisible token-splitting
+    and cross-script homoglyphs); see ``normalize_for_detection`` and the
+    module-level threat-model comment. The NFKC step then handles the
+    compatibility classes described below.
+
+    The regex tables target ASCII characters (``a-zA-Z``,
     ``0-9``, ``@``, ``-``); without normalisation, mixed-script inputs
     bypass them entirely:
 
@@ -508,10 +710,12 @@ def redact(text: str, tenant_id: str) -> tuple[str, list[str]]:
     redaction overlay over the normalised view).
     """
     triggered: list[str] = []
-    # M-6: normalise input. ``text`` becomes the NFKC form going forward; all
-    # downstream operations (regex matching, placeholder storage,
-    # round-trip through ``unmask``) work on this canonical form.
-    redacted = unicodedata.normalize("NFKC", text)
+    # M-6 + Day 12A: canonicalise input. ``text`` becomes the
+    # zero-width-stripped + confusable-folded + NFKC form going forward; all
+    # downstream operations (regex matching, placeholder storage, round-trip
+    # through ``unmask``) work on this canonical form. See
+    # ``normalize_for_detection`` for the (load-bearing) ordering rationale.
+    redacted = normalize_for_detection(text)
 
     # Layer 1 (built-in PII) + layer 2 (per-tenant uploadable dictionary, with
     # hard-coded fallback). Same merge order as before; the tenant layer-2 set

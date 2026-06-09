@@ -38,6 +38,7 @@ wall downstream.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from uuid import uuid4
 
@@ -121,6 +122,93 @@ _GROUNDED_REF_RE = re.compile(r"\[GROUNDED_REF_\d+\]")
 # response is well past legitimate citation density and indicates a dump.
 _GROUNDED_DUMP_THRESHOLD = 4
 
+# ---------------------------------------------------------------------------
+# Day 12A — evasion-resistant canary matching + broadened high-signal set
+# ---------------------------------------------------------------------------
+#
+# An attacker who learns the model will be scanned for the canary may try to
+# coax the model into emitting it with separators inserted (``C A N A R Y -
+# ab12...`` or zero-width-split) to dodge a naive substring match. We defend by
+# matching the canary against a SEPARATOR-STRIPPED view of the output as well as
+# the raw text. The stripped view deletes whitespace, zero-width / invisible /
+# bidi-control code points, and common visual separators (``-_.•·``) so a
+# canary fragmented by any of them is still caught.
+
+# Invisible / zero-width / bidi controls (mirrors the masking layer's set) plus
+# ASCII whitespace and a few visual separators an attacker can sprinkle between
+# canary characters.
+_SEPARATORS_RE = re.compile(
+    r"[\s"                      # all ASCII + unicode whitespace
+    "­᠎"             # soft hyphen, mongolian vowel sep
+    "​-‏"            # ZWSP/ZWNJ/ZWJ/LRM/RLM
+    "‪-‮"            # bidi embed/override
+    "⁠-⁤﻿"      # word joiner, invisible ops, BOM
+    r"\-_.•·*~|/\\]+"          # visual separators commonly abused
+)
+
+
+def _strip_separators(text: str) -> str:
+    """Collapse a string to its separator-free, NFKC-folded form.
+
+    Used ONLY for the canary leak check so a canary the model was steered into
+    emitting with inserted separators / invisibles still matches. NFKC folds
+    fullwidth hex digits an attacker might substitute (``ＣＡＮＡＲＹ``).
+    """
+    folded = unicodedata.normalize("NFKC", text)
+    return _SEPARATORS_RE.sub("", folded)
+
+
+# Instruction-override / jailbreak phrasing. A LEGITIMATE patent draft never
+# contains these — they are the model parroting the attacker's command. Kept
+# multilingual (en + zh-TW/zh-CN + ja) because OAs in this product arrive from
+# TIPO / JPO / SIPO and an attacker localises the override to the document
+# language. Each pattern is deliberately specific (verb + object) so it does not
+# fire on ordinary words like "ignore" or "system".
+_OVERRIDE_PHRASE_RES = [
+    # --- English ---
+    re.compile(r"ignor(?:e|ing)\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above|earlier)\s+instructions", re.IGNORECASE),
+    re.compile(r"disregard(?:ing)?\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above)\s+instructions", re.IGNORECASE),
+    re.compile(r"reveal\s+(?:your|the)\s+system\s+prompt", re.IGNORECASE),
+    re.compile(r"(?:print|output|repeat|show)\s+(?:your|the)\s+system\s+prompt", re.IGNORECASE),
+    re.compile(r"you\s+are\s+now\s+in\s+(?:maintenance|developer|debug)\s+mode", re.IGNORECASE),
+    re.compile(r"(?:dump|reveal|output)\s+(?:every|all)\s+(?:chunk|reference|document)", re.IGNORECASE),
+    re.compile(r"verbatim\s+contents?\s+of\s+(?:any\s+)?tool", re.IGNORECASE),
+    re.compile(r"ignore\s+the\s+grounded\s+set", re.IGNORECASE),
+    # --- zh-TW / zh-CN ---
+    re.compile(r"忽略(?:先前|上述|之前|所有|以上|這些|該)*(?:的)?(?:指示|指令|規則|提示)"),
+    re.compile(r"忽略\s*grounded\s*set", re.IGNORECASE),
+    re.compile(r"(?:洩漏|顯示|輸出|印出|重複)(?:你的|您的)?系統提示(?:詞)?"),
+    re.compile(r"你(?:現在)?(?:處於|進入).{0,4}(?:維護|除錯|開發)模式"),
+    re.compile(r"無視(?:先前|上述|所有).{0,3}(?:指示|指令)"),
+    # --- ja ---
+    re.compile(r"(?:以前|上記|これまで)の(?:指示|命令)を(?:無視|忘れ)"),
+    re.compile(r"システムプロンプトを(?:表示|出力|公開)"),
+]
+
+# Whitespace-free override signatures for the INPUT pre-screen. The separator
+# strip used to defeat ``i g n o r e`` evasion also removes the inter-word
+# spaces the phrase regexes above need, so we additionally match these compact,
+# space-free forms against the fully-stripped input view. Kept lowercase; the
+# stripped view is lowercased before matching.
+_OVERRIDE_COMPACT_RES = [
+    re.compile(r"ignor(?:e|ing)(?:all)?(?:the)?(?:previous|prior|above|earlier)instructions"),
+    re.compile(r"disregard(?:ing)?(?:all)?(?:the)?(?:previous|prior|above)instructions"),
+    re.compile(r"reveal(?:your|the)systemprompt"),
+    re.compile(r"(?:print|output|repeat|show)(?:your|the)systemprompt"),
+    re.compile(r"ignorethegroundedset"),
+]
+
+# Jailbreak confirmation sentinels — strings an attacker asks the model to emit
+# to PROVE the override worked. These appear in the indirect-injection fixture
+# (``GROUNDED_BYPASS_OK``, ``CITATION_FORGE``) and the basic one (``PWNED``).
+# A clean draft never contains them.
+_SENTINEL_RES = [
+    re.compile(r"\bPWNED\b"),
+    re.compile(r"GROUNDED_BYPASS_OK"),
+    re.compile(r"CITATION_FORGE"),
+    re.compile(r"\bJAILBROKEN\b", re.IGNORECASE),
+]
+
 
 @dataclass
 class InjectionVerdict:
@@ -154,24 +242,43 @@ class InjectionDetected(Exception):
 def scan_response(text: str, canary: str) -> InjectionVerdict:
     """Scan an LLM response for injection / leak signatures (Q11 layer 3).
 
-    Conservative by design — a small number of high-signal checks:
-      (a) canary leak           → the model echoed its own secret token
+    Conservative by design — high-signal checks only (a false positive fails an
+    attorney's draft closed, so every check must be one a CLEAN draft never
+    trips):
+      (a) canary leak           → the model echoed its own secret token, even if
+                                  it was fragmented by separators / invisibles
       (b) spotlight tag echo    → the model replayed the <untrusted_input> wrapper
       (c) system-prompt fragment → verbatim hardening-clause phrasing surfaced
       (d) bulk grounded dump    → many distinct refs echoed = exfiltration
+      (e) instruction-override echo → the model parroted a jailbreak command
+                                  (multilingual: en / zh / ja)
+      (f) jailbreak sentinel    → a "PWNED" / "GROUNDED_BYPASS_OK"-style
+                                  confirmation token the attacker asked for
 
     Returns a verdict; `injected` is True if ANY signal fires.
+
+    Fail-closed contract: a non-string / None `text` is treated as clean (there
+    is nothing to leak), but a BLANK canary does NOT disable checks (b)-(f) —
+    those are independent of the canary, so the guard never silently goes dark
+    just because no canary was configured.
     """
-    if not text:
+    if not text or not isinstance(text, str):
         return InjectionVerdict(injected=False)
 
     signals: list[str] = []
 
     # (a) Canary leak — the single strongest signal. An empty/whitespace canary
     # is treated as "no canary configured" and skipped rather than matching
-    # everything.
-    if canary and canary.strip() and canary in text:
-        signals.append("canary_leak")
+    # everything. We match against BOTH the raw text and a separator-stripped
+    # view so a canary the model was steered into emitting with inserted
+    # spaces / hyphens / zero-width chars is still caught (split-token evasion).
+    if canary and canary.strip():
+        if canary in text:
+            signals.append("canary_leak")
+        else:
+            stripped_canary = _strip_separators(canary)
+            if stripped_canary and stripped_canary in _strip_separators(text):
+                signals.append("canary_leak")
 
     # (b) Spotlight tags echoed back.
     if _SPOTLIGHT_TAG_RE.search(text):
@@ -187,11 +294,79 @@ def scan_response(text: str, canary: str) -> InjectionVerdict:
     if len(distinct_refs) >= _GROUNDED_DUMP_THRESHOLD:
         signals.append(f"grounded_ref_dump:{len(distinct_refs)}")
 
+    # (e) Instruction-override / jailbreak phrasing echoed into the output.
+    # Matched against the raw text only (these are multi-char phrases; we do
+    # not separator-strip prose because that would create false hits on
+    # legitimate words run together).
+    for pat in _OVERRIDE_PHRASE_RES:
+        if pat.search(text):
+            signals.append("instruction_override_echo")
+            break  # one is enough; don't leak which language fired
+
+    # (f) Jailbreak confirmation sentinel.
+    for pat in _SENTINEL_RES:
+        if pat.search(text):
+            signals.append("jailbreak_sentinel")
+            break
+
     if not signals:
         return InjectionVerdict(injected=False)
 
     reason = "; ".join(signals)
     return InjectionVerdict(injected=True, reason=reason, signals=signals)
+
+
+# ---------------------------------------------------------------------------
+# Input pre-screen (Day 12A — defence-in-depth, advisory)
+# ---------------------------------------------------------------------------
+
+def scan_input(untrusted_text: str) -> InjectionVerdict:
+    """Advisory pre-screen of UNTRUSTED inbound text (the OA body) for known
+    injection phrasing BEFORE it is wrapped + sent to the model.
+
+    This is layer-1.5: it does NOT replace the spotlight wrapper or the output
+    filter (a determined attacker will phrase the override in a way no signature
+    catches). It exists so the orchestrator can LOG / FLAG an obvious injection
+    attempt up front, and so we have a hook to raise on the input side if a
+    deployment chooses to. It is evasion-aware: it scans both the raw text and a
+    separator-stripped, NFKC-folded view so ``i g n o r e`` / zero-width-split
+    override phrasing is still detected.
+
+    Returns a verdict; never raises. Callers decide whether to enforce.
+    """
+    if not untrusted_text or not isinstance(untrusted_text, str):
+        return InjectionVerdict(injected=False)
+
+    signals: list[str] = []
+    stripped = _strip_separators(untrusted_text)
+    # Compact (whitespace + separators all removed) lowercase view for the
+    # "spaced-out letters" evasion (``i g n o r e  a l l ...``).
+    compact = stripped.lower()
+
+    override = False
+    for pat in _OVERRIDE_PHRASE_RES:
+        if pat.search(untrusted_text) or pat.search(stripped):
+            override = True
+            break
+    if not override:
+        for pat in _OVERRIDE_COMPACT_RES:
+            if pat.search(compact):
+                override = True
+                break
+    if override:
+        signals.append("override_phrase_in_input")
+    for pat in _SENTINEL_RES:
+        if pat.search(untrusted_text) or pat.search(stripped):
+            signals.append("sentinel_in_input")
+            break
+    if _SPOTLIGHT_TAG_RE.search(untrusted_text):
+        # The attacker tried to forge / close our own spotlight wrapper inside
+        # the untrusted body.
+        signals.append("forged_spotlight_tag_in_input")
+
+    if not signals:
+        return InjectionVerdict(injected=False)
+    return InjectionVerdict(injected=True, reason="; ".join(signals), signals=signals)
 
 
 def enforce(text: str, canary: str, intent: str | None = None) -> InjectionVerdict:

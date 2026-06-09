@@ -528,14 +528,56 @@ class VectorStore(abc.ABC):
         raise NotImplementedError
 
 
+class VectorDimMismatch(ValueError):
+    """Raised when a vector's length disagrees with the store's established dim.
+
+    Both backends share this contract: a store fixes its vector dimension from
+    the first vector it sees, and any later upsert/search vector of a different
+    length is a programming error (usually an embedder swap without a re-index,
+    e.g. mock 384 ↔ bge-m3 1024). We surface ONE clear, backend-agnostic
+    exception instead of leaking a raw numpy shape error (memory) or a Qdrant
+    server 400 — so the contract test can assert identical behaviour and the
+    caller gets an actionable message.
+    """
+
+
 class MemoryVectorStore(VectorStore):
     def __init__(self):
         self._chunks: dict[str, Chunk] = {}
         self._vectors: dict[str, np.ndarray] = {}
         self._tenant_index: dict[str, set[str]] = {}
+        # Established vector dimension (set lazily from the first vector seen).
+        # None until the first upsert. Mirrors Qdrant's fixed-size collection.
+        self._dim: Optional[int] = None
+
+    def _check_dim(self, vec) -> None:
+        """Fix the store dim on first sight; reject any later size drift.
+
+        Empty corpus + first vector establishes the dim. A subsequent vector
+        of a different length raises VectorDimMismatch (the same guard Qdrant
+        enforces server-side), turning a silent numpy broadcast bug into a
+        loud, actionable error.
+        """
+        n = len(vec)
+        if n == 0:
+            raise VectorDimMismatch("vector has length 0; cannot index/search an empty vector")
+        if self._dim is None:
+            self._dim = n
+        elif n != self._dim:
+            raise VectorDimMismatch(
+                f"vector dim mismatch: store dim={self._dim} but got length {n}. "
+                f"This usually means the embedder changed (e.g. mock 384 ↔ "
+                f"bge-m3 1024) without re-indexing. Re-index the tenant with a "
+                f"consistent embedder."
+            )
 
     def upsert(self, tenant_id: str, chunks: list[Chunk], vectors: list[list[float]]):
-        for ch, vec in zip(chunks, vectors):
+        # Validate ALL incoming vectors BEFORE mutating any state, so a bad
+        # batch fails atomically (no half-written tenant index).
+        pairs = list(zip(chunks, vectors))
+        for _ch, vec in pairs:
+            self._check_dim(vec)
+        for ch, vec in pairs:
             self._chunks[ch.chunk_id] = ch
             self._vectors[ch.chunk_id] = np.array(vec, dtype=np.float32)
             self._tenant_index.setdefault(tenant_id, set()).add(ch.chunk_id)
@@ -544,6 +586,11 @@ class MemoryVectorStore(VectorStore):
         ids = self._tenant_index.get(tenant_id, set())
         if not ids:
             return []
+        # Guard the query vector against the established dim too — a search
+        # with a mismatched query would otherwise raise a cryptic numpy error
+        # deep in the dot product. (Only meaningful once something is indexed,
+        # which the empty-tenant early-return above guarantees.)
+        self._check_dim(query_vec)
         q = np.array(query_vec, dtype=np.float32)
         scored = []
         for cid in ids:

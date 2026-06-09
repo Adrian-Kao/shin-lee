@@ -50,11 +50,12 @@ Run a readable report (mirrors ``python -m backend.ai_engine.deadline``)::
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 from typing import Optional
 
 from backend.ai_engine import rag
-from backend.shared.config import DATA_DIR
+from backend.shared.config import DATA_DIR, settings
 from backend.shared.models import Patent
 
 
@@ -62,7 +63,14 @@ from backend.shared.models import Patent
 # Thresholds (see module docstring).
 # ---------------------------------------------------------------------------
 # The Q6 doc's natural target. Production (bge-m3) MUST ratchet the gate here.
-PROD_TARGET_RECALL_AT_5: float = 0.70
+# Sourced from config (Agent H block) so the prod target lives in ONE place;
+# the env default is 0.70 (the Q6 number), so this stays == 0.70 unless an
+# operator overrides RAG_EVAL_TARGET_RECALL_AT_5.
+PROD_TARGET_RECALL_AT_5: float = settings.RAG_EVAL_TARGET_RECALL_AT_5
+# Advisory prod targets for the richer ranking metrics (informative only on a
+# real embedder; mock numbers are noise).
+PROD_TARGET_NDCG_AT_5: float = settings.RAG_EVAL_TARGET_NDCG_AT_5
+PROD_TARGET_COVERAGE_AT_5: float = settings.RAG_EVAL_TARGET_COVERAGE_AT_5
 # Default CI floor for the MOCK backend. Set low on purpose: mock embeddings
 # are deterministic SHA-256 noise, so a 0.70 gate would be red for reasons
 # that say nothing about RAG quality. This floor only proves the wiring is
@@ -209,6 +217,64 @@ def mrr(results: list, relevant) -> float:
     return 0.0
 
 
+def ndcg_at_k(results: list, relevant, k: int) -> float:
+    """Normalised Discounted Cumulative Gain at cutoff ``k`` (binary gain).
+
+    Unlike recall@k (which ignores rank order within the top-k) and MRR (which
+    only cares about the FIRST relevant hit), nDCG@k rewards placing relevant
+    hits HIGHER and credits EVERY relevant hit in the cutoff with a
+    log-discounted gain. This is the metric that actually distinguishes a
+    retriever that puts the right passage at rank 1 from one that buries it at
+    rank 5 — the quality signal Q6 cares about once embeddings are real.
+
+    Binary relevance (gain ∈ {0, 1}); a relevant id already counted earlier in
+    the ranking does not double-credit (so repeated patent chunks for the same
+    relevant patent_no don't inflate the score). DCG sums gain / log2(rank+1);
+    IDCG is the DCG of the ideal ranking (all relevant ids first), capped at
+    ``min(|relevant|, k)``. Returns 0.0 when ``relevant`` is empty.
+    """
+    relevant = set(relevant)
+    if not relevant:
+        return 0.0
+    seen: set[str] = set()
+    dcg = 0.0
+    for rank, hit in enumerate(results[:k], start=1):
+        gain = 0.0
+        pno = getattr(hit, "patent_no", None)
+        cid = (getattr(hit, "metadata", {}) or {}).get("chunk_id")
+        # Credit at most once per distinct relevant id, at its first appearance.
+        for ident in (pno, cid):
+            if ident in relevant and ident not in seen:
+                seen.add(ident)
+                gain = 1.0
+        if gain:
+            dcg += gain / math.log2(rank + 1)
+    # Ideal DCG: the achievable number of distinct relevant ids placed first.
+    ideal_hits = min(len(relevant), k)
+    idcg = sum(1.0 / math.log2(r + 1) for r in range(1, ideal_hits + 1))
+    return dcg / idcg if idcg > 0 else 0.0
+
+
+def grounding_coverage(results: list, relevant) -> float:
+    """Fraction of the RETURNED hits that are relevant ("precision-like").
+
+    This is the grounding-coverage signal Q14 cares about: when the drafter is
+    handed the retrieval set as its grounded citation pool, how much of that
+    pool is actually on-topic? A low coverage means the drafter is grounded in
+    mostly-irrelevant passages, which dilutes citation quality even if recall
+    is high. Defined as |relevant hits returned| / |hits returned|.
+
+    Returns 0.0 when ``results`` is empty (nothing was grounded on).
+    """
+    if not results:
+        return 0.0
+    relevant = set(relevant)
+    if not relevant:
+        return 0.0
+    n_rel = sum(1 for h in results if _is_hit_relevant(h, relevant))
+    return n_rel / len(results)
+
+
 # ---------------------------------------------------------------------------
 # End-to-end evaluation
 # ---------------------------------------------------------------------------
@@ -238,6 +304,8 @@ def evaluate(dataset: Optional[list[dict]] = None, k: int = 5) -> dict:
     per_case: list[dict] = []
     recall_sum = 0.0
     mrr_sum = 0.0
+    ndcg_sum = 0.0
+    coverage_sum = 0.0
 
     for c in cases:
         query = c["query"]
@@ -248,8 +316,12 @@ def evaluate(dataset: Optional[list[dict]] = None, k: int = 5) -> dict:
 
         r = recall_at_k(hits, relevant, k)
         m = mrr(hits, relevant)
+        nd = ndcg_at_k(hits, relevant, k)
+        cov = grounding_coverage(hits[:k], relevant)
         recall_sum += r
         mrr_sum += m
+        ndcg_sum += nd
+        coverage_sum += cov
 
         per_case.append({
             "id": c.get("id", query[:32]),
@@ -257,6 +329,8 @@ def evaluate(dataset: Optional[list[dict]] = None, k: int = 5) -> dict:
             "tenant_id": c.get("tenant_id"),
             "recall@k": r,
             "mrr": m,
+            "ndcg@k": nd,
+            "grounding_coverage@k": cov,
             "n_relevant": len(relevant),
             "n_retrieved": len(hits),
             "top_patent_nos": [h.patent_no for h in hits[:k]],
@@ -266,6 +340,8 @@ def evaluate(dataset: Optional[list[dict]] = None, k: int = 5) -> dict:
     n = len(cases)
     agg_recall = recall_sum / n if n else 0.0
     agg_mrr = mrr_sum / n if n else 0.0
+    agg_ndcg = ndcg_sum / n if n else 0.0
+    agg_coverage = coverage_sum / n if n else 0.0
     failures = [pc for pc in per_case if pc["recall@k"] == 0.0]
 
     return {
@@ -273,6 +349,8 @@ def evaluate(dataset: Optional[list[dict]] = None, k: int = 5) -> dict:
         "n_cases": n,
         "recall@k": agg_recall,
         "mrr": agg_mrr,
+        "ndcg@k": agg_ndcg,
+        "grounding_coverage@k": agg_coverage,
         "embedding_backend": rag._embedder.backend,
         "per_case": per_case,
         "failures": failures,
@@ -318,6 +396,9 @@ def _print_report() -> None:
     print(f"eval cases        : {report['n_cases']}")
     print(f"aggregate recall@5: {report['recall@k']:.3f}")
     print(f"aggregate MRR     : {report['mrr']:.3f}")
+    print(f"aggregate nDCG@5  : {report['ndcg@k']:.3f}")
+    print(f"aggregate cover@5 : {report['grounding_coverage@k']:.3f}  "
+          f"(fraction of grounded set that is relevant)")
     if backend == "mock":
         print()
         print("NOTE: mock embeddings are deterministic SHA-256 noise — these")
@@ -350,6 +431,14 @@ def _print_report() -> None:
     prod_ok = report["recall@k"] >= PROD_TARGET_RECALL_AT_5
     print(f"prod target     (>= {PROD_TARGET_RECALL_AT_5:.2f}): "
           f"{'MET' if prod_ok else 'NOT MET (expected on mock backend)'}")
+    ndcg_ok = report["ndcg@k"] >= PROD_TARGET_NDCG_AT_5
+    print(f"prod nDCG@5     (>= {PROD_TARGET_NDCG_AT_5:.2f}): "
+          f"{'MET' if ndcg_ok else 'NOT MET (expected on mock backend)'}  "
+          f"(actual {report['ndcg@k']:.3f})")
+    cov_ok = report["grounding_coverage@k"] >= PROD_TARGET_COVERAGE_AT_5
+    print(f"prod coverage@5 (>= {PROD_TARGET_COVERAGE_AT_5:.2f}): "
+          f"{'MET' if cov_ok else 'NOT MET (expected on mock backend)'}  "
+          f"(actual {report['grounding_coverage@k']:.3f})")
     print("=" * 72)
 
 

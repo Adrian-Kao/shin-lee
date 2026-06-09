@@ -160,9 +160,22 @@ def _clean_en_phrase(phrase: str) -> str:
     return " ".join(words).strip()
 
 
+# Only ever need a few chars on either side of a match to read the adjacent
+# word. Bounding the slice turns the per-match neighbour lookup from O(n)
+# (slicing `text[:start]` copies up to the whole doc each call) into O(1), so
+# extraction over a large spec / OA stays linear instead of quadratic. 64 chars
+# comfortably covers the longest single word + surrounding punctuation.
+_NEIGHBOUR_WINDOW = 64
+
+
 def _en_prev_word(text: str, start: int) -> str:
-    """Return the lowercase word ending just before index `start`, if any."""
-    left = text[:start].rstrip()
+    """Return the lowercase word ending just before index `start`, if any.
+
+    Slices only a bounded window before `start` (see `_NEIGHBOUR_WINDOW`) so
+    this is O(1) per call rather than O(start) — critical on large documents
+    where thousands of matches would otherwise make extraction quadratic.
+    """
+    left = text[max(0, start - _NEIGHBOUR_WINDOW):start].rstrip()
     m = re.search(r"([A-Za-z§\.]+)$", left)
     return m.group(1).lower() if m else ""
 
@@ -207,8 +220,11 @@ def _en_next_word(text: str, end: int) -> str:
     """Return the lowercase word starting just after index `end`, if any.
 
     Trailing periods are stripped so "U.S.C." normalises to "u.s.c".
+
+    Slices only a bounded window after `end` (see `_NEIGHBOUR_WINDOW`) so this
+    is O(1) per call — see `_en_prev_word` for the quadratic-blowup rationale.
     """
-    right = text[end:].lstrip()
+    right = text[end:end + _NEIGHBOUR_WINDOW].lstrip()
     m = re.match(r"([A-Za-z\.]+)", right)
     return m.group(1).lower().strip(".") if m else ""
 

@@ -86,6 +86,23 @@ async def _ocr_page(
     )
 
 
+class PageQuality(TypedDict):
+    """Per-page extraction quality signal (Q8 — scan-quality surfacing).
+
+    Lets a downstream caller (gateway / frontend) flag a page that came out of
+    OCR nearly empty — the classic "the attorney scanned a crooked / blank
+    page" failure — without the parser having to make the decision itself.
+    """
+    page: int                   # 0-indexed page number
+    source: str                 # "text" (born-digital) | "ocr" (scanned)
+    char_count: int             # characters extracted for this page
+    low_text: bool              # True ⇒ suspiciously little text for the source
+    # Coarse 0..1 confidence heuristic. Text-layer pages are 1.0 (PyMuPDF
+    # extraction is exact); OCR pages get a length-derived proxy until a real
+    # OCR engine returns per-word confidence (tesseract image_to_data / Vision).
+    confidence: float
+
+
 class ExtractResult(TypedDict):
     pages: list[str]            # extracted text per page (0-indexed)
     page_count: int
@@ -100,6 +117,14 @@ class ExtractResult(TypedDict):
     # dict when the doc carries no drawing reference numerals or extraction
     # failed — never breaks the upload.
     element_table: dict[int, str]
+    # Q8 quality signals (Day 13J). One entry per returned page, same order /
+    # indexing as `pages`. Empty list only for a zero-page extraction (which is
+    # itself a hard error for PDF; possible for an all-blank DOCX).
+    page_quality: list[PageQuality]
+    # 0-indexed pages whose extraction looks too thin (bad scan / blank page).
+    # Subset relationship is NOT guaranteed with ocr_pages: a born-digital page
+    # can also be near-empty (e.g. a divider page).
+    low_text_pages: list[int]
 
 
 # ---------- PDF -------------------------------------------------------------
@@ -114,13 +139,20 @@ async def extract_pdf_text(
     """Parse a PDF in memory; OCR any page whose text layer is too thin.
 
     Raises:
-        ValueError       — bytes are not a valid PDF.
-        PermissionError  — PDF is password-protected.
-        RuntimeError     — PyMuPDF could not open / parse the document.
+        ValueError       — bytes are not a valid PDF, are empty, the document
+                           has zero pages, or the page count exceeds the hard
+                           `MAX_PDF_PAGES` ceiling. Each is a clear, testable
+                           error — never a crash or a silent empty result.
+        PermissionError  — PDF is password-protected / encrypted.
+        RuntimeError     — PyMuPDF could not render/parse a page, or an OCR
+                           backend call failed.
 
-    The `max_pages` cap is enforced at the start: pages beyond the cap are
-    silently dropped and a warning recorded. We do NOT 413 here — that's the
-    gateway's job (different concern: bandwidth vs. compute).
+    The per-call `max_pages` cap is enforced as *truncation-with-warning*:
+    pages beyond the cap are dropped and a warning recorded. We do NOT 413
+    here — that's the gateway's job (bandwidth) vs. ours (compute). The
+    separate `settings.MAX_PDF_PAGES` is an absolute upper bound: a document
+    with more pages than that is refused outright as a likely malformed /
+    zip-bomb payload.
     """
     if not pdf_bytes:
         raise ValueError("empty PDF bytes")
@@ -128,6 +160,7 @@ async def extract_pdf_text(
     warnings: list[str] = []
     pages_text: list[str] = []
     ocr_page_indices: list[int] = []
+    page_sources: list[str] = []  # "text" | "ocr", same order as pages_text
 
     # Defense-in-depth (invariant #7 / Q15): for a confidential/top_secret doc
     # we must guarantee on-prem OCR. Validate the backend choice up-front —
@@ -149,6 +182,27 @@ async def extract_pdf_text(
             )
 
         total_pages = doc.page_count
+
+        # Zero-page document: a structurally-valid PDF container with no pages
+        # (or a non-PDF whose bytes happened to start with "%PDF-" and opened
+        # but carry no page tree). Refuse loudly rather than returning an empty
+        # result that a downstream caller would mistake for "nothing to say".
+        if total_pages <= 0:
+            raise ValueError(
+                "PDF has zero pages — the file is empty, corrupt, or not a "
+                "real PDF despite its header."
+            )
+
+        # Absolute ceiling — independent of the per-call truncation cap. A doc
+        # claiming millions of pages is almost certainly a malformed / hostile
+        # payload; reject before we allocate per-page work.
+        if total_pages > settings.MAX_PDF_PAGES:
+            raise ValueError(
+                f"PDF declares {total_pages} pages, exceeding the hard cap of "
+                f"{settings.MAX_PDF_PAGES} (MAX_PDF_PAGES). Refusing as a "
+                "likely malformed or hostile document."
+            )
+
         if total_pages > max_pages:
             warnings.append(
                 f"PDF has {total_pages} pages; truncated to first {max_pages}."
@@ -172,10 +226,14 @@ async def extract_pdf_text(
 
             text = text.strip()
             if len(text) >= settings.MIN_CHARS_PER_PAGE_FOR_TEXT:
+                # Born-digital page: embedded text layer is rich enough; use it
+                # directly and skip OCR entirely.
                 pages_text.append(text)
+                page_sources.append("text")
                 continue
 
-            # Scanned page (or image-only). Render and queue for OCR.
+            # Scanned / image-only page: the text layer is too thin, so fall
+            # back to OCR. Render at 200 dpi and queue for the parallel pass.
             try:
                 pix = page.get_pixmap(dpi=200, alpha=False)
                 png_bytes = pix.tobytes("png")
@@ -184,6 +242,7 @@ async def extract_pdf_text(
                     f"failed to render page {page_idx} for OCR: {exc}"
                 ) from exc
             pages_text.append("")  # placeholder, filled in below
+            page_sources.append("ocr")
             ocr_jobs.append((page_idx, png_bytes))
 
         # Phase 2: bounded-concurrency OCR. Default cap of 4 keeps us under
@@ -217,6 +276,25 @@ async def extract_pdf_text(
 
     char_count = sum(len(p) for p in pages_text)
 
+    page_quality, low_text_pages = _build_quality(pages_text, page_sources)
+
+    # Document-level scan warning: if a large fraction of pages needed OCR the
+    # document is effectively a scan, and the caller may want to set lower
+    # expectations on extraction fidelity / element-table completeness.
+    if effective_pages and ocr_page_indices:
+        ratio = len(ocr_page_indices) / effective_pages
+        if ratio >= settings.OCR_SCANNED_DOC_WARN_RATIO:
+            warnings.append(
+                f"{len(ocr_page_indices)}/{effective_pages} pages required OCR "
+                f"({ratio:.0%}); document is likely a scan — extraction quality "
+                "may be degraded."
+            )
+    if low_text_pages:
+        warnings.append(
+            f"low-text pages detected (possible bad/blank scan): "
+            f"{low_text_pages}"
+        )
+
     return ExtractResult(
         pages=pages_text,
         page_count=len(pages_text),
@@ -225,6 +303,8 @@ async def extract_pdf_text(
         char_count=char_count,
         usage=usage_totals,
         element_table=_safe_element_table(pages_text),
+        page_quality=page_quality,
+        low_text_pages=low_text_pages,
     )
 
 
@@ -275,6 +355,11 @@ async def extract_docx_text(docx_bytes: bytes) -> ExtractResult:
 
     char_count = sum(len(p) for p in paragraphs)
 
+    # Every DOCX "page" is a text paragraph (source="text"); OCR never runs.
+    page_quality, low_text_pages = _build_quality(
+        paragraphs, ["text"] * len(paragraphs)
+    )
+
     return ExtractResult(
         pages=paragraphs,
         page_count=len(paragraphs),
@@ -283,6 +368,8 @@ async def extract_docx_text(docx_bytes: bytes) -> ExtractResult:
         char_count=char_count,
         usage=_zero_usage(),
         element_table=_safe_element_table(paragraphs),
+        page_quality=page_quality,
+        low_text_pages=low_text_pages,
     )
 
 
@@ -308,6 +395,104 @@ def _safe_element_table(pages: list[str]) -> dict[int, str]:
     except Exception as exc:  # never let element-table extraction break upload
         logger.warning("element-table extraction failed; returning empty: %s", exc)
         return {}
+
+
+# ---------- Q8 per-page quality signals ------------------------------------
+
+
+def _build_quality(
+    pages: list[str], sources: list[str]
+) -> tuple[list["PageQuality"], list[int]]:
+    """Compute the per-page quality signal + the low-text-page index list.
+
+    `sources[i]` is "text" (born-digital text layer) or "ocr" (scanned page
+    that went through an OCR backend). The two lists are positional — caller
+    guarantees `len(sources) == len(pages)` (asserted defensively).
+
+    Heuristics (deliberately simple; replace with real OCR per-word confidence
+    when tesseract `image_to_data` / Claude-Vision structured output lands):
+      - text-layer page  → confidence 1.0 (PyMuPDF extraction is exact).
+      - ocr page         → confidence scales with extracted length, capped at
+                           0.95 since OCR is never certain; an empty/near-empty
+                           OCR page lands near 0 and is flagged low_text.
+      - low_text is true when an OCR page came back under
+        OCR_LOW_TEXT_WARN_CHARS chars — the bad/blank-scan signal a downstream
+        caller surfaces to the attorney. Born-digital pages are not flagged
+        (a legitimately short divider page is not a scan failure).
+    """
+    if len(sources) != len(pages):  # pragma: no cover — internal invariant
+        # Be forgiving rather than crash the whole upload: pad with "text".
+        sources = (sources + ["text"] * len(pages))[: len(pages)]
+
+    warn_chars = settings.OCR_LOW_TEXT_WARN_CHARS
+    quality: list[PageQuality] = []
+    low_text_pages: list[int] = []
+
+    for idx, (text, source) in enumerate(zip(pages, sources)):
+        n = len(text)
+        if source == "ocr":
+            low = n < warn_chars
+            # Length-derived proxy: 0 chars → 0.0, ramps to a 0.95 ceiling by
+            # ~400 chars. Keeps the signal monotone without pretending an OCR
+            # page is ever perfectly trustworthy.
+            confidence = 0.0 if n == 0 else min(0.95, 0.3 + n / 400.0 * 0.65)
+        else:  # text layer
+            low = False
+            confidence = 1.0
+        if low:
+            low_text_pages.append(idx)
+        quality.append(
+            PageQuality(
+                page=idx,
+                source=source,
+                char_count=n,
+                low_text=low,
+                confidence=round(confidence, 3),
+            )
+        )
+
+    return quality, low_text_pages
+
+
+# ---------- Q8 figure / region extraction (future Claude-Vision) -----------
+
+
+async def extract_figure_regions(
+    pdf_bytes: bytes,
+    page_index: int,
+    *,
+    security_level: str = "public",
+) -> list[dict]:
+    """STUB (Q8 P1) — per-figure region extraction for the drawing pages.
+
+    Planned: render the page, detect figure bounding boxes (the drawing area +
+    its reference numerals/callouts), and hand each crop to Claude Vision so we
+    can answer "describe figure 2" or "what does numeral 102 point at" with a
+    grounded image citation, instead of inferring everything from the OCR'd
+    flat text.
+
+    Why a stub for now: needs a real Vision call (cost) and a layout/region
+    detector; out of scope for the deterministic POC. Returns [] so any caller
+    wired ahead of the real implementation degrades to "no figure regions"
+    rather than erroring.
+
+    Confidential routing note: when this is built it MUST obey invariant #7 —
+    a confidential document's figure crops can ONLY go through an on-prem
+    vision model, never `llm_client.vision_ocr`. We assert it here so a future
+    implementer cannot wire the cloud path in without tripping a test.
+    """
+    if _is_confidential(security_level):
+        # Defense-in-depth, same as `_resolve_ocr_backend`: refuse to even
+        # *contemplate* cloud figure extraction for a privileged doc.
+        if settings.OCR_BACKEND != "tesseract":
+            raise RuntimeError(
+                f"figure-region extraction for confidential document "
+                f"(security_level={security_level!r}) requires an on-prem "
+                f"backend; OCR_BACKEND={settings.OCR_BACKEND!r} is forbidden "
+                "(invariant #7 / Q15). Cloud Vision figure crops are not "
+                "allowed for confidential cases."
+            )
+    return []  # TODO(claude-code): Q8 P1 real Vision figure-region extraction.
 
 
 # ---------- usage aggregation helpers --------------------------------------

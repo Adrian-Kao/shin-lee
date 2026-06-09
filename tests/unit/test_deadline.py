@@ -40,6 +40,22 @@ from backend.ai_engine.deadline import (
     RULES,
     _FALLBACK_HOLIDAYS,
     CALENDARS_DIR,
+    # Agent C — provider abstraction + strict API + observed-shift helpers
+    HolidayProvider,
+    StaticBundledProvider,
+    JsonFileProvider,
+    RemoteHolidayProvider,
+    CachingHolidayProvider,
+    get_holiday_provider,
+    set_holiday_provider,
+    calculate_deadline_strict,
+    observed_us,
+    observed_substitute_next_weekday,
+    DeadlineError,
+    UnknownJurisdictionError,
+    InvalidReceivedDateError,
+    CalendarRangeError,
+    _build_provider_for_source,
 )
 
 
@@ -801,3 +817,299 @@ def test_six_jurisdiction_distinct_windows():
     # KR (+60) earliest of the long set; EP/CN (+120) latest.
     assert _stat_date(results["KR"]) < _stat_date(results["EP"])
     assert _stat_date(results["KR"]) < _stat_date(results["CN"])
+
+
+# ===========================================================================
+# 18. Agent C — pluggable HolidayProvider abstraction.
+#
+# The providers are an ADDITIVE wrapper: every existing behaviour above must
+# stay green. These tests pin the new surface — resolution contract, version
+# locking, the file-only provider, and the safe-but-inert remote stub.
+# ===========================================================================
+
+@pytest.fixture(autouse=True)
+def _restore_provider():
+    """Any test that swaps the active provider must not leak into the next one.
+    Snapshot + restore the module-level provider around every test in this file."""
+    saved = get_holiday_provider()
+    yield
+    set_holiday_provider(saved)
+
+
+def test_default_provider_is_caching_bundled():
+    p = get_holiday_provider()
+    assert isinstance(p, CachingHolidayProvider)
+
+
+def test_static_bundled_provider_matches_get_holidays():
+    """StaticBundledProvider.resolve() must agree with the historical loader for
+    every shipped jurisdiction (same data, same found flag)."""
+    p = StaticBundledProvider()
+    for jur in ["TW", "US", "JP", "EP", "CN", "KR"]:
+        holidays, found = p.resolve(jur, "2025.1")
+        assert found is True
+        assert holidays == get_holidays(jur, "2025.1")
+
+
+def test_static_bundled_provider_missing_version_not_found():
+    p = StaticBundledProvider()
+    holidays, found = p.resolve("TW", "9999.9")
+    assert found is False
+    assert holidays == {}
+
+
+def test_provider_resolve_never_raises_on_missing():
+    """The resolution contract: a merely-missing calendar returns ({}, False),
+    NEVER an exception. (RemoteHolidayProvider is the documented exception — it
+    raises NotImplementedError, exercised separately.)"""
+    for p in (StaticBundledProvider(), JsonFileProvider(), CachingHolidayProvider(StaticBundledProvider())):
+        holidays, found = p.resolve("XX", "no-such-version")
+        assert isinstance(holidays, dict)
+        assert found is False
+
+
+def test_jsonfile_provider_reads_shipped_files():
+    """JsonFileProvider (no hard-coded fallback) reads the shipped JSON directly."""
+    p = JsonFileProvider()
+    holidays, found = p.resolve("US", "2025.1")
+    assert found is True
+    assert date(2025, 12, 25) in holidays  # Christmas from US_2025.1.json
+
+
+def test_jsonfile_provider_has_no_hardcoded_fallback():
+    """Unlike StaticBundledProvider, JsonFileProvider does NOT fall back to the
+    hard-coded mirror — a version with a fallback but no file is not-found."""
+    p = JsonFileProvider()
+    # 2025.1 exists as a file; a made-up version does not (and there's no file).
+    _, found = p.resolve("US", "definitely-not-a-file")
+    assert found is False
+
+
+def test_jsonfile_provider_custom_dir(tmp_path):
+    (tmp_path / "ZZ_test.json").write_text(
+        json.dumps({"jurisdiction": "ZZ", "version": "test",
+                    "holidays": {"2025-07-04": "Test Day"}}),
+        encoding="utf-8",
+    )
+    p = JsonFileProvider(calendars_dir=tmp_path)
+    holidays, found = p.resolve("ZZ", "test")
+    assert found is True
+    assert holidays == {date(2025, 7, 4): "Test Day"}
+
+
+def test_caching_provider_version_locked_identity():
+    p = CachingHolidayProvider(StaticBundledProvider())
+    a = p.resolve("TW", "2025.1")
+    b = p.resolve("TW", "2025.1")
+    assert a is b  # same tuple object — cached, version-locked
+
+
+def test_caching_provider_reload_drops_cache():
+    p = CachingHolidayProvider(StaticBundledProvider())
+    a = p.resolve("US", "2025.1")
+    p.reload()
+    b = p.resolve("US", "2025.1")
+    assert a[0] == b[0]      # same content
+    assert a is not b        # fresh tuple after reload -> cache was cleared
+
+
+# --- The safe-but-inert remote stub ------------------------------------------
+
+def test_remote_provider_raises_not_implemented():
+    """Directly, the stub raises — nobody ships a silent live dependency."""
+    with pytest.raises(NotImplementedError):
+        RemoteHolidayProvider().resolve("TW", "2025.1")
+
+
+def test_caching_swallows_remote_stub_and_uses_fallback():
+    """Wrapping the remote stub in a CachingHolidayProvider makes enabling it
+    SAFE: the NotImplementedError is swallowed and the bundled fallback answers.
+    This is what HOLIDAY_SOURCE=remote does — inert, never down."""
+    p = CachingHolidayProvider(RemoteHolidayProvider(), fallback=StaticBundledProvider())
+    holidays, found = p.resolve("TW", "2025.1")
+    assert found is True
+    assert holidays == get_holidays("TW", "2025.1")
+
+
+def test_caching_swallows_arbitrary_inner_exception():
+    class _Boom(HolidayProvider):
+        def resolve(self, jurisdiction, version):
+            raise RuntimeError("backend on fire")
+
+    p = CachingHolidayProvider(_Boom(), fallback=StaticBundledProvider())
+    holidays, found = p.resolve("US", "2025.1")
+    assert found is True
+    assert date(2025, 12, 25) in holidays  # fell back to bundled US
+
+
+def test_caching_falls_back_when_inner_not_found():
+    """If the inner provider has no source (found=False) but the fallback does,
+    the fallback answers — file-first, mirror-second layering."""
+    p = CachingHolidayProvider(JsonFileProvider(), fallback=StaticBundledProvider())
+    # JP_2025.1.json exists, so inner answers; but force the missing path via a
+    # jurisdiction whose file is absent yet has a hard-coded fallback. All shipped
+    # jurisdictions have both; use a tmp JsonFileProvider pointing at an empty dir
+    # so the inner is always not-found and the bundled fallback must answer.
+    import tempfile
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as d:
+        p2 = CachingHolidayProvider(JsonFileProvider(Path(d)), fallback=StaticBundledProvider())
+        holidays, found = p2.resolve("TW", "2025.1")
+        assert found is True
+        assert holidays == get_holidays("TW", "2025.1")
+
+
+# --- HOLIDAY_SOURCE -> provider mapping --------------------------------------
+
+@pytest.mark.parametrize("source,inner_type", [
+    ("bundled", StaticBundledProvider),
+    ("jsonfile", JsonFileProvider),
+    ("remote", RemoteHolidayProvider),
+])
+def test_build_provider_for_source(source, inner_type):
+    p = _build_provider_for_source(source)
+    assert isinstance(p, CachingHolidayProvider)
+    assert isinstance(p._inner, inner_type)
+
+
+def test_build_provider_unknown_source_defaults_bundled():
+    p = _build_provider_for_source("nonsense")
+    assert isinstance(p._inner, StaticBundledProvider)
+
+
+def test_set_holiday_provider_swaps_and_reloads():
+    custom = CachingHolidayProvider(StaticBundledProvider())
+    set_holiday_provider(custom)
+    assert get_holiday_provider() is custom
+
+
+# ===========================================================================
+# 19. Agent C — calculate_deadline_strict + typed errors.
+#
+# The lenient calculate_deadline WARNS; the strict variant RAISES typed errors
+# (all subclassing DeadlineError(ValueError)) on the same conditions.
+# ===========================================================================
+
+def test_error_hierarchy():
+    for exc in (UnknownJurisdictionError, InvalidReceivedDateError, CalendarRangeError):
+        assert issubclass(exc, DeadlineError)
+        assert issubclass(exc, ValueError)  # back-compat: old except ValueError catches it
+
+
+@pytest.mark.parametrize("jur", ["TW", "US", "JP", "EP", "CN", "KR"])
+def test_strict_matches_lenient_on_happy_path(jur):
+    received = _utc(2025, 4, 1)
+    assert calculate_deadline_strict(received, jur, "2025.1") == \
+        calculate_deadline(received, jur, "2025.1")
+
+
+@pytest.mark.parametrize("jur", ["DE", "GB", "ZZ"])
+def test_strict_raises_unknown_jurisdiction(jur):
+    with pytest.raises(UnknownJurisdictionError):
+        calculate_deadline_strict(_utc(2025, 4, 1), jur, "2025.1")
+
+
+def test_strict_raises_on_naive_datetime():
+    naive = datetime(2025, 4, 1, 9, 0)  # no tzinfo
+    with pytest.raises(InvalidReceivedDateError):
+        calculate_deadline_strict(naive, "TW", "2025.1")
+
+
+def test_strict_raises_on_missing_calendar():
+    with pytest.raises(CalendarRangeError):
+        calculate_deadline_strict(_utc(2025, 3, 1), "TW", "9999.9")
+
+
+def test_strict_raises_when_deadline_year_uncovered():
+    """TW received 2025-12-20 -> deadline in 2026, which the 2025.1 calendar can't
+    cover. Lenient WARNS; strict RAISES CalendarRangeError."""
+    # lenient still returns + warns
+    lenient = calculate_deadline(_utc(2025, 12, 20), "TW", "2025.1")
+    assert any("does not cover" in w for w in lenient["warnings"])
+    with pytest.raises(CalendarRangeError):
+        calculate_deadline_strict(_utc(2025, 12, 20), "TW", "2025.1")
+
+
+def test_strict_ok_when_correct_year_calendar_loaded():
+    """Same receipt with the 2026.1 calendar -> no range error, returns normally."""
+    r = calculate_deadline_strict(_utc(2025, 12, 20), "TW", "2026.1")
+    assert _stat_date(r) == date(2026, 2, 23)
+
+
+def test_strict_returns_wire_compatible_dict():
+    r = calculate_deadline_strict(_utc(2025, 4, 1), "US", "2025.1")
+    assert set(r.keys()) == REQUIRED_KEYS
+
+
+# ===========================================================================
+# 20. Agent C — observed-holiday shifting helpers (table-driven).
+#
+# Calendar PRODUCERS use these; the shipped JSON already bakes observed days in,
+# so these pin the rule itself. US OPM: Sat->Fri, Sun->Mon. JP 振替休日 / KR
+# 대체공휴일: a Sunday (or overlapping) holiday shifts to the next free weekday.
+# ===========================================================================
+
+@pytest.mark.parametrize("holiday,expected", [
+    # 2025-07-04 is a Friday -> unchanged
+    (date(2025, 7, 4), date(2025, 7, 4)),
+    # A Saturday holiday -> observed the preceding Friday
+    (date(2025, 7, 5), date(2025, 7, 4)),   # Sat -> Fri
+    # A Sunday holiday -> observed the following Monday
+    (date(2025, 7, 6), date(2025, 7, 7)),   # Sun -> Mon
+    # Mid-week unchanged
+    (date(2025, 12, 25), date(2025, 12, 25)),  # Thu
+])
+def test_observed_us_rule(holiday, expected):
+    assert observed_us(holiday) == expected
+
+
+def test_observed_us_real_2026_independence_day():
+    """2026-07-04 is a Saturday -> US federal observance is Fri 2026-07-03."""
+    assert observed_us(date(2026, 7, 4)) == date(2026, 7, 3)
+
+
+@pytest.mark.parametrize("holiday,existing,expected", [
+    # Weekday, not overlapping -> unchanged
+    (date(2025, 5, 5), set(), date(2025, 5, 5)),     # Mon
+    # Sunday -> next free weekday (Mon)
+    (date(2025, 5, 4), set(), date(2025, 5, 5)),     # Sun -> Mon
+    # Sunday whose Monday is ALSO a holiday -> skip to Tue
+    (date(2025, 5, 4), {date(2025, 5, 5)}, date(2025, 5, 6)),
+    # Overlapping a weekday holiday -> next free weekday
+    (date(2025, 5, 5), {date(2025, 5, 5)}, date(2025, 5, 6)),
+])
+def test_observed_substitute_next_weekday(holiday, existing, expected):
+    assert observed_substitute_next_weekday(holiday, existing) == expected
+
+
+def test_observed_substitute_matches_shipped_kr_substitution():
+    """KR 2025: 어린이날/부처님오신날 on Mon 5/5 overlaps, so 대체공휴일 is Tue 5/6 —
+    which the shipped KR calendar bakes in. The helper must reproduce it."""
+    kr = get_holidays("KR", "2025.1")
+    assert date(2025, 5, 6) in kr  # shipped substitute day
+    got = observed_substitute_next_weekday(date(2025, 5, 5), {date(2025, 5, 5)})
+    assert got == date(2025, 5, 6)
+
+
+# ===========================================================================
+# 21. Agent C — provider swap is observable end-to-end + reload integration.
+# ===========================================================================
+
+def test_reload_calendars_also_reloads_provider():
+    """reload_calendars() must clear BOTH the module loader cache and the active
+    provider's cache (single call, everything fresh)."""
+    p = CachingHolidayProvider(StaticBundledProvider())
+    set_holiday_provider(p)
+    first = p.resolve("US", "2025.1")
+    reload_calendars()
+    second = p.resolve("US", "2025.1")
+    assert first[0] == second[0]
+    assert first is not second  # provider cache was dropped by reload_calendars()
+
+
+def test_supported_jurisdictions_config_matches_rules():
+    """config.SUPPORTED_JURISDICTIONS must list exactly the implemented RULES —
+    a drift here means the stub path silently swallows a 'supported' jurisdiction
+    or vice-versa."""
+    from backend.shared.config import settings
+    assert set(settings.SUPPORTED_JURISDICTIONS) == set(RULES.keys())

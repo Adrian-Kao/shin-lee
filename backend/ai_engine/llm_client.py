@@ -5,13 +5,17 @@ Single point of LLM invocation. Routes by:
     - intent           → reasoning vs cheap classification
     - circuit breaker  → if tripped, degrade reasoning model to cheap
 
-Supports four LLM_MODE values:
+Supports five LLM_MODE values:
     - "mock"      → MockLLM, deterministic JSON for unit tests (default).
     - "anthropic" → real Claude API via the official SDK (AsyncAnthropic),
                     with prompt caching on system prompts, retry on
                     RateLimitError / APIConnectionError, and per-session
                     usage accounting.
     - "local"     → Ollama OpenAI-compat endpoint.
+    - "dify"      → self-hosted Dify CE workflow app (LLM nodes run on local
+                    Ollama). parse_oa / draft_response go through the Dify
+                    workflow; verify_citations stays on the deterministic
+                    local verifier (the Q14 hard wall lives in OUR code).
     - "openai"    → reserved; not implemented in POC.
 """
 from __future__ import annotations
@@ -1519,6 +1523,241 @@ async def _call_with_retry(client: Any, *, max_retries: int | None = None, **kwa
     raise RuntimeError("unreachable: retry loop exhausted without return or raise")
 
 
+# ---------- Dify backend (Phase 3 — digiRunner + Dify landing stack) ----------
+
+class DifyLLM:
+    """Route LLM intents through a self-hosted Dify CE *workflow* app.
+
+    Architecture (docs/PHASE3_MIGRATION.md):
+
+        ai_engine ──POST {DIFY_API_URL}/v1/workflows/run──► Dify CE
+                                                              └─ IF/ELSE on `intent`
+                                                                 ├─ LLM node parse_oa       (qwen2.5:7b @ Ollama)
+                                                                 └─ LLM node draft_response (qwen2.5:7b @ Ollama)
+
+    Design decisions (deliberate, demo-critical):
+
+    * Only ``parse_oa`` and ``draft_response`` go to Dify. ``verify_citations``
+      (and ``classify_security``) stay on the deterministic local verifier:
+      the Q14 hard wall is the regex stage in oa_analyzer.verify_citations and
+      MockLLM._mock_verify is a REAL independent re-extraction — sending it to
+      the same qwen2.5:7b that drafted the text would be the model grading its
+      own homework AND add 30-60s latency for zero safety gain.
+    * Confidential routing (invariant #7): the Dify workflow's LLM nodes run on
+      LOCAL Ollama (host.docker.internal:11434), so even confidential cases
+      never leave the box. No cloud egress exists on this path.
+    * Degrade path: any Dify failure (unreachable / non-2xx / workflow status
+      != succeeded / missing API key) logs an ERROR and falls back to MockLLM.
+      The returned model label gets a ``-DEGRADED-mock`` suffix so the
+      degradation is visible in response metadata (model_used) and audit rows.
+    * The system prompt is baked into the Dify LLM nodes at app-creation time
+      (scripts/setup_dify.py syncs it from backend/ai_engine/prompts/*.yaml),
+      so the ``system`` argument is NOT forwarded — Dify owns the prompt and
+      operators can iterate on it in the visual editor. The injection-guard
+      output filter in oa_analyzer still runs on whatever comes back.
+    """
+
+    #: intents served by the Dify workflow; everything else → local mock.
+    WORKFLOW_INTENTS = ("parse_oa", "draft_response")
+
+    def __init__(
+        self,
+        *,
+        api_url: str | None = None,
+        api_key: str | None = None,
+        client: Any = None,  # injectable httpx.Client for tests
+    ) -> None:
+        self._api_url = (api_url or settings.DIFY_API_URL).rstrip("/")
+        self._api_key = api_key if api_key is not None else settings.DIFY_API_KEY_ANALYZE
+        self._client = client
+
+    # -- helpers -------------------------------------------------------------
+
+    def _http_client(self):
+        if self._client is None:
+            import httpx
+            self._client = httpx.Client(timeout=settings.DIFY_TIMEOUT_SEC)
+        return self._client
+
+    @staticmethod
+    def _extract_json_block(text: str) -> str:
+        """Best-effort normalisation: if the LLM wrapped its JSON in prose or
+        markdown fences, return just the first balanced JSON object. Returns
+        the input unchanged when no parseable JSON object is found (callers
+        fall through to oa_analyzer._safe_json which tolerates that)."""
+        if not text:
+            return text
+        try:
+            json.loads(text)
+            return text  # already clean JSON
+        except Exception:
+            pass
+        # fenced ```json ... ``` block
+        fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL | re.IGNORECASE)
+        if fence:
+            candidate = fence.group(1)
+            try:
+                json.loads(candidate)
+                return candidate
+            except Exception:
+                pass
+        # first balanced {...} via brace scan (greedy regex fails on prose
+        # containing later stray braces)
+        start = text.find("{")
+        while start != -1:
+            depth = 0
+            in_str = False
+            esc = False
+            for i in range(start, len(text)):
+                ch = text[i]
+                if esc:
+                    esc = False
+                    continue
+                if ch == "\\":
+                    esc = True
+                    continue
+                if ch == '"':
+                    in_str = not in_str
+                    continue
+                if in_str:
+                    continue
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        candidate = text[start : i + 1]
+                        try:
+                            json.loads(candidate)
+                            return candidate
+                        except Exception:
+                            break  # try next '{'
+            start = text.find("{", start + 1)
+        return text
+
+    @staticmethod
+    def _pick_output_text(outputs: Any) -> str:
+        """Dify workflow End node outputs are a dict; ours is {"text": "..."}.
+        Be liberal: take `text` if present, else the first string value."""
+        if isinstance(outputs, dict):
+            val = outputs.get("text")
+            if isinstance(val, str):
+                return val
+            for v in outputs.values():
+                if isinstance(v, str):
+                    return v
+        if isinstance(outputs, str):
+            return outputs
+        return json.dumps(outputs) if outputs is not None else ""
+
+    def _degrade(self, system: str, user: str, intent: str, model_hint: str,
+                 reason: str) -> LLMResponse:
+        logger.error(
+            "DIFY DEGRADE: falling back to MockLLM for intent=%s — %s "
+            "(check Dify at %s, DIFY_API_KEY_ANALYZE, and the "
+            "patentmind-analyze-oa workflow app)",
+            intent, reason, self._api_url,
+        )
+        resp = _mock.chat(system, user, intent, model_hint)
+        # Loud, greppable marker in response metadata / audit rows.
+        return LLMResponse(
+            text=resp.text,
+            model=f"{settings.DIFY_MODEL_LABEL}-DEGRADED-mock",
+            prompt_tokens=resp.prompt_tokens,
+            completion_tokens=resp.completion_tokens,
+            latency_ms=resp.latency_ms,
+        )
+
+    # -- public entry point (matches MockLLM signature) -----------------------
+
+    def chat(self, system: str, user: str, intent: str, model_hint: str) -> LLMResponse:
+        # Verifier / classification intents stay local by design (see class
+        # docstring). NOT a degrade — this is the documented architecture.
+        if intent not in self.WORKFLOW_INTENTS:
+            resp = _mock.chat(system, user, intent, model_hint)
+            return LLMResponse(
+                text=resp.text,
+                model="local-verifier-mock" if intent == "verify_citations" else resp.model,
+                prompt_tokens=resp.prompt_tokens,
+                completion_tokens=resp.completion_tokens,
+                latency_ms=resp.latency_ms,
+            )
+
+        if not self._api_key:
+            return self._degrade(system, user, intent, model_hint,
+                                 "DIFY_API_KEY_ANALYZE is not set")
+
+        import httpx
+
+        url = f"{self._api_url}/v1/workflows/run"
+        body = {
+            "inputs": {"intent": intent, "query": user},
+            "response_mode": "blocking",
+            "user": "patentmind-ai-engine",
+        }
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+
+        started = time.monotonic()
+        try:
+            r = self._http_client().post(url, json=body, headers=headers)
+            r.raise_for_status()
+            payload = r.json()
+        except httpx.HTTPError as e:
+            return self._degrade(system, user, intent, model_hint, f"HTTP error: {e}")
+        except ValueError as e:  # non-JSON body
+            return self._degrade(system, user, intent, model_hint, f"bad JSON from Dify: {e}")
+
+        data = payload.get("data") or {}
+        status = data.get("status")
+        if status != "succeeded":
+            return self._degrade(
+                system, user, intent, model_hint,
+                f"workflow status={status!r} error={data.get('error')!r}",
+            )
+
+        text = self._pick_output_text(data.get("outputs"))
+        if not text.strip():
+            return self._degrade(system, user, intent, model_hint, "empty workflow output")
+
+        text = self._extract_json_block(text)
+        # Q11: scrub any canary that might have leaked (defence in depth).
+        text = text.replace(CANARY_TOKEN, "[CANARY_REDACTED]")
+
+        latency = int((time.monotonic() - started) * 1000)
+        total_tokens = int(data.get("total_tokens") or 0)
+        completion_tokens = estimate_tokens(text)
+        prompt_tokens = max(1, total_tokens - completion_tokens) if total_tokens \
+            else estimate_tokens(system + user)
+
+        logger.info(
+            "dify call: intent=%s workflow_run=%s total_tokens=%d latency=%dms",
+            intent, payload.get("workflow_run_id"), total_tokens, latency,
+        )
+        return LLMResponse(
+            text=text,
+            model=settings.DIFY_MODEL_LABEL,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency,
+        )
+
+
+_dify_singleton: Optional[DifyLLM] = None
+
+
+def _get_dify_llm() -> DifyLLM:
+    global _dify_singleton
+    if _dify_singleton is None:
+        _dify_singleton = DifyLLM()
+    return _dify_singleton
+
+
+def reset_dify_singleton() -> None:
+    """Drop the cached DifyLLM (tests that mutate DIFY_* settings call this)."""
+    global _dify_singleton
+    _dify_singleton = None
+
+
 # ---------- Public router API ----------
 
 def route_model(*, intent: str, security_level: str, circuit_open: bool) -> str:
@@ -1534,6 +1773,12 @@ def route_model(*, intent: str, security_level: str, circuit_open: bool) -> str:
     # so short-circuit before the security/intent routing logic.
     if settings.LLM_MODE == "local":
         return settings.LLM_MODEL_LOCAL
+
+    # Dify mode: the actual model lives inside the Dify workflow's LLM nodes
+    # (local Ollama). Report the honest label; confidential is safe because
+    # the Dify→Ollama path never leaves the box (invariant #7).
+    if settings.LLM_MODE == "dify":
+        return settings.DIFY_MODEL_LABEL
 
     if security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS:
         return settings.LLM_MODEL_LOCAL
@@ -1638,6 +1883,12 @@ def chat(
                 file=sys.stderr,
             )
             return _mock.chat(hardened_system, user, intent, model)
+
+    if settings.LLM_MODE == "dify":
+        # Dify workflow app → local Ollama. Safe for confidential (no cloud
+        # egress); DifyLLM internally degrades to MockLLM on any Dify failure
+        # with a loud ERROR log + "-DEGRADED-mock" model label.
+        return _get_dify_llm().chat(hardened_system, user, intent, model)
 
     if settings.LLM_MODE == "anthropic":
         # Confidential cases must never reach here — route_model would have

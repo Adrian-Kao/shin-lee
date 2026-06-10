@@ -1,0 +1,68 @@
+{
+  "request_id": "fda5a512-a78e-4c6c-ae9f-3f25b57b487b",
+  "oa": {
+    "oa_id": "55db930b-a7fe-45ec-a508-1a381d8648c9",
+    "case_id": "CASE-2025-001",
+    "tenant_id": "tenant_a",
+    "received_date": "2025-05-29T09:00:00Z",
+    "deadline": "2025-07-28T23:59:00+08:00",
+    "raw_text_hash": "390ddb063394c0526803354e815ecc98816c0e50aac2db3c5362b7ed27342554",
+    "rejections": [
+      {
+        "rejection_id": "rej-1",
+        "rejection_type": "antecedent_basis",
+        "affected_claims": [
+          9
+        ],
+        "cited_prior_art": [],
+        "examiner_argument": "本案請求項 9 之『該』第一電動車未見有先行詞，不符專利法第26條第2項之規定。",
+        "confidence": 0.95
+      }
+    ]
+  },
+  "drafts": [
+    {
+      "rejection_id": "rej-1",
+      "strategy": "以建立先行詞之方式克服請求項 9 之 §26-2 明確性瑕疵：將原文之『該第一電動車』替換為『一第一電動車』並於該項中補入定義性說明。修正後請求項仍維持原技術範疇，不引入新事項。",
+      "draft_text": "[一、緣由]\n申請人謹依鈞局審查意見通知函辦理。鈞局指出本案請求項 9 之『該第一電動車』未見有先行詞，不符專利法第26條第2項之規定。\n\n[二、修正內容]\n修正前：「如請求項1所述之充電管理方法，其中當該特定事件發生時，該伺服器另向『該第一電動車』發送一充電終止通知，以暫停『該第一電動車』之充電。」\n修正後：「如請求項1所述之充電管理方法，其中當該特定事件發生時，該伺服器另向『一第一電動車』發送一充電終止通知，以暫停該第一電動車之充電；其中該第一電動車係執行該第一充電作業之電動車。」\n\n[三、修正依據]\n上揭修正之技術依據可見於本案說明書（參見 [CITATION_REMOVED]）所載之第一充電作業與第一特定電動車充電站之通訊機制；修正後之請求項 9 已具明確先行詞並補充其與第一充電作業之對應關係，符合專利法第26條第2項之明確性要求。本修正係依專利法第43條第2項辦理，未超出申請時說明書、申請專利範圍或圖式所揭露之範圍，未引入新事項。\n\n[四、結論]\n綜上，請求項 9 之記載瑕疵業經克服，懇請鈞局准予再審。",
+      "grounded_citations": [
+        "專利法第26條第2項",
+        "專利法第43條第2項"
+      ],
+      "confidence": 0.92,
+      "requires_attorney_review": true,
+      "invalid_citations": [
+        "[GROUNDED_REF_1]"
+      ],
+      "verifier_confidence": 0.92,
+      "verifier_model": "local-verifier-mock"
+    }
+  ],
+  "related_prior_art": [],
+  "deadline_summary": {
+    "received_date": "2025-05-29T17:00:00+08:00",
+    "statutory_deadline": "2025-07-28T23:59:00+08:00",
+    "recommended_internal_deadline": "2025-07-21T23:59:00+08:00",
+    "days_remaining": -318,
+    "holiday_calendar_version": "2025.1",
+    "warnings": [
+      "⚠️  Only -318 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 318 days ago."
+    ]
+  },
+  "cost_meta": {
+    "prompt_tokens": 4307,
+    "completion_tokens": 393,
+    "model": "dify/qwen2.5:7b",
+    "estimated_cost_usd": 0.018815999999999996,
+    "cache_hit": false,
+    "cost_provenance": "fallback"
+  },
+  "claim_tree": [],
+  "redaction_summary": {
+    "masked_entity_count": 1,
+    "rules_triggered": [
+      "phone_tw_landline"
+    ]
+  }
+}

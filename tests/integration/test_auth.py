@@ -327,7 +327,10 @@ def test_jwt_secret_placeholder_refuses_boot(tmp_path):
         [sys.executable, "-c", script],
         env=env,
         capture_output=True,
-        text=True,
+        # The child writes UTF-8 (PYTHONIOENCODING above); decode the pipes as
+        # UTF-8 too — `text=True` alone uses the locale codec (cp950 on a
+        # zh-TW Windows host), which chokes on the em-dash in the guard message.
+        encoding="utf-8",
         cwd=repo_root,
         timeout=30,
     )

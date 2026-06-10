@@ -19,6 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")
 SHOTS = os.path.join(HERE, "..", "frontend", "tests", "e2e",
                      "__screenshots__", "visual_regression.spec.js")
+DELIVERY_SHOTS = os.path.join(HERE, "..", "docs", "screenshots", "delivery")
 
 # ---- palette ----
 NAVY      = RGBColor(0x1E, 0x3A, 0x8A)
@@ -357,11 +358,11 @@ def s_arch():
     footer(s)
 
 
-def s_shot(num_label, ttl, shot, notes, fit="h", note_side="right"):
+def s_shot(num_label, ttl, shot, notes, fit="h", note_side="right", base=None, kick="產品功能說明 · 前端畫面"):
     s = slide()
-    kicker(s, "04", "產品功能說明 · 前端畫面")
+    kicker(s, num_label, kick)
     title(s, ttl)
-    path = os.path.join(SHOTS, shot)
+    path = os.path.join(base or SHOTS, shot)
     if fit == "h":   # desktop: image left, notes right
         p, w = add_pic_fith(s, path, 0.9, 2.35, 4.05)
         nx = 0.9 + w + 0.55
@@ -391,7 +392,7 @@ def s_shot(num_label, ttl, shot, notes, fit="h", note_side="right"):
 def s_platforms():
     s = slide()
     kicker(s, "05", "Dify 與 digiRunner")
-    title(s, "兩個平台,各司其職")
+    title(s, "兩個平台,實機落地")
     ghost_num(s, "05")
     # digiRunner column
     x = 1.0
@@ -399,11 +400,12 @@ def s_platforms():
     txt(s, x + 0.3, 2.2, 5.3, 0.5,
         [[("digiRunner", 20, NAVY, True), ("　= API Gateway 層", 14, GRAY, False)]])
     txt(s, x + 0.3, 2.72, 5.3, 0.4,
-        one("POC 用 FastAPI 模擬「厚 Gateway」:8010", 13, INK))
+        one("實機:digiRunner OSS(dgrv4):18080,前線代理我們的厚 Gateway :8010", 13, INK))
     bullets(s, x + 0.3, 3.15, 5.4, [
-        (0, "Auth / case ACL、限流配額、遮罩、快取、編排、稽核", None),
-        (0, "把資安與業務治理集中在「一處」管", None),
-        (0, "對應決策 Q1 · Q12 · Q18 · Q10 · Q9 · Q13", None),
+        (0, "12 條路由經 AC API 全自動註冊(零手動點擊)", None),
+        (0, "SPA → digiRunner(/dgrc)→ Gateway 全鏈路煙霧測試 7/7 通過", None),
+        (0, "上游身分標頭(X-User-Id)信任鏈已驗證;偽造標頭被 401 拒絕", None),
+        (0, "Gateway 仍守 Auth / ACL / 遮罩 / 快取 / 稽核(Q1·Q12·Q18·Q10·Q9·Q13)", None),
     ], gap=0.12, size=13.5)
     # Dify column
     x2 = 7.1
@@ -411,11 +413,12 @@ def s_platforms():
     txt(s, x2 + 0.3, 2.2, 5.3, 0.5,
         [[("Dify", 20, NAVY, True), ("　= AI workflow 層", 14, GRAY, False)]])
     txt(s, x2 + 0.3, 2.72, 5.3, 0.4,
-        one("POC 用 FastAPI 模擬「純推論」:8011", 13, INK))
+        one("實機:Dify CE :8088,workflow 接本機 Ollama qwen2.5:7b", 13, INK))
     bullets(s, x2 + 0.3, 3.15, 5.3, [
-        (0, "每個 AI 工具包成 single-step endpoint", None),
-        (0, "parse_oa / retrieve / draft / verify / deadline", None),
-        (0, "未來換成 Dify HTTP node,介面已對齊", None),
+        (0, "parse_oa / draft 走 patentmind-analyze-oa workflow(LLM_MODE=dify)", None),
+        (0, "Workflow DSL 由 prompts/*.yaml 自動生成 — 單一事實來源", None),
+        (0, "citation verifier 留在本地程式(Q14 硬牆,防幻覺不可繞過)", None),
+        (0, "Dify 斷線自動降級 + 前端醒目警示;機密案件不出機器(Q15)", None),
     ], gap=0.12, size=13.5)
     hline(s, 0.9, 5.15, 11.55, HAIR, 1.2)
     txt(s, 0.9, 5.32, 11.6, 1.4, [
@@ -437,11 +440,11 @@ def s_future():
     ghost_num(s, "06")
     txt(s, 1.0, 2.2, 5.6, 0.4, one("未來展望(P0 上線整備)", 17, NAVY, True))
     bullets(s, 1.0, 2.65, 5.6, [
-        (0, "接真實 Anthropic / OpenAI;機密案件走地端 Llama", None),
-        (0, "SQLite → Postgres + S3 Object Lock(WORM)封存", None),
-        (0, "記憶體快取 → Redis;numpy → Qdrant 向量庫", None),
-        (0, "PDF / DOCX 上傳 + Vision 讀圖;OIDC / SAML SSO", None),
-        (0, "Prometheus + Grafana 可觀測性與 AI 品質評測", None),
+        (0, "✔ 已落地:Redis 快取、Qdrant 向量庫、PDF/DOCX 上傳", None),
+        (0, "✔ 已落地:OIDC/SAML 介接層、WORM 稽核封存、digiRunner+Dify 實機", None),
+        (0, "接真實 Anthropic API(架構已就緒,等 key);Vision 讀圖擴大", None),
+        (0, "Postgres 稽核主存 + S3 Object Lock;Grafana 儀表板", None),
+        (0, "律師抽樣評分的 AI 品質評測週期(30+50 案基線已建)", None),
     ], gap=0.13, size=13.5)
     txt(s, 7.0, 2.2, 5.4, 0.4, one("收穫與心得", 17, NAVY, True))
     bullets(s, 7.0, 2.65, 5.4, [
@@ -535,6 +538,20 @@ s_shot("04", "前端畫面 ④｜行動版 RWD",
 
 s_divider("5", "Dify 與 digiRunner", "Platform mapping")
 s_platforms()
+s_shot("05", "實機證明 ①｜真模型分析結果(qwen2.5:7b via Dify)",
+       "real_05_result_real_qwen.png", [
+        ("全鏈路 28 秒", "SPA → digiRunner :18080 → Gateway → AI Engine → Dify :8088 → Ollama,無一 mock。"),
+        ("TW OA 正確解析", "請求項 9「該第一電動車」缺先行詞 → §26-2 antecedent_basis,真模型分類正確。"),
+        ("引證驗證硬牆", "真模型也想捏造引用 — verifier 即時剝除並在畫面標示(Q14)。"),
+        ("繁中申復書草稿", "qwen2.5:7b 產出 TIPO 格式申復書,逐句簽核後才可匯出(Q16)。"),
+       ], base=DELIVERY_SHOTS, kick="Dify 與 digiRunner · 實機證明")
+s_shot("05", "實機證明 ②｜稽核鏈與服務狀態",
+       "real_08_chain_verified.png", [
+        ("模型欄寫入 dify/qwen2.5:7b", "每筆分析的稽核列記錄實際模型 — 可究責、可回溯(Q13)。"),
+        ("Hash chain 全數驗證", "29 筆紀錄 0 不一致;append-only + 觸發器阻擋竄改。"),
+        ("遮罩規則留痕", "phone_tw_landline 等命中規則寫入稽核,證明遮罩真的有跑(Q10)。"),
+        ("四燈服務狀態", "頁尾 Gateway / AI Engine / digiRunner / Dify 即時健康燈號全綠。"),
+       ], base=DELIVERY_SHOTS, kick="Dify 與 digiRunner · 實機證明")
 
 s_divider("6", "未來展望 · 收穫與心得", "Roadmap & takeaways")
 s_future()

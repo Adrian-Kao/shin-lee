@@ -207,6 +207,8 @@ const resources = {
         pane_input: '輸入 OA / Input',
         pane_drafts: '草稿 / Drafts',
         pane_refs: '引證 / References',
+        degraded_banner:
+          'AI 服務降級中：LLM 後端暫時無法連線，本次結果由備援模擬引擎產生，僅供介面展示——不可作為實際法律分析使用。請聯絡系統管理員。',
         input: {
           oa_full_text: 'OA 全文',
           target_patent: '本案專利號',
@@ -520,6 +522,8 @@ const resources = {
         pane_input: 'Input',
         pane_drafts: 'Drafts',
         pane_refs: 'References',
+        degraded_banner:
+          'AI service degraded: the LLM backend is unreachable, so this result came from the fallback mock engine. It is for UI demonstration only — do NOT use it as legal analysis. Contact your administrator.',
         input: {
           oa_full_text: 'OA full text',
           target_patent: 'Target patent',

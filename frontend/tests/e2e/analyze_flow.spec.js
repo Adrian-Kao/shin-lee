@@ -116,6 +116,33 @@ test.describe('Analyze flow — desktop', () => {
     await expect(banner).toContainText('mock-haiku-verifier');
   });
 
+  test('degraded result shows an unmissable amber alert banner', async ({ page }) => {
+    // P2-2: when the LLM backend is down the AI engine degrades to the mock
+    // engine and tags the model label with -DEGRADED-. A fabricated legal
+    // analysis must never look like a real one — the DraftsPane surfaces a
+    // role=alert banner, not just the metadata suffix.
+    await loginAsAlice(page);
+    await mockAnalyze(
+      page,
+      defaultAnalysisResponse({
+        cost_meta: {
+          model: 'dify/qwen2.5:7b-DEGRADED-mock',
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          estimated_cost_usd: 0,
+          cache_hit: false,
+        },
+      })
+    );
+
+    const analyzeBtn = page.getByRole('button', { name: /^分析 OA/ }).filter({ visible: true });
+    await analyzeBtn.click();
+
+    const alert = page.getByRole('alert').filter({ visible: true }).first();
+    await expect(alert).toBeVisible({ timeout: 10_000 });
+    await expect(alert).toContainText('AI 服務降級中');
+  });
+
   test('deadline summary explains the calculation basis on demand', async ({ page }) => {
     // ★ deadline 可解釋：the backend returns the roll-forward reason, the
     // recommended internal deadline and the holiday-calendar version; the

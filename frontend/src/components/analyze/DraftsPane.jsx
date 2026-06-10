@@ -57,6 +57,11 @@ export default function DraftsPane({
     : null;
   const multi = rejections.length > 1;
 
+  // P2-2: a degraded result is fabricated by the mock fallback (LLM backend
+  // unreachable). The model-label suffix alone is too subtle for a legal
+  // tool — surface it as an unmissable banner, not just metadata.
+  const isDegraded = (result.cost_meta.model || '').includes('-DEGRADED-');
+
   return (
     <div className="flex h-full flex-col">
       <PaneHeader title={t('analyze.pane_drafts', { defaultValue: '草稿 / Drafts' })}>
@@ -65,6 +70,15 @@ export default function DraftsPane({
           <span className="font-mono">{result.cost_meta.model}</span> · tokens{' '}
           {result.cost_meta.prompt_tokens}+{result.cost_meta.completion_tokens}
         </div>
+        {isDegraded && (
+          <div
+            role="alert"
+            className="mt-2 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{t('analyze.degraded_banner')}</span>
+          </div>
+        )}
         {multi && (
           <RejectionTabs
             rejections={rejections}

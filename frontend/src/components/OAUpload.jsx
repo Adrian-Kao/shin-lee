@@ -138,11 +138,17 @@ export default function OAUpload({ caseId, token, onExtractSuccess, onError }) {
           setProgress(0);
           return;
         }
-        setErrorMsg(err?.message || 'Upload failed');
+        // Localize the transport-level failure strings from client.js; keep
+        // server-provided `detail` messages verbatim (already human-readable).
+        const msg =
+          err?.message === 'Network error during upload'
+            ? t('errors.network')
+            : err?.message || t('errors.request_failed');
+        setErrorMsg(msg);
         setStatus('error');
         if (onError) onError(err);
       });
-  }, [file, caseId, token, onError]);
+  }, [file, caseId, token, onError, t]);
 
   const cancelUpload = useCallback(() => {
     if (abortRef.current) {

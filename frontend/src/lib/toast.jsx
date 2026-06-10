@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 
 // Minimal toast system: no deps, no provider. Subscribers (one — ToastViewport)
 // listen for items; toast.success/.error/.info push; auto-dismiss after `duration`.
@@ -82,6 +83,7 @@ export function ToastViewport() {
 }
 
 function ToastItem({ item, onDismiss }) {
+  const { t } = useTranslation();
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
@@ -110,7 +112,7 @@ function ToastItem({ item, onDismiss }) {
       <button
         type="button"
         onClick={onDismiss}
-        aria-label="Dismiss"
+        aria-label={t('errors.dismiss')}
         className="px-1 leading-5 opacity-80 hover:opacity-100"
       >
         ×

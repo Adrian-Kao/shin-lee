@@ -17,6 +17,14 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // Local runs hit the Vite DEV server (unbundled module graph). On Windows
+  // the dev server cannot keep up with more than ~2 browser contexts doing a
+  // full cold page load at once — page.goto('/') times out en masse at the
+  // default worker count (empirically: 10 workers → ~60 goto timeouts,
+  // 2 workers → all green). The `warmup` project below pre-transforms the
+  // module graph; this cap keeps the dev server responsive. CI (Linux,
+  // usually against a built preview) keeps Playwright's default count.
+  workers: process.env.CI ? undefined : 2,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   // Keep snapshots under tests/e2e/__screenshots__/ so they live next to the spec.
   // Splitting by project name keeps desktop/mobile baselines apart on disk.
@@ -41,7 +49,19 @@ export default defineConfig({
   },
   projects: [
     {
+      // Serial pre-pass that loads every major surface once so the Vite dev
+      // server's module graph is transformed before the parallel projects
+      // start (prevents mass page.goto timeouts on cold local runs).
+      name: 'warmup',
+      testMatch: /warmup\.setup\.js$/,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1440, height: 900 },
+      },
+    },
+    {
       name: 'chromium-desktop',
+      dependencies: ['warmup'],
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1440, height: 900 },
@@ -49,6 +69,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-mobile',
+      dependencies: ['warmup'],
       use: {
         // Use Chromium-based mobile emulation rather than `devices['iPhone X']`
         // (which switches the browser engine to WebKit and requires installing

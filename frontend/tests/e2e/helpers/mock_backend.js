@@ -437,6 +437,42 @@ export async function mockAuditVerify(page, broken = [], verified = 2) {
 }
 
 /**
+ * Mock the AppShell footer's stack-status probes (StackStatus.jsx) so chip
+ * states are deterministic regardless of what is actually listening on the
+ * developer's machine (a real digiRunner on :18080 would otherwise flip the
+ * chip green and break visual baselines).
+ *
+ * `gateway` controls the same-origin /api/v1/health JSON probe; the other
+ * three are opaque no-cors reachability probes — fulfil = chip green,
+ * abort = chip gray ("not detected").
+ */
+export async function mockStackProbes(
+  page,
+  { gateway = true, aiEngine = false, digirunner = false, dify = false } = {}
+) {
+  await page.route('**/api/v1/health', (route) =>
+    route.fulfill({
+      status: gateway ? 200 : 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: gateway, service: 'gateway' }),
+    })
+  );
+  // One predicate route for all three external reachability probes — every
+  // page.route() pattern adds per-request driver overhead on Vite dev-server
+  // loads (hundreds of module requests), so keep the route count minimal.
+  const upByPort = { 8011: aiEngine, 18080: digirunner, 8088: dify };
+  await page.route(
+    (url) => /^(127\.0\.0\.1|localhost)$/.test(url.hostname) && url.port in upByPort,
+    (route) => {
+      const up = upByPort[new URL(route.request().url()).port];
+      return up
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' })
+        : route.abort('connectionrefused');
+    }
+  );
+}
+
+/**
  * One-shot helper: install login + quota + analyze + audit mocks at once with
  * the default Alice session. Tests that don't need to assert on a specific
  * payload can call this and move on.

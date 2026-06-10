@@ -61,7 +61,10 @@ export default function Login({ onLogin }) {
       const r = await api.login(uid);
       onLogin(r);
     } catch (e) {
-      setErr(e.message);
+      // HTTP errors carry a human-readable gateway `detail`; anything without
+      // a status is a network failure ("Failed to fetch") — show the
+      // localized message instead of the raw browser string.
+      setErr(e?.status ? e.message : t('errors.network'));
     } finally {
       setBusy(null);
     }
@@ -185,7 +188,7 @@ function MagicLink({ onLogin, disabled }) {
       setToken(r.magic_token || null);
       setPhase('sent');
     } catch (e2) {
-      setError(e2.message);
+      setError(e2?.status ? e2.message : t('errors.network'));
       setPhase('idle');
     }
   }

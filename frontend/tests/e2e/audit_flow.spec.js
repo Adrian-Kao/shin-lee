@@ -28,7 +28,7 @@ test.describe('Audit flow', () => {
     // Click the Audit nav link to switch.
     // AppShell nav rail uses i18n key nav.audit (zh-TW resolves to "Audit").
     await page
-      .locator('nav[aria-label="Primary"]')
+      .getByTestId('nav-rail')
       .getByRole('button', { name: /^Audit$/ })
       .click();
     await page.waitForURL(/\/audit/);
@@ -66,7 +66,7 @@ test.describe('Audit flow', () => {
     await page.waitForURL(/\/analyze/, { timeout: 5000 });
     // AppShell nav rail uses i18n key nav.audit (zh-TW resolves to "Audit").
     await page
-      .locator('nav[aria-label="Primary"]')
+      .getByTestId('nav-rail')
       .getByRole('button', { name: /^Audit$/ })
       .click();
     await page.waitForURL(/\/audit/);
@@ -87,7 +87,7 @@ test.describe('Audit flow', () => {
     await page.waitForURL(/\/audit/);
     // AppShell nav rail uses i18n key nav.audit (zh-TW resolves to "Audit").
     await page
-      .locator('nav[aria-label="Primary"]')
+      .getByTestId('nav-rail')
       .getByRole('button', { name: /^Audit$/ })
       .click();
     await page.waitForURL(/\/audit/);
@@ -114,7 +114,7 @@ test.describe('Audit flow', () => {
     await page.waitForURL(/\/audit/);
     // AppShell nav rail uses i18n key nav.audit (zh-TW resolves to "Audit").
     await page
-      .locator('nav[aria-label="Primary"]')
+      .getByTestId('nav-rail')
       .getByRole('button', { name: /^Audit$/ })
       .click();
     await page.waitForURL(/\/audit/);
@@ -136,7 +136,7 @@ test.describe('Audit flow', () => {
 
     // AppShell nav rail uses i18n key nav.audit (zh-TW resolves to "Audit").
     await page
-      .locator('nav[aria-label="Primary"]')
+      .getByTestId('nav-rail')
       .getByRole('button', { name: /^Audit$/ })
       .click();
     await page.waitForURL(/\/audit/);

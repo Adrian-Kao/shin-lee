@@ -33,11 +33,12 @@ test.describe('Trust band (Day 9C CHUNK-8)', () => {
     const html = page.locator('html');
     await expect(html).not.toHaveClass(/\bdark\b/);
 
-    await page.getByRole('button', { name: 'Switch to dark mode' }).click();
+    // aria-label is localized (zh-TW default) — use the stable testid.
+    await page.getByTestId('theme-toggle').click();
     await expect(html).toHaveClass(/\bdark\b/);
 
     // Toggling back returns to light.
-    await page.getByRole('button', { name: 'Switch to light mode' }).click();
+    await page.getByTestId('theme-toggle').click();
     await expect(html).not.toHaveClass(/\bdark\b/);
   });
 

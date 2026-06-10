@@ -24,6 +24,7 @@ import i18n, { htmlLangFor } from '../lib/i18n';
 import { useTheme } from '../lib/theme.jsx';
 import { Button } from './ui/button.jsx';
 import { Badge } from './ui/badge.jsx';
+import StackStatus from './StackStatus.jsx';
 
 /**
  * Day 9C — CHUNK-1 + CHUNK-8 app shell.
@@ -115,7 +116,29 @@ export default function AppShell({ session, onLogout, children, trustContext }) 
         />
         <main className="min-w-0 flex-1">{children}</main>
       </div>
+      <ShellFooter t={t} />
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Footer — integration stack status + build tag                            */
+/* -------------------------------------------------------------------------- */
+
+function ShellFooter({ t }) {
+  // Sticky so the integration chips stay visible without scrolling — the
+  // Analyze page is taller than the viewport and the chips are the demo's
+  // "the whole stack is alive" cue. Solid background + border keeps content
+  // legible when it slides underneath.
+  return (
+    <footer className="sticky bottom-0 z-20 border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+      <div className="mx-auto flex max-w-[1920px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5 sm:px-6">
+        <StackStatus />
+        <span className="ml-auto hidden text-2xs text-slate-400 sm:inline dark:text-slate-500">
+          {t('landing.footer')}
+        </span>
+      </div>
+    </footer>
   );
 }
 
@@ -233,14 +256,17 @@ function LanguageToggle() {
 }
 
 function ThemeToggle() {
+  const { t } = useTranslation();
   const { theme, setTheme } = useTheme();
   const isDark = theme === 'dark';
+  const label = isDark ? t('shell.theme.to_light') : t('shell.theme.to_dark');
   return (
     <button
       type="button"
+      data-testid="theme-toggle"
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      title={isDark ? 'Light mode' : 'Dark mode'}
+      aria-label={label}
+      title={label}
       className="hidden items-center justify-center rounded-md bg-white/10 p-1.5 text-navy-50 ring-1 ring-white/15 hover:bg-white/20 sm:inline-flex"
     >
       {isDark ? (
@@ -292,7 +318,7 @@ function ChainChip({ state, canCallAudit, onClick, t }) {
       onClick={onClick}
       data-testid="trust-chain-chip"
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${tone}`}
-      title={failed ? t('shell.audit_chip.fail') : 'Audit chain (Q13)'}
+      title={failed ? t('shell.audit_chip.fail') : t('shell.audit_chip.tooltip')}
     >
       <Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       <span>{label}</span>
@@ -387,7 +413,7 @@ function NavRail({ items, collapsed, setCollapsed, activePath, onNavigate, t }) 
   const mobileCollapsed = true;
   return (
     <nav
-      aria-label="Primary"
+      aria-label={t('nav.primary')}
       data-testid="nav-rail"
       className={`flex shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-150 dark:border-slate-700 dark:bg-slate-900 ${
         collapsed ? 'sm:w-16' : 'sm:w-60'
@@ -407,12 +433,12 @@ function NavRail({ items, collapsed, setCollapsed, activePath, onNavigate, t }) 
               title={label}
               className={`group w-full justify-start gap-3 px-3 py-2 ${
                 isActive
-                  ? 'bg-navy-50 text-navy-900 ring-1 ring-navy-200 hover:bg-navy-50 hover:text-navy-900'
+                  ? 'bg-navy-50 text-navy-900 ring-1 ring-navy-200 hover:bg-navy-50 hover:text-navy-900 dark:bg-navy-900/40 dark:text-navy-100 dark:ring-navy-800 dark:hover:bg-navy-900/40 dark:hover:text-navy-100'
                   : ''
               }`}
             >
               <Icon
-                className={`h-5 w-5 shrink-0 ${isActive ? 'text-navy-700' : 'text-slate-500'}`}
+                className={`h-5 w-5 shrink-0 ${isActive ? 'text-navy-700 dark:text-navy-300' : 'text-slate-500 dark:text-slate-400'}`}
                 strokeWidth={1.75}
                 aria-hidden="true"
               />
@@ -421,7 +447,7 @@ function NavRail({ items, collapsed, setCollapsed, activePath, onNavigate, t }) 
           );
         })}
       </div>
-      <div className="hidden border-t border-slate-200 p-2 sm:block">
+      <div className="hidden border-t border-slate-200 p-2 sm:block dark:border-slate-700">
         <Button
           type="button"
           variant="ghost"

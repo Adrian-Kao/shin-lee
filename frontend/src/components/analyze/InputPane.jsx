@@ -32,6 +32,7 @@ export default function InputPane({
   session,
   // actions
   onPreviewRedaction,
+  previewing = false,
   onAnalyze,
   running,
   // status
@@ -139,7 +140,12 @@ export default function InputPane({
             className="w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
           />
           <div className="mt-3 flex gap-2">
-            <Button variant="secondary" onClick={onPreviewRedaction} className="flex-1">
+            <Button
+              variant="secondary"
+              onClick={onPreviewRedaction}
+              disabled={previewing}
+              className="flex-1 disabled:cursor-wait"
+            >
               {t('analyze.input.preview_redaction')}
             </Button>
             <Button
@@ -232,10 +238,12 @@ export default function InputPane({
               total={quota.tenant_monthly_cap}
             />
             <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Cost breaker: ${quota.circuit_breaker.current_usd} / $
+              {t('analyze.input.cost_breaker')}: ${quota.circuit_breaker.current_usd} / $
               {quota.circuit_breaker.threshold_usd}
               {quota.circuit_breaker.tripped && (
-                <span className="ml-2 font-semibold text-rose-600 dark:text-rose-300">TRIPPED</span>
+                <span className="ml-2 font-semibold text-rose-600 dark:text-rose-300">
+                  {t('analyze.input.cost_breaker_tripped')}
+                </span>
               )}
             </div>
           </div>

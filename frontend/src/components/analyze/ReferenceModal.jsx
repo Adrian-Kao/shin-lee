@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { Button } from '../ui/button.jsx';
 
@@ -10,6 +11,7 @@ import { Button } from '../ui/button.jsx';
  * fixed overlay if showModal() isn't available (very old browsers).
  */
 export default function ReferenceModal({ hit, onClose }) {
+  const { t } = useTranslation();
   const dialogRef = useRef(null);
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function ReferenceModal({ hit, onClose }) {
             {hit.patent_no}
           </div>
           <div className="text-xs text-slate-500 dark:text-slate-400">
-            {hit.section} · score {hit.score.toFixed(3)}
+            {hit.section} · {t('analyze.refs.score')} {hit.score.toFixed(3)}
           </div>
         </div>
         <Button
@@ -59,7 +61,7 @@ export default function ReferenceModal({ hit, onClose }) {
           size="icon"
           onClick={onClose}
           className="h-8 w-8 shrink-0"
-          aria-label="Close"
+          aria-label={t('signoff.close')}
         >
           <X className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
         </Button>

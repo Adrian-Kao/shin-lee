@@ -21,6 +21,7 @@ const resources = {
         cases: '案件',
         expand: '展開導覽',
         collapse: '收合導覽',
+        primary: '主導覽',
       },
       shell: {
         audit_chip: {
@@ -28,6 +29,17 @@ const resources = {
           checking: '驗證中…',
           fail: '紀錄驗證未通過 — 請聯絡管理員',
           rows: '{{rows}} 筆',
+          tooltip: '稽核鏈完整性 (Q13) — 點擊查看稽核紀錄',
+        },
+        theme: {
+          to_dark: '切換深色模式',
+          to_light: '切換淺色模式',
+        },
+        stack: {
+          title: '服務狀態',
+          up: '連線正常',
+          unknown: '未偵測（未啟用或無法連線）',
+          checking: '偵測中…',
         },
         role_badge: {
           attorney: '律師',
@@ -53,6 +65,8 @@ const resources = {
         submit: '送出',
         cancel: '取消',
       },
+      yes: '是',
+      no: '否',
       coming_soon: '即將推出',
       upload: {
         drop_zone: '拖放 PDF / DOCX 到這裡，或',
@@ -205,12 +219,15 @@ const resources = {
           quota: '配額',
           token_today: '今日 token (你)',
           token_month: '本月 token (tenant)',
+          cost_breaker: '成本斷路器',
+          cost_breaker_tripped: '已觸發',
         },
         drafts: {
           strategy: '答辯策略',
           examiner_argument: 'Examiner 論點',
           signoff_label: '草稿（律師逐句簽核 — Q16）',
           analyzing: '分析中…',
+          running: '執行中…',
           running_note:
             '地端 llama3.1:8b 於 CPU 推論，單次分析約 5–7 分鐘。再次送出相同 OA + case 會命中 cache（< 1 秒）。',
         },
@@ -313,6 +330,7 @@ const resources = {
         cases: 'Cases',
         expand: 'Expand navigation',
         collapse: 'Collapse navigation',
+        primary: 'Primary',
       },
       shell: {
         audit_chip: {
@@ -320,6 +338,17 @@ const resources = {
           checking: 'Verifying…',
           fail: 'Chain mismatch — contact ops',
           rows: '{{rows}} rows',
+          tooltip: 'Audit chain integrity (Q13) — click to open the audit log',
+        },
+        theme: {
+          to_dark: 'Switch to dark mode',
+          to_light: 'Switch to light mode',
+        },
+        stack: {
+          title: 'Stack',
+          up: 'Online',
+          unknown: 'Not detected (disabled or unreachable)',
+          checking: 'Checking…',
         },
         role_badge: {
           attorney: 'Attorney',
@@ -349,6 +378,8 @@ const resources = {
         submit: 'Submit',
         cancel: 'Cancel',
       },
+      yes: 'Yes',
+      no: 'No',
       coming_soon: 'Coming soon',
       upload: {
         drop_zone: 'Drop PDF / DOCX here, or',
@@ -501,12 +532,15 @@ const resources = {
           quota: 'Quota',
           token_today: "Today's tokens (you)",
           token_month: "This month's tokens (tenant)",
+          cost_breaker: 'Cost breaker',
+          cost_breaker_tripped: 'TRIPPED',
         },
         drafts: {
           strategy: 'Response strategy',
           examiner_argument: 'Examiner argument',
           signoff_label: 'Draft (attorney signs off line by line — Q16)',
           analyzing: 'Analyzing…',
+          running: 'running…',
           running_note:
             'On-prem llama3.1:8b runs on CPU; a single analysis takes ~5–7 min. Re-submitting the same OA + case hits the cache (<1s).',
         },

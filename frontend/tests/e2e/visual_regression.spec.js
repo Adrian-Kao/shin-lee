@@ -14,6 +14,7 @@ import {
   mockAnalyze,
   mockAuditRecent,
   mockAuditVerify,
+  mockStackProbes,
   loginAsAlice,
 } from './helpers/mock_backend.js';
 
@@ -35,7 +36,26 @@ const screenshotOpts = (page) => ({
   // mask: dynamicMaskLocators(page),  // enable if AA + timing causes flakiness
 });
 
+// The AppShell footer's stack chips start in a pulsing "checking" state and
+// settle asynchronously (mocked probes settle in <100ms, but the screenshot
+// must not race that transition). Call after login, before toHaveScreenshot.
+async function waitForStackSettled(page) {
+  for (const id of ['gateway', 'ai-engine', 'digirunner', 'dify']) {
+    await expect(page.getByTestId(`stack-status-${id}`)).not.toHaveAttribute(
+      'data-status',
+      'checking'
+    );
+  }
+}
+
 test.describe('Visual regression', () => {
+  test.beforeEach(async ({ page }) => {
+    // The AppShell footer probes Gateway/AI Engine/digiRunner/Dify on mount.
+    // Pin all four to a deterministic state (gateway green, externals gray)
+    // so the baselines don't depend on what happens to listen on the dev box.
+    await mockStackProbes(page);
+  });
+
   test('landing — desktop', async ({ page, viewport }) => {
     test.skip(viewport && viewport.width < 1280, 'desktop snapshot');
     await page.goto('/');
@@ -56,6 +76,7 @@ test.describe('Visual regression', () => {
     await loginAsAlice(page);
     // Make sure quota panel resolved so layout is stable (no skeleton flicker).
     await expect(page.getByRole('heading', { name: /配額/ }).first()).toBeVisible();
+    await waitForStackSettled(page);
     await expect(page).toHaveScreenshot('analyze_empty_desktop.png', screenshotOpts(page));
   });
 
@@ -71,6 +92,7 @@ test.describe('Visual regression', () => {
     await expect(
       page.getByText('答辯策略').filter({ visible: true }).first()
     ).toBeVisible({ timeout: 10_000 });
+    await waitForStackSettled(page);
     await expect(page).toHaveScreenshot('analyze_result_desktop.png', screenshotOpts(page));
   });
 
@@ -94,6 +116,7 @@ test.describe('Visual regression', () => {
     // Wait for any of the three tabs to be rendered. The mobile tab strip is
     // an ARIA tablist (Day 12E), so the tabs expose role="tab".
     await expect(page.getByRole('tab', { name: /輸入.*Input/ })).toBeVisible();
+    await waitForStackSettled(page);
     await expect(page).toHaveScreenshot('mobile_tab_bar.png', screenshotOpts(page));
   });
 });
@@ -110,6 +133,7 @@ test.describe('Visual regression', () => {
 // ---------------------------------------------------------------------------
 test.describe('Visual regression — dark mode', () => {
   test.beforeEach(async ({ page }) => {
+    await mockStackProbes(page); // deterministic footer chips (see above)
     await page.addInitScript(() => {
       try {
         window.localStorage.setItem('theme', 'dark');
@@ -124,6 +148,7 @@ test.describe('Visual regression — dark mode', () => {
     await loginAsAlice(page);
     await expect(page.locator('html')).toHaveClass(/\bdark\b/);
     await expect(page.getByRole('heading', { name: /配額/ }).first()).toBeVisible();
+    await waitForStackSettled(page);
     await expect(page).toHaveScreenshot('analyze_empty_desktop_dark.png', screenshotOpts(page));
   });
 
@@ -136,6 +161,7 @@ test.describe('Visual regression — dark mode', () => {
     await expect(
       page.getByText('答辯策略').filter({ visible: true }).first()
     ).toBeVisible({ timeout: 10_000 });
+    await waitForStackSettled(page);
     await expect(page).toHaveScreenshot('analyze_result_desktop_dark.png', screenshotOpts(page));
   });
 
@@ -150,6 +176,7 @@ test.describe('Visual regression — dark mode', () => {
     await page.waitForURL(/\/audit/);
     await expect(page.locator('html')).toHaveClass(/\bdark\b/);
     await expect(page.getByRole('heading', { name: /Audit Log/ })).toBeVisible();
+    await waitForStackSettled(page);
     await expect(page).toHaveScreenshot('audit_table_desktop_dark.png', screenshotOpts(page));
   });
 });

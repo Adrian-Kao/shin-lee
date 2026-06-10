@@ -136,12 +136,16 @@ export default function Analyze({
     });
   }, [onTrustChange, caseId, result]);
 
+  const [previewing, setPreviewing] = useState(false);
   async function previewRedaction() {
+    setPreviewing(true);
     try {
       const r = await api.redactionPreview(session.token, oaText, caseId);
       setRedactPreview(r);
     } catch (e) {
       setError(e);
+    } finally {
+      setPreviewing(false);
     }
   }
 
@@ -189,6 +193,7 @@ export default function Analyze({
     onExtractSuccess: handleExtractSuccess,
     session,
     onPreviewRedaction: previewRedaction,
+    previewing,
     onAnalyze: runAnalyze,
     running,
     error,

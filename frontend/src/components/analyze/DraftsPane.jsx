@@ -194,7 +194,7 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
             <span>{t('analyze.drafts_meta.verifier_conf', { pct: (draft.confidence * 100).toFixed(0) })}</span>
             <span className="ml-auto">
               {t('analyze.drafts_meta.requires_review', {
-                value: draft.requires_attorney_review ? 'true' : 'false',
+                value: draft.requires_attorney_review ? t('yes') : t('no'),
               })}
             </span>
           </div>
@@ -385,7 +385,9 @@ function RunningPanel() {
                 {t(stage.key)}
               </span>
               {active && (
-                <span className="ml-auto animate-pulse text-xs text-navy-500 dark:text-navy-300">running…</span>
+                <span className="ml-auto animate-pulse text-xs text-navy-500 dark:text-navy-300">
+                  {t('analyze.drafts.running')}
+                </span>
               )}
             </div>
           );

@@ -166,29 +166,39 @@ if [ "${SEED:-1}" = "1" ]; then
 fi
 
 # ----- 6. Frontend -----
-if [ ! -d frontend/node_modules ]; then
-  inf "Installing frontend deps (one-time, ~60s)..."
-  (cd frontend && npm install --silent)
+# NOTE: probe via `localhost`, not 127.0.0.1 — on Windows vite often binds
+# IPv6 loopback (::1) only, which a 127.0.0.1 probe misses entirely.
+VITE_URL="http://localhost:5173/"
+if curl -fs -m 3 "$VITE_URL" > /dev/null 2>&1; then
+  # A dev server is already serving :5173 (e.g. launched by hand in another
+  # terminal). Reuse it — starting a second vite would silently fall back to
+  # :5174 and the health wait below would fail against :5173.
+  ok "Vite already running on :5173 — reusing it"
+else
+  if [ ! -d frontend/node_modules ]; then
+    inf "Installing frontend deps (one-time, ~60s)..."
+    (cd frontend && npm install --silent)
+  fi
+
+  inf "Starting vite :5173 → tmp/frontend.log"
+  (cd frontend && npm run dev > ../tmp/frontend.log 2>&1) &
+  FE_PID=$!
+
+  # Wait for vite to bind.
+  DEADLINE=$((SECONDS + 30))
+  while ! curl -fs "$VITE_URL" > /dev/null 2>&1; do
+    if [ $SECONDS -ge $DEADLINE ]; then
+      err "Vite not responding within 30s — check tmp/frontend.log"
+      cleanup
+    fi
+    if ! kill -0 "$FE_PID" 2>/dev/null; then
+      err "Vite process died — check tmp/frontend.log"
+      cleanup
+    fi
+    sleep 1
+  done
+  ok "Vite up"
 fi
-
-inf "Starting vite :5173 → tmp/frontend.log"
-(cd frontend && npm run dev > ../tmp/frontend.log 2>&1) &
-FE_PID=$!
-
-# Wait for vite to bind.
-DEADLINE=$((SECONDS + 30))
-while ! curl -fs http://127.0.0.1:5173/ > /dev/null 2>&1; do
-  if [ $SECONDS -ge $DEADLINE ]; then
-    err "Vite not responding within 30s — check tmp/frontend.log"
-    cleanup
-  fi
-  if ! kill -0 "$FE_PID" 2>/dev/null; then
-    err "Vite process died — check tmp/frontend.log"
-    cleanup
-  fi
-  sleep 1
-done
-ok "Vite up"
 
 # ----- 7. Open browser -----
 URL="http://localhost:5173/"
@@ -218,6 +228,13 @@ echo "                 4. See rejections + grounded citations + deadline"
 echo ""
 echo "  Pre-demo check: bash scripts/smoke_demo.sh"
 echo ""
+# Hook for wrapper launchers (scripts/start_delivery.sh): pre-formatted
+# extra summary lines (infra / external-service status table), printed
+# verbatim inside this final banner.
+if [ -n "${EXTRA_SUMMARY:-}" ]; then
+  echo -e "$EXTRA_SUMMARY"
+  echo ""
+fi
 echo "  Press Ctrl+C to stop everything."
 echo "════════════════════════════════════════════════════════════"
 echo ""

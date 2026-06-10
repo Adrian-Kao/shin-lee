@@ -30,6 +30,7 @@ from backend.ai_engine.rag import (
     VectorStore,
 )
 from backend.shared.config import settings
+from tests.unit.qdrant_isolation import TenantNamespacedStore
 
 
 DIM = 8
@@ -50,12 +51,15 @@ def _chunk(chunk_id, patent_no="US1", section="claim_1", claim_no=1,
 
 
 def _make_qdrant_or_skip() -> VectorStore:
+    # Tenant ids are namespaced per-run: the shared dev Qdrant holds REAL demo
+    # collections (tenant_a/tenant_b at bge-m3's 1024 dims) that these 8-dim
+    # toy vectors must never collide with (the dim-drift guard would refuse).
     try:
         store = QdrantVectorStore(url=settings.QDRANT_URL, dim=DIM)
         store._client.get_collections()
     except Exception as exc:  # pragma: no cover - env-dependent
         pytest.skip(f"Qdrant not reachable at {settings.QDRANT_URL}: {exc}")
-    return store
+    return TenantNamespacedStore(store)
 
 
 _STORE_FACTORIES = [
@@ -66,7 +70,10 @@ _STORE_FACTORIES = [
 
 @pytest.fixture(params=_STORE_FACTORIES)
 def store(request) -> VectorStore:
-    return request.param()
+    s = request.param()
+    yield s
+    if isinstance(s, TenantNamespacedStore):
+        s.cleanup()
 
 
 # ---------------------------------------------------------------------------

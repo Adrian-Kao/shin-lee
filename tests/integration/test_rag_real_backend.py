@@ -81,6 +81,25 @@ def _sentence_transformers_available() -> bool:
     return proc.returncode == 0
 
 
+def _bge_m3_model_cached() -> bool:
+    """True when the bge-m3 weights are fully present in the local HF cache.
+
+    The Embedder loads offline-first (rag.py `_load_st` passes
+    ``local_files_only=True`` when the snapshot is cached), so the only way
+    this test can run deterministically — on CI boxes and behind corporate
+    firewalls alike — is when the model has been prefetched
+    (``python scripts/prefetch_bge_m3.py``). If it has not, skip instead of
+    failing on a hub download that this environment may not be able to make.
+    """
+    try:
+        from huggingface_hub import snapshot_download
+
+        snapshot_download(settings.EMBEDDING_MODEL, local_files_only=True)
+        return True
+    except Exception:
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Tier 1 — live Qdrant end-to-end (skips with no server)
 # ---------------------------------------------------------------------------
@@ -159,6 +178,10 @@ def test_qdrant_dim_drift_guard_live():
 @pytest.mark.skipif(
     not _sentence_transformers_available(),
     reason="sentence-transformers / torch not importable in this environment",
+)
+@pytest.mark.skipif(
+    not _bge_m3_model_cached(),
+    reason="bge-m3 weights not in local HF cache — run scripts/prefetch_bge_m3.py",
 )
 def test_bge_m3_embedder_dim_and_distinctness(monkeypatch):
     monkeypatch.setattr(settings, "EMBEDDING_BACKEND", "bge-m3")

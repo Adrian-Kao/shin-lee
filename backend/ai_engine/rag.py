@@ -334,7 +334,18 @@ class Embedder:
 
     def _load_st(self):
         from sentence_transformers import SentenceTransformer
-        self._st_model = SentenceTransformer(settings.EMBEDDING_MODEL)
+        try:
+            # Offline-first: if the model is already in the local HF cache
+            # (see scripts/prefetch_bge_m3.py) load it WITHOUT any hub round
+            # trip. Boot must not depend on huggingface.co reachability —
+            # air-gapped / proxied on-prem deployments (Q3 posture); the
+            # online adapter-config probe is a known flake behind firewalls.
+            self._st_model = SentenceTransformer(
+                settings.EMBEDDING_MODEL, local_files_only=True
+            )
+        except Exception:
+            # Model not cached yet — fall back to a normal downloading load.
+            self._st_model = SentenceTransformer(settings.EMBEDDING_MODEL)
 
     @property
     def dim(self) -> int:
@@ -665,7 +676,11 @@ class QdrantVectorStore(VectorStore):
         from qdrant_client.http import models as qm
 
         self._qm = qm
-        self._client = QdrantClient(url=url)
+        # timeout=30 (default 5s REST): collection create/delete churn on a
+        # loaded Docker Desktop box has been observed to exceed 5s (408s),
+        # which surfaced as flaky upserts/searches. 30s rides out the stall
+        # without masking a truly dead server.
+        self._client = QdrantClient(url=url, timeout=30)
         self._dim = dim
         self._known_tenants: set[str] = set()
 
@@ -701,6 +716,11 @@ class QdrantVectorStore(VectorStore):
         self._known_tenants.add(name)
 
     def upsert(self, tenant_id: str, chunks: list[Chunk], vectors: list[list[float]]):
+        if not chunks:
+            # Empty batch is a contract-level no-op (13H robustness). Qdrant
+            # rejects an empty points PUT with 400 "Empty update request",
+            # and we should not even create the collection for it.
+            return
         self._ensure_collection(tenant_id)
         points = [
             self._qm.PointStruct(

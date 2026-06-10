@@ -26,6 +26,7 @@ from backend.ai_engine.rag import (
     _should_drop_for_dim,
 )
 from backend.shared.config import settings
+from tests.unit.qdrant_isolation import TenantNamespacedStore
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +57,10 @@ def _chunk(chunk_id, patent_no, section, claim_no, text="t", jurisdiction="US", 
 def _make_qdrant_or_skip() -> VectorStore:
     """Construct a QdrantVectorStore against the configured URL, or skip.
 
-    We use a unique collection prefix per run is unnecessary here because the
-    contract tests use isolated tenant ids; but we DO verify reachability by
+    The returned store namespaces tenant ids per-run (TenantNamespacedStore):
+    the shared dev Qdrant holds REAL demo collections for tenant_a/tenant_b
+    (bge-m3, 1024-dim) which the 8-dim test vectors must never touch — the
+    dim-drift guard would (rightly) refuse. We also verify reachability by
     issuing a cheap call and skipping on any connection error.
     """
     try:
@@ -67,7 +70,7 @@ def _make_qdrant_or_skip() -> VectorStore:
         store._client.get_collections()
     except Exception as exc:  # pragma: no cover - depends on env
         pytest.skip(f"Qdrant not reachable at {settings.QDRANT_URL}: {exc}")
-    return store
+    return TenantNamespacedStore(store)
 
 
 # Each entry is a zero-arg factory returning a fresh store instance.
@@ -79,7 +82,10 @@ _STORE_FACTORIES = [
 
 @pytest.fixture(params=_STORE_FACTORIES)
 def store(request) -> VectorStore:
-    return request.param()
+    s = request.param()
+    yield s
+    if isinstance(s, TenantNamespacedStore):
+        s.cleanup()
 
 
 # ---------------------------------------------------------------------------

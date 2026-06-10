@@ -9,6 +9,11 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Windows: force UTF-8 so the inline `python -c` JSON parsing doesn't choke
+# on the cp950 default codec (analyze/upload payloads contain zh-TW text).
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
+
 GREEN='\033[0;32m'; RED='\033[0;31m'; YEL='\033[1;33m'; NC='\033[0m'
 ok()  { echo -e "${GREEN}GREEN${NC} $*"; }
 bad() { echo -e "${RED}RED${NC}   $*"; FAILED=$((FAILED+1)); }
@@ -17,7 +22,8 @@ inf() { echo -e "${YEL}▶${NC}     $*"; }
 FAILED=0
 GW=http://127.0.0.1:8010
 AI=http://127.0.0.1:8011
-FE=http://127.0.0.1:5173
+# `localhost` (not 127.0.0.1): on Windows vite often binds IPv6 ::1 only.
+FE=http://localhost:5173
 
 mkdir -p tmp
 
@@ -42,7 +48,7 @@ if curl -fs "$FE/" > /dev/null; then ok "frontend $FE"; else bad "frontend $FE";
 inf "Login as Alice..."
 TOKEN=$(curl -fs -X POST "$GW/v1/auth/login" \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"alice"}' \
+  -d '{"user_id":"alice","password":"demo-alice"}' \
   | python -c "import sys, json; print(json.load(sys.stdin)['token'])" 2>/dev/null || echo "")
 if [ -n "$TOKEN" ]; then ok "JWT issued (${#TOKEN} chars)"; else bad "login failed"; exit 1; fi
 
@@ -90,7 +96,7 @@ fi
 inf "Check audit log..."
 DAVE=$(curl -fs -X POST "$GW/v1/auth/login" \
   -H 'Content-Type: application/json' \
-  -d '{"user_id":"audit_dave"}' \
+  -d '{"user_id":"audit_dave","password":"demo-audit_dave"}' \
   | python -c "import sys, json; print(json.load(sys.stdin)['token'])" 2>/dev/null || echo "")
 if [ -n "$DAVE" ]; then
   NROWS=$(curl -fs "$GW/v1/audit/recent" \

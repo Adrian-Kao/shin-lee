@@ -27,7 +27,11 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-patentmind}
     ports:
       # Loopback only — credentials are dev defaults; not safe on LAN.
-      - "127.0.0.1:5432:5432"
+      # Host port defaults to 15432 (NOT 5432): on the delivery box host
+      # port 5432 is already taken by a foreign Postgres. Override with
+      # POSTGRES_HOST_PORT; keep POSTGRES_URL in .env in sync when
+      # AUDIT_BACKEND=postgres.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-15432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:

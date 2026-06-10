@@ -474,6 +474,30 @@ class Settings:
     # never 503 a request; it just means "no cache for that request". The two
     # controls have different safe defaults on purpose (see redis_cache.py).
     RATE_LIMIT_REDIS_DEGRADE: str = os.getenv("RATE_LIMIT_REDIS_DEGRADE", "closed")  # closed | open
+    # ------------------------------------------------------------------
+    # Agent J — PDF / OCR ingestion robustness (Q8, Day 13J)
+    # ------------------------------------------------------------------
+    # Additive-only knobs for the hardened pdf_parser ingest path. All have
+    # safe defaults so existing callers are unaffected.
+    #
+    # Hard ceiling on PDF page count. Beyond MAX_PDF_PAGES we refuse the doc
+    # outright (ValueError) rather than silently truncate — a 5000-page PDF is
+    # almost always a malformed/zip-bomb-style payload, and silently dropping
+    # pages in a legal workflow loses evidence. The per-call `max_pages`
+    # argument still governs *truncation-with-warning* for normal large docs;
+    # this is the absolute upper bound that no caller may exceed.
+    MAX_PDF_PAGES: int = int(os.getenv("MAX_PDF_PAGES", "2000"))
+    # A page that fell back to OCR but came back with fewer than this many
+    # characters is flagged as a probable bad/blank scan via a per-page quality
+    # warning, so a downstream caller can prompt the attorney to re-scan. This
+    # does NOT fail the upload — it only surfaces a signal.
+    OCR_LOW_TEXT_WARN_CHARS: int = int(os.getenv("OCR_LOW_TEXT_WARN_CHARS", "8"))
+    # Fraction (0..1) of pages allowed to be OCR'd before the whole document is
+    # flagged "likely a scanned document — extraction quality may be degraded".
+    # Purely advisory; surfaced in warnings.
+    OCR_SCANNED_DOC_WARN_RATIO: float = float(
+        os.getenv("OCR_SCANNED_DOC_WARN_RATIO", "0.5")
+    )
 
 
 settings = Settings()

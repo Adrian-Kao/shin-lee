@@ -134,7 +134,7 @@ def make_wordmark(mark, text_color, sub_color, accent, fname, tagline=True):
     name_w = nb[2] - nb[0]
     ai_w = td.textbbox((0, 0), "AI", font=ai_font)[2]
     text_x = mark_sz + 56
-    tag = "專利答辯安全閘道 · Secure LLM Gateway"
+    tag = "專利 OA 答辯自動擬稿系統 · AI Drafting Assistant"
     tag_w = td.textbbox((0, 0), tag, font=tag_font)[2]
     total_w = text_x + max(name_w + 30 + ai_w, tag_w if tagline else 0) + pad
 

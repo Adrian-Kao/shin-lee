@@ -208,19 +208,19 @@ def bullets(s, x, y, w, items, gap=0.10, size=16, lead_size=None):
 def s_title():
     s = slide(NAVY)
     rect(s, 0, 0, SW, 0.16, AMBER)          # top accent
-    add_pic_fith(s, os.path.join(ASSETS, "logo_word_white.png"), 0.95, 1.15, 1.15)
-    txt(s, 0.95, 3.0, 11.4, 1.6,
-        one("專利答辯安全 LLM 閘道", 46, WHITE, True))
-    txt(s, 0.97, 4.15, 11.4, 1.2,
-        [[("在 ", 19, RGBColor(0xC6,0xD2,0xEE), False),
-          ("絕不讓客戶機密外洩到公有 LLM", 19, AMBER, True),
-          (" 的前提下,半自動產出專利 OA 答辯稿", 19, RGBColor(0xC6,0xD2,0xEE), False)]])
-    hline(s, 0.97, 5.05, 5.2, RGBColor(0x3B,0x55,0x9E), 1.2)
-    txt(s, 0.97, 5.25, 11, 0.5,
-        one("產品 SPA + 厚 Gateway + AI Engine　·　20 項架構決策 · 611 測試綠燈", 14,
-            RGBColor(0xAEB if False else 0x9D, 0xAC, 0xD4)))
+    add_pic_fith(s, os.path.join(ASSETS, "logo_word_white.png"), 0.95, 1.05, 1.1)
+    txt(s, 0.95, 2.8, 11.6, 1.6,
+        one("專利 OA 答辯自動擬稿系統", 46, WHITE, True))
+    txt(s, 0.97, 3.95, 11.5, 1.4,
+        [[("上傳審查意見書,自動分類核駁理由、檢索前案、產出申復書草稿與法定期限 — ",
+           18, RGBColor(0xC6,0xD2,0xEE), False),
+          ("機密資料全程不出事務所", 18, AMBER, True)]], leading=1.3)
+    hline(s, 0.97, 5.15, 5.2, RGBColor(0x3B,0x55,0x9E), 1.2)
+    txt(s, 0.97, 5.35, 11.3, 0.5,
+        one("實機整合 TPIsoftware digiRunner × Dify　·　全鏈路 28 秒　·　1,232 項測試綠燈",
+            14, RGBColor(0x9D, 0xAC, 0xD4)))
     txt(s, 0.97, 6.55, 11, 0.4,
-        one("NCCU GDGoC × Computex 2026　|　Proof of Concept", 13,
+        one("NCCU GDGoC × Computex 2026　|　PatentMind AI", 13,
             RGBColor(0x8D,0x9C,0xC4)))
 
 
@@ -229,151 +229,176 @@ def s_agenda():
     kicker(s, "00", "Agenda")
     title(s, "簡報大綱")
     items = [
-        ("1", "題目說明", "我們在做什麼"),
+        ("1", "題目說明", "這個系統做什麼"),
         ("2", "動機", "為什麼值得做"),
-        ("3", "使用技術", "技術選型一覽"),
-        ("4", "產品功能說明", "架構圖 + 前端畫面"),
-        ("5", "Dify 與 digiRunner", "兩個平台怎麼對應"),
-        ("6", "未來展望 · 收穫與心得", "上線整備與反思"),
-        ("7", "Demo", "現場操作流程"),
+        ("3", "系統怎麼運作", "架構與信任設計"),
+        ("4", "產品畫面", "三個關鍵畫面"),
+        ("5", "平台整合實證", "digiRunner × Dify 實機"),
+        ("6", "現況與 Demo", "驗證數字 + 現場操作"),
     ]
-    x0, y0 = 1.0, 2.25
+    x0, y0 = 1.0, 2.35
     colw = 5.9
     for i, (n, t, sub) in enumerate(items):
-        col = i // 4
-        row = i % 4
+        col = i // 3
+        row = i % 3
         x = x0 + col * (colw + 0.5)
-        y = y0 + row * 1.08
+        y = y0 + row * 1.35
         txt(s, x, y - 0.02, 0.8, 0.8, one(n, 30, AMBER, True))
         txt(s, x + 0.7, y + 0.02, colw - 0.7, 0.5, one(t, 19, INK, True))
         txt(s, x + 0.7, y + 0.46, colw - 0.7, 0.4, one(sub, 12.5, GRAY))
     footer(s)
 
 
-def s_divider(num, title_zh, title_en):
-    s = slide(NAVY)
-    rect(s, 0, 0, 0.16, SH, AMBER)
-    txt(s, 0.7, 1.2, 6, 4.2, one(num, 300, NAVY_GHOST, True),
-        anchor=MSO_ANCHOR.MIDDLE)
-    txt(s, 6.0, 2.85, 6.7, 1.2, one(title_zh, 44, WHITE, True),
-        anchor=MSO_ANCHOR.BOTTOM)
-    txt(s, 6.05, 4.15, 6.7, 0.6, one(title_en, 17, AMBER, True))
-    hline(s, 6.06, 4.0, 3.0, RGBColor(0x3B,0x55,0x9E), 1.4)
-
-
 def s_topic():
     s = slide()
     kicker(s, "01", "題目說明")
-    title(s, "為受規範領域打造的可信任 AI 閘道")
+    title(s, "把答辯前置工作,從一個下午壓到一杯咖啡")
     ghost_num(s, "01")
-    txt(s, 0.9, 2.15, 11.5, 0.9,
-        [[("一句話：", 17, NAVY, True),
-          ("半自動產出專利審查意見(Office Action)答辯稿,且全程不讓機密進入公有 LLM。",
-           17, INK, False)]], leading=1.25)
-    txt(s, 0.9, 3.0, 11.5, 0.7,
-        [[("真正的重點不是專利流程,而是底層的「安全 / 可信任 AI 閘道」模式 — ",
-           15, GRAY, False),
-          ("可套用到任何處理機密、受合規規範資料的 AI 應用。", 15, NAVY, True)]],
-        leading=1.25)
-    bullets(s, 1.0, 4.0, 11.3, [
-        (0, "服務三種角色:律師(撰稿簽核)、事務所(合規與責任)、客戶(資料機密)", None),
-        (0, "範圍:6 國管轄試作(US / TW / CN / KR / EP / JP),端到端可跑的 PoC", None),
-        (0, "成果:20 項架構決策落地為「不可關閉的不變式」,611 項測試綠燈", None),
-        (0, "與業界平台對齊:API Gateway → digiRunner、AI workflow → Dify", None),
-    ], gap=0.16, size=16)
+    txt(s, 0.9, 2.1, 11.5, 0.75,
+        [[("背景：", 16, NAVY, True),
+          ("專利申請後,審查官常以「審查意見通知函(Office Action)」核駁部分請求項;"
+           "事務所必須在法定期限內逐點答辯,否則申請失效。", 16, INK, False)]],
+        leading=1.3)
+    txt(s, 0.9, 3.0, 11.5, 0.5,
+        [[("本系統：", 16, NAVY, True),
+          ("讀懂 OA、找好證據、寫出草稿 — 律師只需審閱與定稿。", 16, INK, False)]],
+        leading=1.3)
+    steps = [
+        ("上傳 OA", ["PDF / 文字", "自動萃取"]),
+        ("分類核駁", ["新穎性 / 進步性", "/ 明確性…"]),
+        ("檢索證據", ["本案請求項", "+ 前案文獻"]),
+        ("產出草稿", ["申復書草稿", "+ 法定期限"]),
+        ("律師簽核", ["逐句確認", "才可匯出"]),
+    ]
+    x0, y0, cw, ch, gp = 0.95, 3.85, 2.12, 1.78, 0.22
+    for i, (h, blines) in enumerate(steps):
+        x = x0 + i * (cw + gp)
+        rect(s, x, y0, cw, ch, PALE if i < 4 else GHOST)
+        rect(s, x, y0, cw, 0.10, AMBER if i < 4 else NAVY)
+        txt(s, x + 0.16, y0 + 0.24, cw - 0.3, 0.45,
+            [[("%d " % (i + 1), 16, AMBER, True), (h, 16, NAVY, True)]])
+        txt(s, x + 0.16, y0 + 0.82, cw - 0.3, 0.85,
+            [para(l, 12, GRAY) for l in blines], leading=1.15, space_after=2)
+        if i < 4:
+            txt(s, x + cw - 0.02, y0 + 0.66, gp + 0.06, 0.5,
+                one("→", 15, LGRAY, True), align=PP_ALIGN.CENTER)
+    txt(s, 0.9, 6.0, 11.5, 0.7,
+        [[("定位：自動「擬稿」系統 — ", 15.5, NAVY, True),
+          ("AI 負責起草與舉證,律師負責判斷與簽核;沒有簽核,系統拒絕匯出。",
+           15.5, INK, False)]], leading=1.3)
     footer(s)
 
 
 def s_motivation():
     s = slide()
     kicker(s, "02", "動機")
-    title(s, "律師手動答辯 OA 的四大風險")
+    title(s, "案件量在漲,答辯時間沒有變多")
     ghost_num(s, "02")
-    cards = [
-        ("慢", "讀 OA、找前案、寫答辯 = 8–12 小時 / 案,人力成本高。"),
-        ("幻覺風險", "引用錯誤法條或捏造判例 = 專業責任事故。"),
-        ("期限風險", "法定期日算錯 = 專利權喪失,且無法復原。"),
-        ("機密性", "客戶案件資料絕不能貼進 ChatGPT。"),
+    stats = [
+        ("71,965", "件/年", "台灣專利申請量(2025)"),
+        ("8 個月", "平均", "申請後收到首次 OA"),
+        ("2 個月", "法定", "收文後答辯期限"),
+        ("4–8 小時", "每案", "人工答辯前置工時"),
     ]
-    x0, y0 = 1.0, 2.3
-    for i, (h, b) in enumerate(cards):
-        col = i % 2
-        row = i // 2
-        x = x0 + col * 5.85
-        y = y0 + row * 1.5
-        rect(s, x, y + 0.05, 0.06, 1.05, AMBER)
-        txt(s, x + 0.28, y, 5.2, 0.5, one(h, 21, NAVY, True))
-        txt(s, x + 0.28, y + 0.52, 5.2, 0.9, one(b, 14.5, GRAY), leading=1.2)
-    hline(s, 0.9, 5.55, 11.55, HAIR, 1.2)
-    txt(s, 0.9, 5.7, 11.5, 0.9,
-        [[("為什麼不能直接用 ChatGPT:", 16, NAVY, True),
-          ("資料外洩 × 幻覺 × 無稽核 × 無究責。PatentMind 四者同時解,而律師仍對每一句話負責。",
-           16, INK, False)]], leading=1.3)
+    x0, y0, cw = 0.95, 2.3, 2.78
+    for i, (num, unit, lab) in enumerate(stats):
+        x = x0 + i * (cw + 0.12)
+        rect(s, x, y0, cw, 1.62, PALE)
+        rect(s, x, y0, 0.07, 1.62, AMBER)
+        txt(s, x + 0.24, y0 + 0.18, cw - 0.4, 0.62,
+            [[(num, 27, NAVY, True), ("　" + unit, 13, AMBER, True)]])
+        txt(s, x + 0.24, y0 + 0.95, cw - 0.4, 0.55, one(lab, 12.5, GRAY), leading=1.15)
+    txt(s, 0.9, 4.35, 11.5, 0.5,
+        one("結果:資深律師時間被重複性前置工作吃掉,品質風險上升。", 15.5, INK))
+    hline(s, 0.9, 5.0, 11.55, HAIR, 1.2)
+    txt(s, 0.9, 5.18, 11.5, 0.45,
+        one("那為什麼不直接貼進 ChatGPT?", 16, NAVY, True))
+    risks = [
+        ("機密外洩", "客戶案件進了公有模型"),
+        ("捏造引用", "編造判例 = 專業責任事故"),
+        ("無稽核", "事後無法證明誰看過什麼"),
+        ("期限風險", "算錯法定期日不可復原"),
+    ]
+    for i, (h, b) in enumerate(risks):
+        x = 0.95 + i * 2.9
+        txt(s, x, 5.72, 2.7, 0.4, [[("✕ ", 14, AMBER, True), (h, 14.5, NAVY, True)]])
+        txt(s, x, 6.12, 2.7, 0.6, one(b, 12, GRAY), leading=1.15)
     footer(s)
 
 
-def s_tech():
+def s_solution():
     s = slide()
-    kicker(s, "03", "使用技術")
-    title(s, "技術選型一覽")
+    kicker(s, "03", "系統怎麼運作")
+    title(s, "AI 起草,律師定稿")
     ghost_num(s, "03")
-    groups = [
-        ("後端", ["FastAPI 雙服務:Gateway :8010 / AI Engine :8011",
-                 "Pydantic 型別 · SQLite append-only 稽核(hash chain)"]),
-        ("前端", ["React 18 + Vite · TanStack Query · Tailwind",
-                 "react-i18next(zh-TW / EN)· lucide icons · RWD"]),
-        ("AI / RAG", ["多模型路由 · grounded citation + verifier 兩段式",
-                      "Hierarchical + Claim-tree chunking · 向量檢索(Qdrant 形狀)"]),
-        ("資安", ["JWT(RS256)+ case ACL · PII / 客戶詞庫遮罩(可逆)",
-                 "Prompt injection 四層防禦 · 成本斷路器 + 配額"]),
-        ("測試 / 維運", ["pytest 611 綠 · Playwright e2e + 視覺回歸",
-                       "env 一鍵抽換 mock↔prod(LLM_MODE / VECTOR_BACKEND / CACHE_BACKEND)"]),
-        ("平台對齊", ["digiRunner — API Gateway 層",
-                    "Dify — AI workflow 編排層"]),
+    cards = [
+        ("自動分類核駁理由", "中文 / 英文 OA 都能讀;新穎性、進步性、明確性、缺先行詞等逐項拆解,標示受影響的請求項。"),
+        ("證據先行的草稿", "草稿裡的每個引用,都必須來自系統實際檢索到的文件;引用旁直接附上原文段落。"),
+        ("期限自動試算", "從公文日期起算法定期限,假日自動順延,並給內部建議完成日。"),
+        ("簽核才能送件", "律師逐句確認 AI / 人工段落;未完成簽核,匯出按鈕直接被系統擋下。"),
     ]
-    x0, y0 = 1.0, 2.25
-    colw = 5.85
-    for i, (h, lines) in enumerate(groups):
+    x0, y0 = 1.0, 2.35
+    for i, (h, b) in enumerate(cards):
         col = i % 2
         row = i // 2
-        x = x0 + col * colw
-        y = y0 + row * 1.55
-        txt(s, x, y, 0.2, 0.9, one("▍", 18, AMBER, True))
-        txt(s, x + 0.28, y, colw - 0.5, 0.4, one(h, 17, NAVY, True))
-        txt(s, x + 0.28, y + 0.42, colw - 0.55, 1.0,
-            [para(lines[0], 13, GRAY), para(lines[1], 13, GRAY)], leading=1.15,
-            space_after=2)
+        x = x0 + col * 5.95
+        y = y0 + row * 1.78
+        rect(s, x, y + 0.05, 0.06, 1.42, AMBER)
+        txt(s, x + 0.28, y, 5.35, 0.5,
+            [[("%d　" % (i + 1), 19, AMBER, True), (h, 19, NAVY, True)]])
+        txt(s, x + 0.28, y + 0.55, 5.35, 1.1, one(b, 13.5, GRAY), leading=1.25)
+    hline(s, 0.9, 6.05, 11.55, HAIR, 1.2)
+    txt(s, 0.9, 6.2, 11.5, 0.6,
+        [[("核心原則　", 15, AMBER, True),
+          ("AI 是放大器,不是替代 — 每一份送出去的文件,都有具名律師逐句負責。",
+           15, INK, False)]], leading=1.25)
     footer(s)
 
 
 def s_arch():
     s = slide()
-    kicker(s, "04", "產品功能說明")
-    title(s, "系統架構：一條「安全管線」")
-    p, h = add_pic_fitw(s, os.path.join(ASSETS, "architecture.png"), 0.62, 2.15, 12.1)
-    txt(s, 0.9, 2.05 + h + 0.12, 11.6, 0.5,
-        [[("兩條鐵則守住安全邊界:", 13.5, NAVY, True),
-          ("① Gateway 永不直接呼叫 LLM　② AI Engine 不存任何業務狀態。",
-           13.5, GRAY, False)]])
+    kicker(s, "03", "系統怎麼運作")
+    title(s, "系統架構：一條安全管線")
+    p, h = add_pic_fitw(s, os.path.join(ASSETS, "architecture.png"), 0.62, 2.3, 12.1)
+    txt(s, 0.9, 2.3 + h + 0.12, 11.6, 0.5,
+        [[("兩條鐵則　", 14, AMBER, True),
+          ("閘道永不直接呼叫模型;推論引擎不保存任何業務資料。", 13.5, GRAY, False)]])
     footer(s)
 
 
-def s_shot(num_label, ttl, shot, notes, fit="h", note_side="right", base=None, kick="產品功能說明 · 前端畫面"):
+def s_trust():
+    s = slide()
+    kicker(s, "03", "系統怎麼運作")
+    title(s, "四個「預設開啟、不可關閉」的信任設計")
+    ghost_num(s, "03")
+    cards = [
+        ("可逆資料遮罩", "送往模型前,當事人、案號、聯絡方式先替換成代碼;對照表只存在事務所機器,模型拿到的永遠是代碼。"),
+        ("引證驗證硬牆", "模型生成後,系統逐一比對引用是否真的存在於檢索結果;捏造的引用直接剝除並在畫面標示。"),
+        ("不可竄改稽核", "每一筆請求寫入一列稽核紀錄,以雜湊鏈串接;任何竄改都會讓驗證亮紅燈,稽核員一鍵可驗。"),
+        ("機密強制地端", "標記為機密的案件,系統強制改走事務所內的本地模型;就算設定錯誤,程式層也會直接拒絕外送。"),
+    ]
+    x0, y0 = 1.0, 2.35
+    for i, (h, b) in enumerate(cards):
+        col = i % 2
+        row = i // 2
+        x = x0 + col * 5.95
+        y = y0 + row * 1.95
+        rect(s, x, y + 0.05, 0.06, 1.6, NAVY)
+        txt(s, x + 0.28, y, 5.35, 0.5, one(h, 18.5, NAVY, True))
+        txt(s, x + 0.28, y + 0.52, 5.35, 1.25, one(b, 13.5, GRAY), leading=1.25)
+    footer(s)
+
+
+def s_shot(num_label, kick, ttl, shot, notes, base=None):
     s = slide()
     kicker(s, num_label, kick)
     title(s, ttl)
     path = os.path.join(base or SHOTS, shot)
-    if fit == "h":   # desktop: image left, notes right
-        p, w = add_pic_fith(s, path, 0.9, 2.35, 4.05)
-        nx = 0.9 + w + 0.55
-        nw = SW - nx - 0.7
-    else:            # mobile: narrow image left, notes right
-        p, w = add_pic_fith(s, path, 1.1, 2.3, 4.3)
-        nx = 1.1 + w + 0.7
-        nw = SW - nx - 0.7
+    p, w = add_pic_fith(s, path, 0.9, 2.35, 4.05)
+    nx = 0.9 + w + 0.55
+    nw = SW - nx - 0.7
     y = 2.5
-    for i, (head, body) in enumerate(notes):
-        # amber number disc
+    for i, (head_, body_) in enumerate(notes):
         d = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(nx), Inches(y),
                                Inches(0.34), Inches(0.34))
         d.fill.solid(); d.fill.fore_color.rgb = AMBER; d.line.fill.background()
@@ -382,184 +407,121 @@ def s_shot(num_label, ttl, shot, notes, fit="h", note_side="right", base=None, k
         r = tf.paragraphs[0].add_run(); r.text = str(i + 1)
         r.font.size = Pt(14); r.font.bold = True; r.font.color.rgb = WHITE
         set_font(r); tf.paragraphs[0].alignment = PP_ALIGN.CENTER
-        txt(s, nx + 0.5, y - 0.04, nw - 0.5, 0.4, one(head, 15.5, NAVY, True))
-        h = txt(s, nx + 0.5, y + 0.33, nw - 0.5, 0.8, one(body, 12.5, GRAY),
-                leading=1.16)
+        txt(s, nx + 0.5, y - 0.04, nw - 0.5, 0.4, one(head_, 15.5, NAVY, True))
+        txt(s, nx + 0.5, y + 0.33, nw - 0.5, 0.8, one(body_, 12.5, GRAY),
+            leading=1.16)
         y += 1.02
     footer(s)
 
 
-def s_platforms():
+def s_platform(num_label, ttl, who, what, bullet_lines, verify_line):
     s = slide()
-    kicker(s, "05", "Dify 與 digiRunner")
-    title(s, "兩個平台,實機落地")
-    ghost_num(s, "05")
-    # digiRunner column
-    x = 1.0
-    rect(s, x, 2.25, 0.07, 2.0, NAVY)
-    txt(s, x + 0.3, 2.2, 5.3, 0.5,
-        [[("digiRunner", 20, NAVY, True), ("　= API Gateway 層", 14, GRAY, False)]])
-    txt(s, x + 0.3, 2.72, 5.3, 0.4,
-        one("實機:digiRunner OSS(dgrv4):18080,前線代理我們的厚 Gateway :8010", 13, INK))
-    bullets(s, x + 0.3, 3.15, 5.4, [
-        (0, "12 條路由經 AC API 全自動註冊(零手動點擊)", None),
-        (0, "SPA → digiRunner(/dgrc)→ Gateway 全鏈路煙霧測試 7/7 通過", None),
-        (0, "上游身分標頭(X-User-Id)信任鏈已驗證;偽造標頭被 401 拒絕", None),
-        (0, "Gateway 仍守 Auth / ACL / 遮罩 / 快取 / 稽核(Q1·Q12·Q18·Q10·Q9·Q13)", None),
-    ], gap=0.12, size=13.5)
-    # Dify column
-    x2 = 7.1
-    rect(s, x2, 2.25, 0.07, 2.0, AMBER)
-    txt(s, x2 + 0.3, 2.2, 5.3, 0.5,
-        [[("Dify", 20, NAVY, True), ("　= AI workflow 層", 14, GRAY, False)]])
-    txt(s, x2 + 0.3, 2.72, 5.3, 0.4,
-        one("實機:Dify CE :8088,workflow 接本機 Ollama qwen2.5:7b", 13, INK))
-    bullets(s, x2 + 0.3, 3.15, 5.3, [
-        (0, "parse_oa / draft 走 patentmind-analyze-oa workflow(LLM_MODE=dify)", None),
-        (0, "Workflow DSL 由 prompts/*.yaml 自動生成 — 單一事實來源", None),
-        (0, "citation verifier 留在本地程式(Q14 硬牆,防幻覺不可繞過)", None),
-        (0, "Dify 斷線自動降級 + 前端醒目警示;機密案件不出機器(Q15)", None),
-    ], gap=0.12, size=13.5)
-    hline(s, 0.9, 5.15, 11.55, HAIR, 1.2)
-    txt(s, 0.9, 5.32, 11.6, 1.4, [
-        [("分層化解衝突(Q1 厚 Gateway × Q2 Dify 編排):", 15, NAVY, True),
-         ("Gateway 管高階業務流程,Dify 只做 AI sub-workflow。", 15, INK, False)],
-        [("鐵則　", 14, AMBER, True),
-         ("Gateway 永不直接打 LLM;Dify 不存業務狀態。", 14, INK, False)],
-        [("分工　", 14, AMBER, True),
-         ("設計師用 Dify 拉流程,工程師自寫關鍵 tool(OA parser / citation verifier / deadline)。",
-          14, INK, False)],
-    ], leading=1.25, space_after=8)
+    kicker(s, num_label, "平台整合實證")
+    title(s, ttl)
+    ghost_num(s, num_label)
+    txt(s, 0.9, 2.15, 11.5, 0.5,
+        [[(who + "　", 17, NAVY, True), (what, 15, GRAY, False)]], leading=1.25)
+    bullets(s, 1.0, 3.05, 11.3, [(0, b, None) for b in bullet_lines],
+            gap=0.24, size=15.5)
+    hline(s, 0.9, 5.9, 11.55, HAIR, 1.2)
+    txt(s, 0.9, 6.08, 11.5, 0.7,
+        [[("實機驗證　", 15, AMBER, True), (verify_line, 14.5, INK, False)]],
+        leading=1.25)
     footer(s)
 
 
-def s_future():
-    s = slide()
-    kicker(s, "06", "未來展望 · 收穫與心得")
-    title(s, "上線整備與反思")
-    ghost_num(s, "06")
-    txt(s, 1.0, 2.2, 5.6, 0.4, one("未來展望(P0 上線整備)", 17, NAVY, True))
-    bullets(s, 1.0, 2.65, 5.6, [
-        (0, "✔ 已落地:Redis 快取、Qdrant 向量庫、PDF/DOCX 上傳", None),
-        (0, "✔ 已落地:OIDC/SAML 介接層、WORM 稽核封存、digiRunner+Dify 實機", None),
-        (0, "接真實 Anthropic API(架構已就緒,等 key);Vision 讀圖擴大", None),
-        (0, "Postgres 稽核主存 + S3 Object Lock;Grafana 儀表板", None),
-        (0, "律師抽樣評分的 AI 品質評測週期(30+50 案基線已建)", None),
-    ], gap=0.13, size=13.5)
-    txt(s, 7.0, 2.2, 5.4, 0.4, one("收穫與心得", 17, NAVY, True))
-    bullets(s, 7.0, 2.65, 5.4, [
-        (0, "把 20 項架構決策變成「測試守得住的不變式」,而非口頭規範", None),
-        (0, "安全與信任不是功能,是預設不可關閉的閘道 — 這就是護城河", None),
-        (0, "受規範領域導入 AI,瓶頸在「可稽核 + 可究責」,不在模型本身", None),
-        (0, "Mock-first 讓 demo 可重現,又能 env 一鍵換成 production 元件", None),
-    ], gap=0.13, size=13.5)
-    footer(s)
-
-
-def s_demo():
-    s = slide()
-    kicker(s, "07", "Demo")
-    title(s, "現場操作流程")
-    ghost_num(s, "07")
-    steps = [
-        ("以 Alice(律師)登入", "分析 CASE-2025-001", "Q12"),
-        ("預覽 redaction", "email / 電話 / 案號 → placeholder", "Q10"),
-        ("跑分析 → 點 [GROUNDED_REF_1]", "看來源專利 + 段落 + 原文", "Q14"),
-        ("逐句 Accept / Edit", "全部簽核才能匯出答辯稿", "Q16"),
-        ("以 Dave(稽核)登入", "看 audit log + 驗證 hash chain(綠)", "Q13"),
-        ("改用 -CONF 案號", "audit 模型自動切地端", "Q15"),
-        ("改用 Carol 登入", "403 — 她不在這個 case", "Q12"),
-    ]
-    x0, y0 = 1.0, 2.25
-    for i, (a, b, q) in enumerate(steps):
-        col = i // 4
-        row = i % 4
-        x = x0 + col * 5.95
-        y = y0 + row * 1.02
-        txt(s, x, y, 0.55, 0.5, one("%02d" % (i + 1), 20, AMBER, True))
-        txt(s, x + 0.62, y - 0.02, 5.0, 0.4,
-            [[(a, 14.5, INK, True), ("　" + q, 11, AMBER, True)]])
-        txt(s, x + 0.62, y + 0.38, 5.0, 0.4, one(b, 12, GRAY))
-    footer(s)
-
-
-def s_end():
+def s_close():
     s = slide(NAVY)
     rect(s, 0, 0, SW, 0.16, AMBER)
-    add_pic_fith(s, os.path.join(ASSETS, "logo_word_white.png"), 0.95, 2.5, 1.2)
-    txt(s, 0.97, 4.2, 11, 0.7, one("謝謝聆聽　·　歡迎 Demo 與提問", 26, WHITE, True))
-    txt(s, 0.99, 5.1, 11, 0.5,
-        one("可信任 AI 閘道 — 讓每一個 AI 主張都可驗證、每一個動作都可稽核。",
-            15, RGBColor(0xC6,0xD2,0xEE)))
+    txt(s, 0.95, 0.9, 11, 0.8, one("現況與 Demo", 36, WHITE, True))
+    stats = [
+        ("1,232", "後端測試全綠"),
+        ("73", "前端 E2E 全綠"),
+        ("28 秒", "實機全鏈路分析"),
+        ("0", "機密外送事件"),
+    ]
+    x0 = 0.95
+    for i, (num, lab) in enumerate(stats):
+        x = x0 + i * 2.95
+        txt(s, x, 2.1, 2.7, 0.7, one(num, 38, AMBER, True))
+        txt(s, x, 2.9, 2.7, 0.4, one(lab, 14, RGBColor(0xC6,0xD2,0xEE), False))
+    hline(s, 0.97, 3.7, 11.4, RGBColor(0x3B,0x55,0x9E), 1.2)
+    txt(s, 0.95, 3.95, 11.3, 0.45, one("現場 Demo 流程", 18, WHITE, True))
+    demo = [
+        "① 登入律師帳號,拖入真實的台灣審查意見書 PDF",
+        "② 系統分類核駁、檢索證據、產出繁中申復書草稿與期限(經 digiRunner 與 Dify,本地模型)",
+        "③ 切換稽核員帳號:驗證雜湊鏈,展示每一步的不可竄改紀錄",
+    ]
+    yy = 4.5
+    for line in demo:
+        txt(s, 1.1, yy, 11.1, 0.5, one(line, 15, RGBColor(0xC6,0xD2,0xEE), False))
+        yy += 0.52
+    txt(s, 0.95, 6.45, 11, 0.6,
+        [[("Thank you.　", 20, WHITE, True),
+          ("歡迎現場實際操作 — 整套系統就在這台機器上跑著。", 15,
+           RGBColor(0x9D,0xAC,0xD4), False)]])
 
 
-# ----------------- assemble -----------------
-s_title()
-s_agenda()
-
-s_divider("1", "題目說明", "What it is")
-s_topic()
-
-s_divider("2", "動機", "Why it matters")
-s_motivation()
-
-s_divider("3", "使用技術", "Tech stack")
-s_tech()
-
-s_divider("4", "產品功能說明", "Product & screens")
-s_arch()
-s_shot("04", "前端畫面 ①｜登入與角色權限(RBAC)",
+# ----------------- assembly: 15 slides -----------------
+s_title()                                                              # 1
+s_agenda()                                                             # 2
+s_topic()                                                              # 3
+s_motivation()                                                         # 4
+s_solution()                                                           # 5
+s_arch()                                                               # 6
+s_trust()                                                              # 7
+s_shot("04", "產品畫面", "畫面 ①｜登入與角色權限",
        "landing-desktop-1440-chromium-desktop.png", [
-        ("官方入口風格", "仿專利局入口的乾淨版面,navy 主色 + 金色頂線,弱化技術術語。"),
-        ("四種角色登入", "Alice 律師 / Bob 助理 / Carol IT / Dave 稽核 — 直接示範權限分流。"),
-        ("租戶標示", "每位使用者標 tenant_a / tenant_b,呼應多租戶隔離(Q5)。"),
-        ("case ACL 前置", "登入身分決定可存取哪些 case,後續每筆請求都會檢查(Q12)。"),
+        ("官方入口風格", "乾淨版面、弱化技術術語;律師第一眼就知道在哪裡開始。"),
+        ("四種角色", "律師 / 助理 / IT / 稽核 — 各自看到的功能與案件都不同。"),
+        ("案件級權限", "登入身分決定可碰哪些案件,之後每一筆請求都重新檢查。"),
        ])
-s_shot("04", "前端畫面 ②｜分析主工作台(三欄)",
+s_shot("04", "產品畫面", "畫面 ②｜分析工作台(三欄)",
        "analyze-empty-desktop-chromium-desktop.png", [
-        ("輸入 OA(左欄)", "Case ID + 本案號 + 拖放 PDF/DOCX 或貼上全文,並即時顯示配額(Q18)。"),
-        ("草稿 / 引證(中右欄)", "分析後中欄出答辯草稿、右欄列 examiner 引證 + RAG 命中前案。"),
-        ("資料狀態列", "頂部「資料遮罩:開啟 / 保存於本地 / 一般案件」一眼看出安全狀態(Q3·Q10)。"),
-        ("紀錄已驗證", "右上徽章顯示稽核鏈已驗證,強調可信任(Q13)。"),
+        ("左欄輸入", "案號 + 拖放 PDF / DOCX 或直接貼上 OA 全文。"),
+        ("中右欄結果", "分析後中欄出申復書草稿,右欄列審查官引證與檢索命中的前案。"),
+        ("安全狀態一眼可見", "頂部顯示「資料遮罩:開啟 / 資料保存於本地」;頁尾四燈顯示各服務健康狀態。"),
        ])
-s_shot("04", "前端畫面 ③｜分析結果與 grounded 引證",
+s_shot("04", "產品畫面", "畫面 ③｜草稿與引證驗證",
        "analyze-result-desktop-chromium-desktop.png", [
-        ("生成 → 驗證兩段式", "草稿產生後跑 citation verifier,合法引證才保留(Q14)。"),
-        ("可點擊引證 pill", "[GROUNDED_REF_N] hover 顯示來源專利 + 段落 + 原文,杜絕幻覺。"),
-        ("被移除的引證", "不在 grounded set 的引用會標為 [CITATION_REMOVED] 並顯示。"),
-        ("逐句 provenance", "每句標示來源(AI / 律師),逐句 Accept / Edit(Q16)。"),
+        ("生成 → 驗證兩段式", "草稿產生後系統自動驗證每個引用;查無實據的引用直接剝除並標示。"),
+        ("引用可點開", "點任何引用即顯示來源文件與原文段落,律師不用自己翻。"),
+        ("逐句簽核", "每句標示由 AI 或律師撰寫,逐句 Accept / Edit;全部確認才能匯出。"),
        ])
-s_shot("04", "前端畫面 ④｜行動版 RWD",
-       "landing-mobile-375-chromium-mobile.png", [
-        ("單欄自適應", "375px 寬下版面自動收合為單欄,行動裝置也能操作。"),
-        ("一致的設計語言", "與桌面版共用 navy 主題與元件,維持品牌一致性。"),
-        ("底部分頁列", "行動版以底部 tab bar 切換 分析 / 案件 / Audit。"),
-       ], fit="h")
-
-s_divider("5", "Dify 與 digiRunner", "Platform mapping")
-s_platforms()
-s_shot("05", "實機證明 ①｜真模型分析結果(qwen2.5:7b via Dify)",
+s_platform("05", "實機整合 ①｜digiRunner 前線閘道",
+    "digiRunner(TPIsoftware 開源版)= 企業 API 閘道",
+    "部署於 :18080,所有前端流量先經過它,再轉發到系統閘道。",
+    [
+        "路由全自動註冊:12 條 API 路由以管理 API 寫入,零手動設定,重啟自動重建",
+        "身分標頭轉發:digiRunner 驗證後以信任標頭傳遞身分;偽造標頭一律 401",
+        "為企業落地鋪路:SSO、流量治理、API 金鑰管理都在這一層接上",
+    ],
+    "瀏覽器 → digiRunner → 閘道 → 推論引擎完整走通;7 項自動化煙霧測試全數通過。")
+s_platform("05", "實機整合 ②｜Dify AI 工作流",
+    "Dify(社群版,自架)= AI workflow 編排平台",
+    "部署於 :8088,申復書的解析與草擬透過 Dify workflow 呼叫本地模型 qwen2.5:7b。",
+    [
+        "一鍵自動建置:管理帳號、模型接入、workflow 匯入、API 金鑰全由腳本完成",
+        "提示詞單一來源:workflow 由版本控制中的提示詞檔自動生成,不會兩邊不同步",
+        "降級不裝死:Dify 斷線自動退回備援引擎,畫面出現醒目警示,絕不冒充真結果",
+        "引證驗證留在系統內:防幻覺的最後一道牆不外包給任何平台",
+    ],
+    "真實 OA 經 Dify + 本地模型完整分析:28 秒產出正確分類與繁中草稿。")
+s_shot("05", "平台整合實證", "實機證明 ①｜真模型分析結果",
        "real_05_result_real_qwen.png", [
-        ("全鏈路 28 秒", "SPA → digiRunner :18080 → Gateway → AI Engine → Dify :8088 → Ollama,無一 mock。"),
-        ("TW OA 正確解析", "請求項 9「該第一電動車」缺先行詞 → §26-2 antecedent_basis,真模型分類正確。"),
-        ("引證驗證硬牆", "真模型也想捏造引用 — verifier 即時剝除並在畫面標示(Q14)。"),
-        ("繁中申復書草稿", "qwen2.5:7b 產出 TIPO 格式申復書,逐句簽核後才可匯出(Q16)。"),
-       ], base=DELIVERY_SHOTS, kick="Dify 與 digiRunner · 實機證明")
-s_shot("05", "實機證明 ②｜稽核鏈與服務狀態",
+        ("全鏈路 28 秒", "瀏覽器 → digiRunner → 閘道 → 推論引擎 → Dify → 本地模型,無一模擬。"),
+        ("正確抓出瑕疵", "台灣 OA:請求項 9「該第一電動車」缺先行詞 — 真模型分類正確。"),
+        ("硬牆當場攔截", "真模型也想捏造引用 — 系統即時剝除並在畫面標示。"),
+        ("繁中申復書", "本地模型產出符合公文格式的申復書草稿,逐句簽核後才可匯出。"),
+       ], base=DELIVERY_SHOTS)
+s_shot("05", "平台整合實證", "實機證明 ②｜稽核鏈與服務狀態",
        "real_08_chain_verified.png", [
-        ("模型欄寫入 dify/qwen2.5:7b", "每筆分析的稽核列記錄實際模型 — 可究責、可回溯(Q13)。"),
-        ("Hash chain 全數驗證", "29 筆紀錄 0 不一致;append-only + 觸發器阻擋竄改。"),
-        ("遮罩規則留痕", "phone_tw_landline 等命中規則寫入稽核,證明遮罩真的有跑(Q10)。"),
-        ("四燈服務狀態", "頁尾 Gateway / AI Engine / digiRunner / Dify 即時健康燈號全綠。"),
-       ], base=DELIVERY_SHOTS, kick="Dify 與 digiRunner · 實機證明")
-
-s_divider("6", "未來展望 · 收穫與心得", "Roadmap & takeaways")
-s_future()
-
-s_divider("7", "Demo", "Live walkthrough")
-s_demo()
-
-s_end()
+        ("記錄實際模型", "每筆分析的稽核列寫明用了哪個模型 — 可究責、可回溯。"),
+        ("雜湊鏈全數驗證", "29 筆紀錄 0 不一致;一鍵驗證,竄改即現形。"),
+        ("遮罩留痕", "命中的遮罩規則寫入稽核,證明遮罩真的有跑。"),
+        ("四燈全綠", "頁尾即時顯示閘道 / 推論引擎 / digiRunner / Dify 健康狀態。"),
+       ], base=DELIVERY_SHOTS)
+s_close()
 
 out = os.path.join(HERE, "PatentMind_簡報.pptx")
 prs.save(out)

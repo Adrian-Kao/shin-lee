@@ -85,7 +85,10 @@ Demo login passwords are `demo-<user>` (e.g. `demo-alice`); see `.env.example`.
 ## Architecture
 
 ```
-Vite SPA  ──/api──▶  Gateway :8010  (digiRunner mock, "thick" gateway)
+Vite SPA  ──/api──▶  [optional: digiRunner OSS :18080 front-line gateway]
+                       │
+                       ▼
+                     Gateway :8010  ("thick" gateway)
                        ├─ Auth (Q12)         JWT + case_id ACL + revocation/logout
                        ├─ RateLimit (Q18)    RPM + quota + cost circuit breaker
                        ├─ Mask (Q3+Q10)      regex + dict, reversible on-prem
@@ -94,11 +97,22 @@ Vite SPA  ──/api──▶  Gateway :8010  (digiRunner mock, "thick" gateway)
                        └─ Audit (Q13)        append-only + hash chain
                        │  HTTP (intra-VPC)
                        ▼
-                  AI Engine :8011  (Dify mock — single-step inference, no business state)
+                  AI Engine :8011  (single-step inference, no business state)
                        ├─ parse_oa (Q11)  ├─ retrieve (Q6+Q7)  ├─ draft (Q14)
                        ├─ verify (Q14)    └─ deadline (Q17)
-                       └─ llm_client (Q15 multi-model router + Q11 canary)
+                       └─ llm_client (Q15 router: mock | anthropic | local | dify)
+                       │  LLM_MODE=dify
+                       ▼
+                  Dify CE :8088  (patentmind-analyze-oa workflow → Ollama qwen2.5:7b)
 ```
+
+**Real digiRunner + Dify integration** (delivered 2026-06-11): the stack runs
+behind [digiRunner OSS](https://github.com/TPIsoftware/digirunner-open-source)
+with auto-registered routes (`bash scripts/start_digirunner.sh`), and AI
+inference flows through a self-hosted Dify CE workflow on local Ollama
+(`python scripts/setup_dify.py`, then `LLM_MODE=dify`). The citation verifier
+(Q14) stays in our code as the un-bypassable hard wall. See
+[`docs/DELIVERY_RUNBOOK.md`](docs/DELIVERY_RUNBOOK.md).
 
 Two rules keep the security boundary clean: **the gateway never calls an LLM
 directly**, and **the AI engine holds no business state**. Full decision→code

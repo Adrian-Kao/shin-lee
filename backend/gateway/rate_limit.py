@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import calendar
 import logging
+import threading
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -25,6 +26,35 @@ from backend.shared.models import User
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Atomicity (Day 13I).
+#
+# The quota + cost accounting below is a SAFETY control: it caps spend and
+# enforces fair-use. Under concurrency the dangerous pattern is a read-then-act
+# TOCTOU gap — N concurrent requests each read `used`, each see headroom, each
+# proceed, and together oversell the quota.
+#
+# Two fixes, both behind the same `_RPM_LOCK` / atomic-reserve contract:
+#
+#   1. RPM token buckets (`_TokenBucket.consume`) mutate shared float state
+#      (tokens / last). Two threads refilling+consuming concurrently can both
+#      see `tokens >= 1` and both decrement below zero — an oversell of one
+#      request per race. We guard every bucket op with a module lock.
+#
+#   2. Token quota / tenant cap is enforced by an atomic RESERVE: increment the
+#      counter FIRST, then compare to the limit, and roll the increment back if
+#      it broke the cap. Because the increment+compare happens under the lock
+#      (memory) or in a single Lua EVAL (redis), two concurrent reservations
+#      can never both succeed past the cap. `record_usage` later RECONCILES the
+#      reserved estimate against the actual token spend.
+#
+# The lock is re-entrant-free and only held for O(1) dict ops, so contention is
+# negligible at POC scale; production keying on redis removes the lock entirely
+# (atomicity moves into the redis server via INCR / EVAL).
+# ---------------------------------------------------------------------------
+_STATE_LOCK = threading.Lock()
+
+
 # Token bucket for RPM (requests per minute)
 class _TokenBucket:
     def __init__(self, capacity: int, refill_per_sec: float):
@@ -34,6 +64,9 @@ class _TokenBucket:
         self.last = time.monotonic()
 
     def consume(self, n: int = 1) -> bool:
+        # Caller MUST hold _STATE_LOCK (see check_rpm / check_login_rpm). The
+        # refill+compare+decrement is a read-modify-write on shared float state
+        # and is only race-free under the lock.
         now = time.monotonic()
         self.tokens = min(self.capacity, self.tokens + (now - self.last) * self.refill)
         self.last = now
@@ -47,6 +80,54 @@ _user_rpm: dict[str, _TokenBucket] = {}
 _user_daily_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (user_id, YYYY-MM-DD) -> tokens
 _tenant_monthly_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (tenant_id, YYYY-MM) -> tokens
 _daily_cost_usd: dict[str, float] = defaultdict(float)  # YYYY-MM-DD -> usd
+
+
+def _quota_redis():
+    """Lazy redis client for the atomic-counter path, or None.
+
+    Returns None (so callers fall back to the lock-protected in-memory path)
+    when RATE_LIMIT_BACKEND != 'redis' or redis-py is unavailable / the URL
+    can't be parsed. We never raise here — backend selection must not crash
+    gateway boot. Connection failures surface later, per-op, and are handled by
+    the configured degrade policy.
+    """
+    if settings.RATE_LIMIT_BACKEND != "redis":
+        return None
+    global _REDIS_CLIENT
+    if _REDIS_CLIENT is not None:
+        return _REDIS_CLIENT
+    try:
+        import redis as _redis_mod
+
+        _REDIS_CLIENT = _redis_mod.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        return _REDIS_CLIENT
+    except Exception as exc:  # noqa: BLE001 — boot must not crash on a bad URL
+        logger.warning("rate_limit: redis backend selected but unavailable (%s); "
+                       "falling back to in-memory counters", exc)
+        return None
+
+
+_REDIS_CLIENT = None
+
+# Lua: atomically reserve `amount` against a counter, capped at `limit`, with a
+# TTL so day/month buckets self-expire. Returns 1 if the reservation fit under
+# the cap (and the counter was incremented), 0 if it would breach (counter left
+# unchanged). KEYS[1]=counter, ARGV[1]=amount, ARGV[2]=limit, ARGV[3]=ttl_sec.
+# This is the redis analogue of the lock-protected reserve-then-rollback below:
+# the GET+SET is a single server-side atomic op, so concurrent EVALs serialise.
+_RESERVE_LUA = """
+local cur = tonumber(redis.call('GET', KEYS[1]) or '0')
+local amount = tonumber(ARGV[1])
+local limit = tonumber(ARGV[2])
+if cur + amount > limit then
+  return 0
+end
+redis.call('INCRBY', KEYS[1], amount)
+if tonumber(ARGV[3]) > 0 then
+  redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
+end
+return 1
+"""
 
 # Q18 layer 5 (budget dashboard + month-end forecast). The dicts above answer
 # "are we over a token/cost limit *right now*"; these answer "where is the
@@ -201,15 +282,22 @@ def _this_month() -> str:
 
 
 def check_rpm(user: User) -> None:
-    """Layer 1: per-user RPM."""
-    bucket = _user_rpm.get(user.user_id)
-    if bucket is None:
-        bucket = _TokenBucket(
-            capacity=settings.DEFAULT_RPM,
-            refill_per_sec=settings.DEFAULT_RPM / 60.0,
-        )
-        _user_rpm[user.user_id] = bucket
-    if not bucket.consume():
+    """Layer 1: per-user RPM.
+
+    Bucket creation + consume happen under `_STATE_LOCK` so two concurrent
+    requests for a brand-new user can't each create a fresh full bucket
+    (lost-update) and so the refill+decrement of an existing bucket is atomic.
+    """
+    with _STATE_LOCK:
+        bucket = _user_rpm.get(user.user_id)
+        if bucket is None:
+            bucket = _TokenBucket(
+                capacity=settings.DEFAULT_RPM,
+                refill_per_sec=settings.DEFAULT_RPM / 60.0,
+            )
+            _user_rpm[user.user_id] = bucket
+        ok = bucket.consume()
+    if not ok:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"rate limit exceeded ({settings.DEFAULT_RPM} RPM). retry in ~1s.",
@@ -236,14 +324,16 @@ def check_login_rpm(client_ip: str) -> None:
         # single bucket so a misconfigured peer can't bypass the limit by
         # leaving client_ip empty.
         client_ip = "_unknown_"
-    bucket = _login_ip_rpm.get(client_ip)
-    if bucket is None:
-        bucket = _TokenBucket(
-            capacity=settings.LOGIN_RPM,
-            refill_per_sec=settings.LOGIN_RPM / 60.0,
-        )
-        _login_ip_rpm[client_ip] = bucket
-    if not bucket.consume():
+    with _STATE_LOCK:
+        bucket = _login_ip_rpm.get(client_ip)
+        if bucket is None:
+            bucket = _TokenBucket(
+                capacity=settings.LOGIN_RPM,
+                refill_per_sec=settings.LOGIN_RPM / 60.0,
+            )
+            _login_ip_rpm[client_ip] = bucket
+        ok = bucket.consume()
+    if not ok:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             f"too many login attempts ({settings.LOGIN_RPM}/min/IP). retry in ~1s.",
@@ -260,27 +350,111 @@ def check_request_size(prompt_tokens_estimate: int) -> None:
         )
 
 
-def check_quotas(user: User, tokens_about_to_use: int) -> None:
-    """Layer 3 + 4: daily user quota + monthly tenant cap."""
-    user_used = _user_daily_tokens[(user.user_id, _today())]
-    if user_used + tokens_about_to_use > user.daily_token_quota:
-        raise HTTPException(
-            status.HTTP_402_PAYMENT_REQUIRED,
-            f"daily token quota exceeded: used={user_used}, "
-            f"requested={tokens_about_to_use}, limit={user.daily_token_quota}",
-        )
-
-    tenant_used = _tenant_monthly_tokens[(user.tenant_id, _this_month())]
-    tenant_cap = settings.DEMO_TENANTS.get(user.tenant_id, {}).get(
+def _tenant_cap_for(tenant_id: str) -> int:
+    return settings.DEMO_TENANTS.get(tenant_id, {}).get(
         "monthly_token_cap", settings.TENANT_MONTHLY_TOKENS
     )
-    if tenant_used + tokens_about_to_use > tenant_cap:
-        raise HTTPException(
-            status.HTTP_402_PAYMENT_REQUIRED,
-            f"tenant monthly cap exceeded: used={tenant_used}, "
-            f"requested={tokens_about_to_use}, cap={tenant_cap}. "
-            "contact billing to upgrade.",
+
+
+def _redis_reserve(client, key: str, amount: int, limit: int, ttl_sec: int) -> bool:
+    """Atomic check-and-increment via Lua EVAL. Returns True if reserved.
+
+    On a redis connection / command error we apply the configured degrade
+    policy: RATE_LIMIT_REDIS_DEGRADE='closed' (default) treats the failure as
+    "could not guarantee headroom" → return False (caller raises 429); 'open'
+    treats it as "allow" → return True. Quota is a spend-protection control, so
+    fail-closed is the safe default.
+    """
+    try:
+        return bool(client.eval(_RESERVE_LUA, 1, key, amount, limit, ttl_sec))
+    except Exception as exc:  # noqa: BLE001 — any redis error hits the degrade policy
+        fail_open = settings.RATE_LIMIT_REDIS_DEGRADE == "open"
+        logger.warning(
+            "rate_limit: redis reserve on %s failed (%s); degrade=%s → %s",
+            key, exc, settings.RATE_LIMIT_REDIS_DEGRADE,
+            "ALLOW" if fail_open else "REJECT",
         )
+        return fail_open
+
+
+# TTL for the day/month counter keys so they self-expire (redis path). 36h for
+# the daily bucket and 32d for the monthly bucket comfortably outlive the
+# period without unbounded key growth.
+_DAILY_TTL_SEC = 36 * 3600
+_MONTHLY_TTL_SEC = 32 * 24 * 3600
+
+
+def check_quotas(user: User, tokens_about_to_use: int) -> int:
+    """Layer 3 + 4: daily user quota + monthly tenant cap — ATOMIC reserve.
+
+    Reserves ``tokens_about_to_use`` against BOTH the per-user daily counter
+    and the per-tenant monthly counter. The reservation is atomic: the
+    increment and the cap comparison happen together (under `_STATE_LOCK` for
+    the memory backend, or inside a single Lua EVAL for the redis backend), so
+    two concurrent requests can never both pass when only one fits under the
+    cap (no oversell).
+
+    Returns the reserved amount so the caller can hand it to
+    :func:`record_usage` for reconciliation against the actual token spend.
+    Raises ``HTTPException(402)`` when either cap would be breached (rolling
+    back any partial reservation first so a failed daily check doesn't leak a
+    tenant-counter increment).
+
+    Ordering invariant #8: this runs BEFORE the LLM call; the cost circuit
+    breaker is checked SECOND (see main.py step 5 / `cost_circuit_state`).
+    """
+    tenant_cap = _tenant_cap_for(user.tenant_id)
+    day = _today()
+    month = _this_month()
+
+    client = _quota_redis()
+    if client is not None:
+        user_key = f"quota:user:{user.user_id}:{day}"
+        tenant_key = f"quota:tenant:{user.tenant_id}:{month}"
+        if not _redis_reserve(client, user_key, tokens_about_to_use,
+                              user.daily_token_quota, _DAILY_TTL_SEC):
+            raise HTTPException(
+                status.HTTP_402_PAYMENT_REQUIRED,
+                f"daily token quota exceeded (requested={tokens_about_to_use}, "
+                f"limit={user.daily_token_quota})",
+            )
+        if not _redis_reserve(client, tenant_key, tokens_about_to_use,
+                              tenant_cap, _MONTHLY_TTL_SEC):
+            # Roll back the user reservation we just took so it isn't
+            # double-charged on retry.
+            try:
+                client.decrby(user_key, tokens_about_to_use)
+            except Exception:  # noqa: BLE001 — best-effort rollback
+                logger.warning("rate_limit: failed to roll back user reservation on %s", user_key)
+            raise HTTPException(
+                status.HTTP_402_PAYMENT_REQUIRED,
+                f"tenant monthly cap exceeded (requested={tokens_about_to_use}, "
+                f"cap={tenant_cap}). contact billing to upgrade.",
+            )
+        return tokens_about_to_use
+
+    # Memory backend: lock-protected reserve-then-rollback.
+    with _STATE_LOCK:
+        user_used = _user_daily_tokens[(user.user_id, day)]
+        if user_used + tokens_about_to_use > user.daily_token_quota:
+            raise HTTPException(
+                status.HTTP_402_PAYMENT_REQUIRED,
+                f"daily token quota exceeded: used={user_used}, "
+                f"requested={tokens_about_to_use}, limit={user.daily_token_quota}",
+            )
+        tenant_used = _tenant_monthly_tokens[(user.tenant_id, month)]
+        if tenant_used + tokens_about_to_use > tenant_cap:
+            raise HTTPException(
+                status.HTTP_402_PAYMENT_REQUIRED,
+                f"tenant monthly cap exceeded: used={tenant_used}, "
+                f"requested={tokens_about_to_use}, cap={tenant_cap}. "
+                "contact billing to upgrade.",
+            )
+        # Both checks passed — commit the reservation atomically (still under
+        # the lock) so a concurrent caller sees the incremented counters.
+        _user_daily_tokens[(user.user_id, day)] = user_used + tokens_about_to_use
+        _tenant_monthly_tokens[(user.tenant_id, month)] = tenant_used + tokens_about_to_use
+    return tokens_about_to_use
 
 
 def record_usage(
@@ -289,6 +463,7 @@ def record_usage(
     completion_tokens: int,
     cost_usd: float,
     model: str | None = None,
+    reserved_tokens: int = 0,
 ) -> None:
     """Account for usage after the LLM call.  Trip the breaker if needed.
 
@@ -299,21 +474,60 @@ def record_usage(
     When ``model`` is provided (or later wired from ``obs["model_used"]``) the
     spend is additionally attributed to per-tenant and per-model buckets so the
     Q18 budget dashboard can break cost down and forecast month-end.
+
+    ``reserved_tokens`` RECONCILES the atomic reservation taken by
+    :func:`check_quotas`. The reserve-then-reconcile contract is:
+
+        reserved = check_quotas(user, estimate)   # increments counters by `estimate`
+        ... LLM call ...
+        record_usage(user, p, c, cost, reserved_tokens=reserved)  # adjust by delta
+
+    With ``reserved_tokens`` given, the token counters are adjusted by the
+    DELTA ``(actual - reserved)`` — so the reservation isn't double-counted and
+    the final counter reflects true spend (the delta can be negative when the
+    estimate over-shot, releasing the unused reservation). When
+    ``reserved_tokens=0`` (legacy callers + the budget-attribution tests that
+    call ``record_usage`` directly without a prior reserve) the full ``actual``
+    is added, preserving the original additive behaviour. Counter mutation is
+    under ``_STATE_LOCK`` so it composes atomically with ``check_quotas``.
+
+    NB cost is always ADDED (never reconciled): the reservation reserves
+    *tokens*, not dollars — the breaker tracks realised spend.
     """
     total = prompt_tokens + completion_tokens
+    delta = total - reserved_tokens
     day = _today()
     month = _this_month()
-    _user_daily_tokens[(user.user_id, day)] += total
-    _tenant_monthly_tokens[(user.tenant_id, month)] += total
-    _daily_cost_usd[day] += cost_usd
+    with _STATE_LOCK:
+        _user_daily_tokens[(user.user_id, day)] += delta
+        _tenant_monthly_tokens[(user.tenant_id, month)] += delta
+        _daily_cost_usd[day] += cost_usd
 
-    # Q18 layer 5 — attributable spend (tenant + model).
-    model_key = model or _UNKNOWN_MODEL
-    _tenant_daily_cost[(user.tenant_id, day)] += cost_usd
-    _tenant_monthly_cost[(user.tenant_id, month)] += cost_usd
-    _model_daily_cost[(model_key, day)] += cost_usd
-    _tenant_model_daily_cost[(user.tenant_id, model_key, day)] += cost_usd
-    _tenant_model_monthly_cost[(user.tenant_id, model_key, month)] += cost_usd
+        # Q18 layer 5 — attributable spend (tenant + model).
+        model_key = model or _UNKNOWN_MODEL
+        _tenant_daily_cost[(user.tenant_id, day)] += cost_usd
+        _tenant_monthly_cost[(user.tenant_id, month)] += cost_usd
+        _model_daily_cost[(model_key, day)] += cost_usd
+        _tenant_model_daily_cost[(user.tenant_id, model_key, day)] += cost_usd
+        _tenant_model_monthly_cost[(user.tenant_id, model_key, month)] += cost_usd
+
+    # Redis path: reconcile the token reservation delta on the shared counters
+    # so a horizontally-scaled fleet's accounting matches realised spend, and
+    # accumulate realised daily cost (fleet-wide breaker source of truth).
+    client = _quota_redis()
+    if client is not None:
+        try:
+            if delta != 0:
+                client.incrby(f"quota:user:{user.user_id}:{day}", delta)
+                client.incrby(f"quota:tenant:{user.tenant_id}:{month}", delta)
+            if cost_usd:
+                # Cost stored as integer micro-dollars so INCRBY stays exact
+                # (redis counters are integers; floats would drift).
+                cost_key = f"cost:daily:{day}"
+                client.incrby(cost_key, int(round(cost_usd * 1_000_000)))
+                client.expire(cost_key, _DAILY_TTL_SEC)
+        except Exception as exc:  # noqa: BLE001 — reconciliation is best-effort
+            logger.warning("rate_limit: redis usage reconcile failed (%s)", exc)
 
 
 def _tenant_monthly_cost_cap(tenant_id: str) -> float | None:
@@ -404,8 +618,23 @@ def cost_circuit_state() -> dict:
 
     POC: returns {tripped, current_usd, threshold_usd}.
     When tripped, llm_router auto-degrades reasoning model → cheap model.
+
+    On the redis backend the daily cost is read from the shared
+    micro-dollar counter so every gateway replica trips the breaker on the
+    SAME fleet-wide spend (not just its own process's slice). A redis read
+    failure falls back to the in-process tally rather than crashing the
+    request — the breaker is an alert/degrade hint, not a hard wall.
     """
-    today_cost = _daily_cost_usd[_today()]
+    day = _today()
+    today_cost = _daily_cost_usd[day]
+    client = _quota_redis()
+    if client is not None:
+        try:
+            raw = client.get(f"cost:daily:{day}")
+            if raw is not None:
+                today_cost = int(raw) / 1_000_000.0
+        except Exception as exc:  # noqa: BLE001 — fall back to local tally
+            logger.warning("rate_limit: redis cost read failed (%s); using local tally", exc)
     return {
         "tripped": today_cost >= settings.COST_CIRCUIT_DAILY_USD,
         "current_usd": round(today_cost, 4),

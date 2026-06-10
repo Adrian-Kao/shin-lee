@@ -26,6 +26,7 @@ from backend.gateway import cache, masking
 from backend.gateway.auth import _internal_headers
 from backend.gateway.rate_limit import cost_provenance_for, estimate_cost
 from backend.shared.config import settings
+from backend.shared.observability import request_id_headers
 from backend.shared.models import (
     AnalysisRequest,
     AnalysisResponse,
@@ -142,7 +143,17 @@ class AIEngineClient:
             # Security Chunk A — C-2. AI Engine's middleware refuses any
             # non-`/v1/health` request that lacks X-Internal-Token. The
             # token is server-side only; the SPA never sees it.
-            r = await client.post(url, json=payload, headers=_internal_headers())
+            #
+            # Agent D deferred item (Q19 correlation IDs): wrap the internal
+            # auth headers in `request_id_headers(...)` so the gateway's bound
+            # X-Request-ID rides along on every gateway→AI-Engine call. The
+            # AI Engine's middleware reads it back out and binds it into its
+            # own context, so BOTH services' JSON log lines carry the SAME
+            # request_id and a single OA analysis is traceable end to end.
+            # When no id is bound (call outside a request context) the helper
+            # mints one so the downstream still gets *a* trace id.
+            headers = request_id_headers(_internal_headers())
+            r = await client.post(url, json=payload, headers=headers)
             r.raise_for_status()
             return r.json()
 

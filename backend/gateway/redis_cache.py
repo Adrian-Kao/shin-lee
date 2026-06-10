@@ -40,6 +40,8 @@ import logging
 import threading
 from typing import Any, Optional
 
+from backend.shared.config import settings
+
 try:
     import redis
     from redis.exceptions import ConnectionError as RedisConnectionError
@@ -51,6 +53,36 @@ except ImportError:  # pragma: no cover - exercised only when redis-py absent
 
 
 log = logging.getLogger(__name__)
+
+
+# Lua: SET a value (with optional TTL) AND record the key in a per-tenant FIFO
+# order list, evicting the oldest entries (value + order entry) once the list
+# exceeds the cap. Atomic so concurrent writers can't race the eviction and
+# leave the list and the value keyspace inconsistent.
+#   KEYS[1] = value key            KEYS[2] = per-tenant order list (LPUSH front)
+#   ARGV[1] = payload (json)       ARGV[2] = ttl_sec (0 = no expiry)
+#   ARGV[3] = cap (0 = uncapped)
+# The order list holds value keys newest-first (LPUSH); eviction pops the
+# oldest from the tail (RPOP) and DELs the corresponding value key.
+_SET_WITH_CAP_LUA = """
+if tonumber(ARGV[2]) > 0 then
+  redis.call('SETEX', KEYS[1], tonumber(ARGV[2]), ARGV[1])
+else
+  redis.call('SET', KEYS[1], ARGV[1])
+end
+redis.call('LREM', KEYS[2], 0, KEYS[1])
+redis.call('LPUSH', KEYS[2], KEYS[1])
+local cap = tonumber(ARGV[3])
+if cap > 0 then
+  while redis.call('LLEN', KEYS[2]) > cap do
+    local victim = redis.call('RPOP', KEYS[2])
+    if victim then
+      redis.call('DEL', victim)
+    end
+  end
+end
+return 1
+"""
 
 
 class RedisCacheBackend:
@@ -107,15 +139,36 @@ class RedisCacheBackend:
             log.warning("redis_cache: corrupt value at %s, dropping: %s", key, exc)
             return None
 
-    def set(self, key: str, value: Any, ttl_sec: int = 0) -> None:
+    def set(self, key: str, value: Any, ttl_sec: int = 0, tenant: Optional[str] = None) -> None:
+        """Set a cache entry, optionally tracked under a per-tenant FIFO cap.
+
+        ``tenant`` mirrors the in-memory backend's M-8 cap kwarg: when given
+        (the ``set_response`` / ``set_retrieval`` helpers always pass it), the
+        write goes through an atomic Lua script that also records the key in a
+        per-tenant order list and evicts the oldest keys once the tenant
+        exceeds ``MAX_CACHE_ENTRIES_PER_TENANT``. This stops one noisy tenant
+        from filling the shared Redis instance (the parity guarantee with the
+        in-memory backend — neither backend lets a tenant grow unbounded).
+
+        ``tenant=None`` (embeddings — permanent, deterministic, shared bucket)
+        takes the plain SET/SETEX path with no order list, matching the
+        in-memory backend's uncapped shared bucket.
+        """
         try:
             payload = json.dumps(value).encode("utf-8")
         except (TypeError, ValueError) as exc:
             log.warning("redis_cache: refusing to cache non-JSON value at %s: %s", key, exc)
             return
 
+        cap = settings.MAX_CACHE_ENTRIES_PER_TENANT
         try:
-            if ttl_sec and ttl_sec > 0:
+            if tenant is not None and cap > 0:
+                order_key = self._tenant_order_key(tenant)
+                self._client.eval(
+                    _SET_WITH_CAP_LUA, 2, key, order_key, payload,
+                    ttl_sec if ttl_sec and ttl_sec > 0 else 0, cap,
+                )
+            elif ttl_sec and ttl_sec > 0:
                 self._client.setex(key, ttl_sec, payload)
             else:
                 # ttl_sec == 0 mirrors _MemoryCache: "permanent" (no expiry).
@@ -128,6 +181,11 @@ class RedisCacheBackend:
             log.warning("redis_cache: SET %s failed (redis error): %s", key, exc)
             with self._lock:
                 self._failures += 1
+
+    @staticmethod
+    def _tenant_order_key(tenant: str) -> str:
+        """Namespaced key for a tenant's FIFO order list."""
+        return f"cacheorder:{tenant}"
 
     def stats(self) -> dict:
         with self._lock:

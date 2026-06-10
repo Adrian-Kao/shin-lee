@@ -49,12 +49,12 @@ def shadowed_card(base, box, r, fill, blur=14, alpha=60, dy=8):
 
 
 def make():
-    W, H = 2360, 1180
+    W, H = 2400, 810
     img = Image.new("RGBA", (W, H), (255, 255, 255, 255))
     d = ImageDraw.Draw(img)
 
     f_lane   = F(CJK_B, 36)
-    f_lanept = F(LAT_B, 24)
+    f_lanept = F(CJK_B, 24)
     f_pill   = F(CJK, 27)
     f_pillb  = F(CJK_B, 28)
     f_small  = F(CJK, 25)
@@ -105,7 +105,7 @@ def make():
     x0, x1 = cx[2]
     shadowed_card(img, [x0, top, x1, top + lane_h], 24, (247, 249, 253, 255))
     lane_head(x0, x1, "安全業務閘道  :8010", None, NAVY_DEEP)
-    mods = [("身分與案件權限", "JWT · 案件 ACL"), ("限流與配額", "成本斷路器"),
+    mods = [("身分與權限", "JWT · 案件 ACL"), ("限流與配額", "成本斷路器"),
             ("資料遮罩", "PII · 客戶詞庫"), ("快取", "租戶隔離"),
             ("流程編排", "六步業務管線"), ("稽核", "append-only 鏈")]
     pw, ph = (x1 - x0 - 30 * 2 - 20 * 2) / 3, 150

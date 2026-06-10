@@ -231,7 +231,7 @@ def s_agenda():
     items = [
         ("1", "題目說明", "這個系統做什麼"),
         ("2", "動機", "為什麼值得做"),
-        ("3", "系統怎麼運作", "架構與信任設計"),
+        ("3", "系統怎麼運作", "流程 · 模組 · 資料流 · AI 任務"),
         ("4", "產品畫面", "三個關鍵畫面"),
         ("5", "平台整合", "digiRunner × Dify 實機"),
         ("6", "現況與 Demo", "驗證數字 + 現場操作"),
@@ -326,43 +326,28 @@ def s_motivation():
     footer(s)
 
 
-def s_solution():
+def s_diagram(ttl, png, caption=None):
+    """Full-width custom diagram slide (section 3)."""
     s = slide()
     kicker(s, "03", "系統怎麼運作")
-    title(s, "AI 起草,律師定稿")
-    ghost_num(s, "03")
-    cards = [
-        ("自動分類核駁理由", "中文 / 英文 OA 都能讀;新穎性、進步性、明確性、缺先行詞等逐項拆解,標示受影響的請求項。"),
-        ("證據先行的草稿", "草稿裡的每個引用,都必須來自系統實際檢索到的文件;引用旁直接附上原文段落。"),
-        ("期限自動試算", "從公文日期起算法定期限,假日自動順延,並給內部建議完成日。"),
-        ("簽核才能送件", "律師逐句確認 AI / 人工段落;未完成簽核,匯出按鈕直接被系統擋下。"),
-    ]
-    x0, y0 = 1.0, 2.35
-    for i, (h, b) in enumerate(cards):
-        col = i % 2
-        row = i // 2
-        x = x0 + col * 5.95
-        y = y0 + row * 1.78
-        rect(s, x, y + 0.05, 0.06, 1.42, AMBER)
-        txt(s, x + 0.28, y, 5.35, 0.5,
-            [[("%d　" % (i + 1), 19, AMBER, True), (h, 19, NAVY, True)]])
-        txt(s, x + 0.28, y + 0.55, 5.35, 1.1, one(b, 13.5, GRAY), leading=1.25)
-    hline(s, 0.9, 6.05, 11.55, HAIR, 1.2)
-    txt(s, 0.9, 6.2, 11.5, 0.6,
-        [[("核心原則　", 15, AMBER, True),
-          ("AI 是放大器,不是替代 — 每一份送出去的文件,都有具名律師逐句負責。",
-           15, INK, False)]], leading=1.25)
-    footer(s)
-
-
-def s_arch():
-    s = slide()
-    kicker(s, "03", "系統怎麼運作")
-    title(s, "系統架構：一條安全管線")
-    p, h = add_pic_fitw(s, os.path.join(ASSETS, "architecture.png"), 0.62, 2.3, 12.1)
-    txt(s, 0.9, 2.3 + h + 0.12, 11.6, 0.5,
-        [[("兩條鐵則　", 14, AMBER, True),
-          ("閘道永不直接呼叫模型;推論引擎不保存任何業務資料。", 13.5, GRAY, False)]])
+    title(s, ttl)
+    path = os.path.join(ASSETS, png)
+    im = PILImage.open(path)
+    ar = im.height / im.width
+    h = 4.78
+    if caption:
+        h = 4.45
+    w = h / ar
+    if w > 12.3:
+        w = 12.3
+        h = w * ar
+    p = s.shapes.add_picture(path, Inches((SW - w) / 2), Inches(2.12),
+                             Inches(w), Inches(h))
+    pic_shadow(p)
+    if caption:
+        head_, body_ = caption
+        txt(s, 0.9, 2.12 + h + 0.18, 11.6, 0.5,
+            [[(head_ + "　", 14, AMBER, True), (body_, 13.5, GRAY, False)]])
     footer(s)
 
 
@@ -462,14 +447,18 @@ def s_close():
            RGBColor(0x9D,0xAC,0xD4), False)]])
 
 
-# ----------------- assembly: 15 slides -----------------
+# ----------------- assembly: 17 slides -----------------
 s_title()                                                              # 1
 s_agenda()                                                             # 2
 s_topic()                                                              # 3
 s_motivation()                                                         # 4
-s_solution()                                                           # 5
-s_arch()                                                               # 6
-s_trust()                                                              # 7
+s_diagram("操作流程：人和系統怎麼分工", "flow_user.png")                  # 5
+s_diagram("功能模組架構：模組分工與互動", "architecture.png",            # 6
+          caption=("兩條鐵則",
+                   "閘道永不直接呼叫模型;推論引擎不保存任何業務資料。"))
+s_diagram("資料流：從來源到產出", "flow_data.png")                       # 7
+s_diagram("AI 任務執行流程：六步閉環", "flow_ai.png")                    # 8
+s_trust()                                                              # 9
 s_shot("04", "產品畫面", "畫面 ①｜登入與角色權限",
        "landing-desktop-1440-chromium-desktop.png", [
         ("官方入口風格", "乾淨版面、弱化技術術語;律師第一眼就知道在哪裡開始。"),

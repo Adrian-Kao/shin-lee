@@ -74,16 +74,36 @@ bash scripts/smoke_demo.sh   # 應印出 ALL GREEN — demo ready
    角色隔離），看每一步的 append-only 紀錄，按 **hash-chain verify**
    （`GET /v1/audit/verify`）證明不可竄改。
 
-### 選用外部 hop / Optional external hops
+### 外部 hop / External hops（已上線，2026-06-11 全部實測通過）
 
-> **TODO(digiRunner 團隊)**：digiRunner 上線於 <http://127.0.0.1:18080>。
-> 經 digiRunner 走 demo 時，前端改打 `http://127.0.0.1:18080/<TODO: route prefix>`
-> （取代直連 :8010）。步驟與帳號設定待該團隊文件補上。
->
-> **TODO(Dify 團隊)**：Dify CE 於 <http://localhost:8088>。設 `LLM_MODE=dify` +
-> `DIFY_API_KEY_ANALYZE=<app key>`（由 `python scripts/setup_dify.py` 產生）後，
-> parse_oa / draft_response 會改走 `patentmind-analyze-oa` workflow
-> （本機 Ollama qwen2.5:7b）。引證驗證（Q14）仍留在本專案程式內。
+**digiRunner（前線 API 閘道，:18080）**
+
+```bash
+bash scripts/start_digirunner.sh     # 啟動容器 + 等 healthy + 自動重灌 12 條路由（H2 in-mem，每次開機 ~5s）
+bash scripts/smoke_digirunner.sh     # 7 點煙霧測試（含經 digiRunner 的 login+analyze、標頭偽造拒絕）
+```
+
+- 呼叫格式：`http://localhost:18080/dgrc/<原路徑>`（例 `/dgrc/v1/oa/analyze`）
+- 前端改走 digiRunner：
+  ```bash
+  cd frontend && VITE_API_TARGET=http://localhost:18080 VITE_API_PATH_PREFIX=dgrc npm run dev
+  ```
+- Admin console：<http://localhost:18080/dgrv4/login>（帳密見 `.env` 的 `DGR_ADMIN_*`）
+- 細節與手動設定路徑：`scripts/setup_digirunner.md`
+
+**Dify CE（AI workflow 引擎，:8088）**
+
+```bash
+cd /d/patentmind-infra/dify/docker && docker compose up -d   # 12 個容器
+PYTHONUTF8=1 python scripts/setup_dify.py                    # 冪等：admin → Ollama plugin → 模型 → workflow 匯入 → API key 回寫 .env
+bash scripts/smoke_dify.sh                                   # 驗證 model_used=dify/qwen2.5:7b
+```
+
+- `.env` 設 `LLM_MODE=dify` 後，parse_oa / draft_response 走 `patentmind-analyze-oa`
+  workflow（本機 Ollama qwen2.5:7b，全程不出機器）。引證驗證（Q14 硬牆）仍留在本專案程式內。
+- Dify 不可達時自動降級 mock 並在 audit 標 `dify/qwen2.5:7b-DEGRADED-mock`（demo 不會死）。
+- Console：<http://localhost:8088>（帳密見 `.env` 的 `DIFY_ADMIN_*`）；細節：`scripts/setup_dify.md`
+- E2E 證明：`data/dify_e2e_proof.json`（完整 gateway 鏈路 27.2s，真模型 zh-TW 申復書）
 
 ---
 

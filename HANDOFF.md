@@ -839,3 +839,49 @@ file is `docs/OPERATIONS_AND_ONBOARDING.md`.)
 - **Zero-width strip pre-pass** in `backend/gateway/masking.py` — one-line fix flips `test_zero_width_chars_redacted_around` from xfail to XPASS.
 - **CHUNK-2..12** from `docs/PRODUCT_STRATEGY.md §9` not yet executed (CHUNK-1 + CHUNK-8 shipped Day 9C). Next per strategy: CHUNK-3 (cases list), CHUNK-7 (onboarding tour), CHUNK-2 (dashboard).
 - **Real Anthropic + Dify integration** — Phase 3 plan + workflow JSONs ready; awaiting TPIsoftware contact (HANDOFF §21).
+
+---
+
+# 2026-06-11 session — Day 14 overnight: real digiRunner + real Dify + history rescue
+
+## 23. Day 14 wrap (交付前夜)
+
+**Git 歷史救援（最重要的事件）**: session 開始時 `feature/patentmind-poc` 只剩 2 個壓縮
+commit、pytest 16 個收集錯誤。完整 Day 1-13 歷史（85+ commits）找回於 worktree-agent-*
+branches：整合點 651ea31（Day 12 merges）+ 5 個 Day 13 branch（13F IdP / 13G audit WORM /
+13H RAG / 13I quota / 13J PDF）。已 fast-forward + 全部合併（config.py 三次衝突 = 各 agent
+附加區塊，雙方保留）。工作樹獨有內容（presentation/、OA PDFs）由
+`rescue/working-tree-20260611`（93fb55c）找回。**教訓**: 主樹 branch ref 從未前進，
+agent merge 都發生在 worktree 的同名 ref 上。
+
+**Day 14 commits**:
+- `0414539` 14A: 真 digiRunner OSS (dgrv4, :18080) — AC REST API 全自動 12 路由註冊
+  (tptoken→AA0311→AA0303)、H2 in-mem 每次開機重灌路由、7 點 smoke 全綠、
+  Day 8C upstream-header 實證（含偽造 401）。`/dgrc/<path>` 呼叫格式。
+- `cd051c5` 14B: 後端 1226 全綠。根因 = venv 缺 pytest-asyncio + redis（非 API 漂移）。
+  真 bug 修復: Qdrant 空批次 upsert 400。postgres host port → 15432（5432 被 pulse-db 佔）。
+  `scripts/start_delivery.sh` 一鍵全 stack + `docs/DELIVERY_RUNBOOK.md`（雙語）。
+- `1687d4f` JWT guard 測試 cp950 解碼修復（zh-TW Windows locale）。
+- `d346653` 14C: 真 Dify CE 1.14.2 (12 容器, :8088, D:\patentmind-infra\dify) —
+  `scripts/setup_dify.py` 100% 自動化（admin→Ollama plugin→qwen2.5:7b→DSL 匯入→key 回寫）。
+  DSL 由 prompts/*.yaml 即時生成（single source of truth）。`LLM_MODE=dify` + DifyLLM
+  （JSON 萃取 + 降級 mock 帶 DEGRADED 標籤進 audit）。verifier 留本地（Q14 硬牆設計決策）。
+  E2E 證明 `data/dify_e2e_proof.json`：27.2s 真模型 zh-TW 申復書 + 硬牆攔截實證。
+  Avast TLS MITM 解法在 docker-compose.override.yaml（企業乾淨主機不需要）。
+- `b9bc2ec` 14D: 前端 — StackStatus 四燈 footer（對真實 digiRunner/Dify 驗證）、
+  深色模式 nav 修復、i18n 掃蕩、Playwright 75 infra 失敗→0（workers:2 + warmup project +
+  lockfile 對版 chromium）。
+
+**實機驗證（2026-06-11 04:0x，全部通過）**:
+- `smoke_demo.sh` ALL GREEN（LLM_MODE=dify 下）
+- `smoke_dify.sh` PASS：model_used=dify/qwen2.5:7b，TW OA → antecedent_basis claim 9
+- `smoke_digirunner.sh` 7/7：含「經 digiRunner 的完整 analyze」
+- 完整鏈路 SPA→digiRunner(:18080/dgrc)→gateway(:8010)→ai_engine(:8011)→Dify(:8088)→Ollama qwen2.5:7b 是活的
+
+**環境眉角**:
+- Ollama 模型清單: qwen2.5:7b / qwen2.5:1.5b / phi3 / nomic-embed-text（無 llama3.1:8b！
+  LOCAL_LLM 預設要用 qwen2.5:7b）
+- 主機 5432 被外部 pulse-db 容器佔用；我們 postgres 綁 15432
+- 8010 偶見「Pulse API」(D:\pulse) dev server 搶佔 — 殺前先 `Get-CimInstance` 確認
+  CommandLine 含 `backend.gateway.main:app` 才是我們的
+- zh-TW Windows: subprocess 一律 encoding="utf-8"，否則 cp950 吃 em-dash 會炸

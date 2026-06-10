@@ -530,3 +530,20 @@ def _validate_upstream_trust_config() -> None:
 
 
 _validate_upstream_trust_config()
+
+
+# ---------------------------------------------------------------------------
+# Agent G — audit-chain integrity / WORM archive / outbox durability tunables
+# (Q13). Additive only; consumed by backend/gateway/audit_archive.py and
+# backend/gateway/audit_outbox.py. Module-level constants (not Settings fields)
+# to mirror AUDIT_DB_PATH / AUDIT_OUTBOX_PATH / AUDIT_ARCHIVE_DIR above and to
+# stay honoured by conftest/test monkeypatching of this module.
+# ---------------------------------------------------------------------------
+# Ops alert threshold: when outbox_depth() exceeds this, the primary audit DB
+# has been unhappy long enough that a human should look. Surfaced by health/
+# metrics wiring (deferred — see report). 0 disables the alert.
+AUDIT_OUTBOX_ALERT_DEPTH = int(os.getenv("AUDIT_OUTBOX_ALERT_DEPTH", "100"))
+# WORM retention the production S3 Object Lock policy should enforce on each
+# sealed segment. The POC chmods files read-only; this records the intended
+# retention so the cron/archiver wiring can set the real Object Lock period.
+AUDIT_WORM_RETENTION_DAYS = int(os.getenv("AUDIT_WORM_RETENTION_DAYS", str(7 * 365)))

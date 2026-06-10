@@ -438,6 +438,21 @@ class Settings:
     # checks so a few seconds of NTP drift between the IdP and the gateway does
     # not reject an otherwise-valid assertion.
     IDP_CLOCK_SKEW_SEC: int = int(os.getenv("IDP_CLOCK_SKEW_SEC", "30"))
+    # ------------------------------------------------------------------
+    # Agent H — RAG retrieval-quality eval gate (Q6/Q7, Day 13H)
+    # ------------------------------------------------------------------
+    # Production quality targets for the retrieval-eval harness
+    # (backend/ai_engine/retrieval_eval.py). These ONLY bite once
+    # EMBEDDING_BACKEND=bge-m3 — on the mock backend embeddings are
+    # deterministic SHA-256 noise so the numbers are meaningless (the harness
+    # documents this loudly). retrieval_eval.py keeps its own module-level
+    # DEFAULT_MIN_RECALL_AT_5 (low mock floor) + PROD_TARGET_RECALL_AT_5 (0.70,
+    # the Q6 number); these mirror the prod targets here so an operator flipping
+    # to bge-m3 can ratchet the CI gate from one place. nDCG / grounding-coverage
+    # targets are advisory until a real embedder makes them informative.
+    RAG_EVAL_TARGET_RECALL_AT_5: float = float(os.getenv("RAG_EVAL_TARGET_RECALL_AT_5", "0.70"))
+    RAG_EVAL_TARGET_NDCG_AT_5: float = float(os.getenv("RAG_EVAL_TARGET_NDCG_AT_5", "0.60"))
+    RAG_EVAL_TARGET_COVERAGE_AT_5: float = float(os.getenv("RAG_EVAL_TARGET_COVERAGE_AT_5", "0.40"))
 
 
 settings = Settings()

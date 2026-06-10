@@ -70,35 +70,49 @@ _MAX_DEPTH = 20
 # a single int or a sequence like "1 或 2", "1 or 2", "1, 2, or 3" — the
 # `_extract_numbers` helper handles all of them.
 _DEPENDENCY_PATTERNS: list[tuple[re.Pattern, str]] = [
-    # ----- TW Chinese -----
+    # ----- TW traditional / CN simplified Chinese -----
     # 如請求項 1 所述
     # 如請求項1所述
     # 如請求項 1 或 2 所述
     # 如請求項 1、2 或 3 所述
     # 如申請專利範圍第 1 項所述 (older TIPO phrasing)
+    # 根據權利要求 1 所述 / 根据权利要求1所述 (CN simplified — 权利要求)
+    #
+    # NB the marker noun differs by jurisdiction: TW uses 請求項, CN uses
+    # 權利要求/权利要求 (both the traditional and simplified forms). We accept
+    # all three noun spellings in ONE pattern so a Chinese-language OA from
+    # either office parses without a separate branch.
     (
         re.compile(
-            r"如(?:申請專利範圍第)?\s*請求項?\s*([\d、,，\s或and及與or]+?)\s*(?:項)?\s*所述",
+            r"如(?:申請專利範圍第)?\s*(?:請求項|權利要求|权利要求)\s*"
+            r"([\d、,，\s或至到and及與or]+?)\s*(?:項)?\s*所述",
             re.UNICODE,
         ),
         "nums",
     ),
-    # 依請求項 1 所述
-    # 依據請求項 1 所述
+    # 依請求項 1 所述 / 依據請求項 1 所述
+    # 根據權利要求 1 所述 / 根据权利要求1所述 (依/依據/根據/根据 + noun)
     (
         re.compile(
-            r"依(?:據)?\s*請求項\s*([\d、,，\s或and及與]+?)\s*所述",
+            r"(?:依據|依|根據|根据)\s*(?:請求項|權利要求|权利要求)\s*"
+            r"([\d、,，\s或至到and及與]+?)\s*所述",
             re.UNICODE,
         ),
         "nums",
     ),
-    # ----- US English -----
+    # ----- US / EP English -----
     # The system of claim 1, wherein...
-    # The method of claims 1-3, wherein...
+    # The method of claims 1-3, wherein...   (range)
     # A device according to claim 1 or 2
+    # A method as claimed in claim 1, ...     (EP/UK phrasing)
+    # The system of any one of claims 1 to 5  (multiple-dependent, EP/PCT)
+    # The method of any of claims 1-3
     (
         re.compile(
-            r"\b(?:of|according to|as (?:recited|set forth) in|as in)\s+claims?\s+([\d\s,\-or]+?)(?:,|\s+wherein|\s+further|\s*$|\s+comprising)",
+            r"\b(?:of|according to|as (?:recited|set forth|claimed) in|as in)\s+"
+            r"(?:any (?:one )?of\s+)?"
+            r"claims?\s+([\d\s,\-or]+?(?:\s+(?:to|through)\s+\d+)?)"
+            r"(?:,|\s+wherein|\s+further|\s*$|\s+comprising|\s+being)",
             re.IGNORECASE,
         ),
         "nums",
@@ -106,7 +120,7 @@ _DEPENDENCY_PATTERNS: list[tuple[re.Pattern, str]] = [
     # depending on claim 1 / dependent on claim 1
     (
         re.compile(
-            r"\bdepend(?:ing|ent)\s+on\s+claims?\s+([\d\s,\-or]+)",
+            r"\bdepend(?:ing|ent)\s+on\s+claims?\s+([\d\s,\-or]+(?:\s+(?:to|through)\s+\d+)?)",
             re.IGNORECASE,
         ),
         "nums",
@@ -132,14 +146,25 @@ def _strip_claim_prefix(text: str) -> str:
 def _extract_numbers(blob: str) -> list[int]:
     """Pull all integers out of a regex match group, in order, deduped.
 
-    Handles "1", "1 或 2", "1, 2", "1-3", "1, 2 or 3". Range notation
-    ("1-3") is expanded.
+    Handles "1", "1 或 2", "1, 2", "1-3", "1, 2 or 3", and the spelled-out
+    range forms common in EP/PCT multiple-dependent claims and Chinese
+    filings: "1 to 3", "1 through 5", "1至3", "1到5". Every range notation
+    is EXPANDED to the full inclusive list ("1 to 3" -> [1, 2, 3]) so that
+    `parents` carries every antecedent claim (cascade-risk highlighting in
+    the UI needs them all), while `depends_on` (first parent) drives layout.
     """
     nums: list[int] = []
     # Find all integers; preserve order.
     raw = re.findall(r"\d+", blob)
-    # Detect a range expression — pre-pass before per-int dedup.
-    range_match = re.match(r"\s*(\d+)\s*-\s*(\d+)\s*$", blob.strip())
+    # Detect a range expression — pre-pass before per-int dedup. Accept the
+    # hyphen form ("1-3"), the English spelled-out forms ("1 to 3",
+    # "1 through 5"), and the Chinese range chars ("1至3", "1到5"). All map to
+    # an inclusive integer range.
+    range_match = re.match(
+        r"\s*(\d+)\s*(?:-|to|through|至|到)\s*(\d+)\s*$",
+        blob.strip(),
+        re.IGNORECASE,
+    )
     if range_match:
         lo, hi = int(range_match.group(1)), int(range_match.group(2))
         if 0 < lo <= hi < 1000:  # sanity bound

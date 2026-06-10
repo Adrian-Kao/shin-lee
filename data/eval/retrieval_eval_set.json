@@ -1,0 +1,66 @@
+{
+  "_README": [
+    "Hand-labeled retrieval evaluation set for Q6 (RAG chunking quality).",
+    "Each case: {query, tenant_id, relevant: [...], note}.",
+    "`relevant` entries are matched against each RetrievalHit's patent_no",
+    "OR its chunk_id (metadata.chunk_id), e.g. 'US7654321' or 'US7654321#claim_1'.",
+    "A hit counts as relevant if it matches ANY entry in `relevant`.",
+    "Cases are derived from backend/patent_db/seed.py DEMO_PATENTS.",
+    "WARNING: with EMBEDDING_BACKEND=mock the embeddings are deterministic",
+    "SHA-256 hashes, so absolute recall/MRR numbers are near-random and",
+    "MEANINGLESS as a quality signal. The harness's value is the MECHANISM",
+    "(CI gate + per-case failure surfacing); it becomes a real quality",
+    "measurement the moment EMBEDDING_BACKEND=bge-m3 is configured."
+  ],
+  "cases": [
+    {
+      "id": "ev1-microchannel-cooling",
+      "query": "microchannel cooling system for electric vehicle battery with non-uniform cross-section channels to induce turbulent flow",
+      "tenant_id": "tenant_a",
+      "relevant": ["US7654321"],
+      "note": "Direct restatement of US7654321's independent claim 1 + abstract."
+    },
+    {
+      "id": "ev2-solid-copper-heatsink",
+      "query": "solid copper heat sink with parallel extruded fins for power electronics cooling",
+      "tenant_id": "tenant_a",
+      "relevant": ["US6543210"],
+      "note": "US6543210 is the prior-art heat sink cited inside US7654321's BACKGROUND."
+    },
+    {
+      "id": "ev3-prior-art-cited-by-examiner",
+      "query": "prior art heat sink that is inadequate for high-current battery discharge, solid block conductive cooling",
+      "tenant_id": "tenant_a",
+      "relevant": ["US6543210", "US7654321"],
+      "note": "Examiner-style query: the cited prior art (US6543210) AND the patent that cites it both acceptable."
+    },
+    {
+      "id": "ev4-tw-charging-load-management",
+      "query": "電動車充電站 充電管理 伺服器 能源管理方案 負載管理 第一參考值 特定事件",
+      "tenant_id": "tenant_a",
+      "relevant": ["TW202617461"],
+      "note": "TW charging-station load-management method patent; query mirrors its claim 1."
+    },
+    {
+      "id": "ev5-tw-antecedent-basis-claim9",
+      "query": "充電終止通知 暫停 第一電動車 充電 缺先行詞 antecedent basis",
+      "tenant_id": "tenant_a",
+      "relevant": ["TW202617461", "TW202617461#claim_9"],
+      "note": "Targets claim 9 of TW202617461 (the antecedent-basis defect the OA flags)."
+    },
+    {
+      "id": "ev6-tw-microchannel-local",
+      "query": "電動車 電池模組 冷卻結構 微流道板 非均勻截面 直接散熱",
+      "tenant_id": "tenant_a",
+      "relevant": ["TW202131234"],
+      "note": "Customer-internal (is_local) TW microchannel cooling patent."
+    },
+    {
+      "id": "ev7-ep-wireless-coil-alignment",
+      "query": "wireless charging system with active transmitting coil alignment and position sensor for misalignment tolerance",
+      "tenant_id": "tenant_b",
+      "relevant": ["EP3210987"],
+      "note": "Cross-tenant isolation check: this patent lives in tenant_b only."
+    }
+  ]
+}

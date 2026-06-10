@@ -1,0 +1,640 @@
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+
+/**
+ * App-shell i18n scaffolding (slice B).
+ *
+ * Only the shell strings are stubbed (title, nav, common buttons). Component
+ * internals (Login.jsx / Analyze.jsx / etc.) still ship their original
+ * bilingual strings — Phase 4 will migrate them.
+ *
+ * Default language is zh-TW per CLAUDE.md product context (Taiwan patent firms).
+ */
+const resources = {
+  'zh-TW': {
+    common: {
+      app_title: 'PatentMind AI',
+      app_tag_poc: 'POC',
+      nav: {
+        analyze: '分析',
+        audit: 'Audit',
+        cases: '案件',
+        expand: '展開導覽',
+        collapse: '收合導覽',
+      },
+      shell: {
+        audit_chip: {
+          ok: '紀錄已驗證',
+          checking: '驗證中…',
+          fail: '紀錄驗證未通過 — 請聯絡管理員',
+          rows: '{{rows}} 筆',
+        },
+        role_badge: {
+          attorney: '律師',
+          paralegal: '法務助理',
+          it_admin: 'IT 管理',
+          auditor: '稽核',
+        },
+        trust: {
+          redaction_default: '資料遮罩：開啟',
+          redaction_active: '已遮罩 {{count}} 項機密資訊',
+          redaction_tooltip: '機密資料於送出分析前會自動遮罩。',
+          mapping_default: '資料保存於本地',
+          mapping_tooltip: '遮罩對應資料僅保存於本地，不會外傳。',
+          routing_auto: '一般案件',
+          routing_confidential: '機密案件（本地處理）',
+          routing_tooltip_auto: '一般案件採標準流程；機密案件自動改為本地處理。',
+          routing_tooltip_conf: '此為機密案件，已自動改為本地處理。',
+        },
+      },
+      buttons: {
+        login: '登入',
+        logout: '登出',
+        submit: '送出',
+        cancel: '取消',
+      },
+      coming_soon: '即將推出',
+      upload: {
+        drop_zone: '拖放 PDF / DOCX 到這裡，或',
+        browse: '瀏覽檔案',
+        invalid_type: '只支援 PDF 或 DOCX',
+        too_large: '檔案太大（>30MB）',
+        upload_button: '上傳',
+        cancel_button: '取消',
+        retry_button: '重試',
+        use_this_text: '使用此文字',
+        extracting: '伺服器處理中... (掃描頁需 OCR，可能 10-30 秒)',
+        success: '已抽出 {{pages}} 頁 / {{chars}} 字',
+        ocr_used: '{{count}} 頁透過 OCR（成本 ${{cost}}）',
+        loaded_chip: '從 {{filename}} 載入 ({{pages}} 頁)',
+        switch_to_paste: '改貼文字',
+        switch_to_upload: '改用上傳',
+        docx_no_preview: 'DOCX 無法預覽；抽出文字將顯示於下方',
+        pdf_no_inline: '此瀏覽器無法內嵌預覽 PDF，請點下方連結下載檢視',
+        preview_pages: '{{count}} 頁',
+        preview_chars: '{{count}} 字',
+        preview_ocr: '{{count}} 頁透過 OCR',
+        preview_page_n: '第 {{n}} 頁',
+        uploading: '上傳中...',
+        change_file: '換一個',
+        file_selected: '已選擇檔案',
+        toast_success: '已抽出 {{pages}} 頁，文字已填入下方',
+        element_table_title: '圖式元件 / Figure elements',
+        element_table_numeral: '元件編號',
+        element_table_desc: '說明',
+      },
+      signoff: {
+        review_each: '我已逐項確認 / I have reviewed each item',
+        export: '匯出答辯稿',
+        exporting: '匯出中…',
+        export_hint: '勾選上方確認後即可匯出。',
+        accept: '接受',
+        accepted: '已接受',
+        edit: '改寫',
+        add_line: '新增句子',
+        new_line_placeholder: '輸入自行撰寫的句子…',
+        save: '儲存',
+        cancel: '取消',
+        source_ai: 'AI 生成',
+        source_edited: '律師改寫',
+        source_added: '律師新增',
+        source_paralegal_edited: '助理改寫',
+        source_paralegal_added: '助理新增',
+        decided_count: '{{decided}}/{{total}} 已決定',
+        signoff_required:
+          '需律師簽核：請先勾選「我已逐項確認」再匯出。系統未產生任何文件。',
+        export_success: '已匯出答辯稿（已簽核）',
+        export_failed: '匯出失敗',
+        download: '下載 .txt',
+        result_title: '已簽核答辯稿',
+        signed_off_by: '簽核人',
+        content_hash: '內容雜湊 (SHA-256)',
+        no_accepted: '尚無已接受的句子可匯出。',
+        close: '關閉',
+      },
+      budget: {
+        title: '預算',
+        month_to_date: '本月累計',
+        projected: '預估月底',
+        per_model: '各模型用量',
+        on_track: '預算正常',
+        will_exceed: '恐超出上限',
+        no_cap: '未設上限',
+        cap: '月上限',
+        today: '今日',
+        model: '模型',
+      },
+      magic: {
+        link_cta: '寄送登入連結 / Email me a sign-in link',
+        request: '寄送連結',
+        requesting: '寄送中…',
+        user_label: '帳號',
+        user_placeholder: '輸入帳號（例如 alice）',
+        sent: '若帳號存在，登入連結已送出。',
+        demo_label: 'DEMO — 此為展示用，正式環境會以 Email 寄送',
+        sign_in_with_link: '使用此連結登入',
+        consuming: '登入中…',
+        back: '返回身分選擇',
+        consume_failed: '連結無效或已使用，請重新寄送。',
+      },
+      landing: {
+        tagline: '專利審查意見通知書　分析與答辯協助',
+        value_classify: '自動辨識核駁理由',
+        value_grounded: '答辯內容自動標註引用出處',
+        value_deadline: '自動推算答辯期限',
+        value_compliance: '機密資料自動遮罩，全程留存紀錄',
+        pick_user: '請選擇身分登入',
+        poc_note: '內部測試環境，請選擇下列身分進入。',
+        footer: 'v0.3 · 內部使用',
+      },
+      placeholder: {
+        cases_title: '案件管理 — Coming Soon',
+        cases_subtitle: 'Phase 4 將整合的功能',
+        cases_bullet_1: '拖拽上傳多份 OA（一次處理 N 件）',
+        cases_bullet_2: '案件 timeline 視覺化（初審 → 答辯 → 再審 → 駁回 → 訴願）',
+        cases_bullet_3: '與外部 docketing 系統同步（PAS / Townes）',
+        back_to_analyze: '回分析頁',
+      },
+      errors: {
+        session_expired: '工作階段過期，請重新登入',
+        no_access: '您沒有此案件的存取權限。請確認 case_id 與您的登入身分相符',
+        file_too_large: '檔案太大。上限 30MB',
+        rate_limited: '請求過於頻繁，請稍候再試',
+        server_busy: '伺服器忙線中',
+        network: '連線失敗。檢查網路與後端是否運行',
+        request_failed: '請求失敗',
+        unexpected: '未預期錯誤',
+        retry: '重試',
+        dismiss: '關閉',
+        login_again: '登入',
+        retry_in: '{{seconds}} 秒後可重試',
+        technical_details: '技術細節',
+      },
+      empty: {
+        no_result_title: '準備分析',
+        no_result_desc: '左側輸入或上傳 OA，點「分析 OA」開始',
+        no_result_hint: '預設 CASE-2025-001（Alice 有權限）',
+        no_audit_title: '尚無作業紀錄',
+        no_audit_desc: '完成任何操作後會在此顯示',
+      },
+      audit: {
+        hero: {
+          rows_label: '稽核總列數',
+          mismatches_label: '不一致數',
+          last_verified_label: '最近驗證時間',
+          never_verified: '尚未驗證',
+        },
+        verify_now: '立即驗證',
+        verifying: '驗證中…',
+        verify_passed: '{{rows}} 筆紀錄全部驗證通過，未發現竄改。',
+        verify_failed: '發現 {{count}} 筆紀錄遭竄改：{{rows}}',
+      },
+      analyze: {
+        pane_input: '輸入 OA / Input',
+        pane_drafts: '草稿 / Drafts',
+        pane_refs: '引證 / References',
+        input: {
+          oa_full_text: 'OA 全文',
+          target_patent: '本案專利號',
+          case_id: '案件編號',
+          preview_redaction: '預覽 redaction',
+          analyze_oa: '分析 OA',
+          analyzing: '分析中…',
+          redaction_preview_title: 'Redaction 預覽',
+          rules_triggered: '觸發規則：',
+          quota: '配額',
+          token_today: '今日 token (你)',
+          token_month: '本月 token (tenant)',
+        },
+        drafts: {
+          strategy: '答辯策略',
+          examiner_argument: 'Examiner 論點',
+          signoff_label: '草稿（律師逐句簽核 — Q16）',
+          analyzing: '分析中…',
+          running_note:
+            '地端 llama3.1:8b 於 CPU 推論，單次分析約 5–7 分鐘。再次送出相同 OA + case 會命中 cache（< 1 秒）。',
+        },
+        stages: {
+          redact: '遮罩 PII / 客戶識別碼 (Q10)',
+          parse: '解析 OA 鑑別 rejection (parse_oa)',
+          retrieve: '檢索先前技術 (RAG, Q6+Q7)',
+          draft: '草擬答辯 (draft_response, grounded Q14)',
+          verify: '驗證引證 (verify_citations, Q14)',
+          deadline: '計算期日 (Q17)',
+          unmask: '回填 PII，整理回應',
+        },
+        claim_tree: {
+          title: '請求項依賴樹',
+          claims: '項',
+          legend: {
+            rejected: '駁回',
+            cascade: '連帶風險',
+            clean: '無駁回',
+          },
+        },
+        // Cross-pane result chrome (summary bar + mobile tab strip). The zh-TW
+        // values double as the e2e selectors, so the bilingual strings are kept
+        // verbatim here rather than scattered across components.
+        result: {
+          tab_input: '輸入 / Input',
+          tab_drafts: '草稿 / Drafts',
+          tab_refs: '引證 / Refs',
+          deadline_label: '期日 (Q17)',
+          days: '天',
+          why: '計算依據 / Why',
+          collapse: '收合',
+          received: '起算日 / Received',
+          statutory: '法定期日 / Statutory',
+          internal: '建議內部完成 / Internal',
+          calendar: '假日表 / Calendar',
+        },
+        refs: {
+          cited_title: '引證案 / Cited prior art',
+          rag_title: 'RAG retrieval (Q6, Q7, Q14 grounding)',
+          empty_title: '尚無引證',
+          empty_desc: '分析完成後此處顯示 examiner 引證案 + RAG 命中的先前技術',
+          no_hits: '此 rejection 沒有對應的 RAG 命中。',
+          open_full: '展開全文',
+          score: '分數',
+        },
+        verifier: {
+          // The English halves below are also the e2e assertions for the
+          // hallucination-defense banner — keep them verbatim in zh-TW.
+          heading: '幻覺防禦 / Citation verification',
+          removed_title: '{{count}} 個引用未通過驗證、已移除 / {{count}} citation(s) removed',
+          verified_title: '{{count}} 個引用全部驗證通過 / All {{count}} citation(s) verified',
+          no_data: '引用驗證資訊不足 / No citation verification data',
+          grounded: 'grounded {{count}}',
+          removed: 'removed {{count}}',
+          conf: 'conf {{pct}}%',
+          removed_list: '已移除 / removed: {{items}}',
+          verified_by: '由 {{model}} 把關 / verified by {{model}}',
+        },
+        drafts_meta: {
+          grounded: '已驗證引用 {{count}}',
+          verifier_conf: '驗證器信心 {{pct}}%',
+          requires_review: '需律師覆核：{{value}}',
+          confidence: '信心 {{pct}}%',
+        },
+      },
+      audit_table: {
+        // "Audit Log" / "User" / "Endpoint" stay in English in both locales:
+        // they are the auditor-facing technical column names AND the e2e
+        // selectors key off them. The rest are localised.
+        log_title: 'Audit Log',
+        log_desc: '唯讀附加式 SQLite，UPDATE／DELETE 由觸發器阻擋；正式環境另以 S3 Object Lock 每小時封存。',
+        refresh: '重新整理',
+        col_time: '時間 (UTC)',
+        col_user: 'User',
+        col_case: '案件',
+        col_endpoint: 'Endpoint',
+        col_model: '模型',
+        col_tokens: 'Token',
+        col_ms: '毫秒',
+        col_mask: '遮罩規則 (Q10)',
+        col_policy: '政策 (Q12/18)',
+      },
+      login: {
+        subtitle: '專利答辯協助系統',
+        user_alice: '可上傳 OA、看分析、簽核草稿',
+        user_bob: '協助上傳；只能看 CASE-2025-001 / 002',
+        user_carol: '看儀表板、配額；無法存取案件',
+        user_dave: '唯讀稽核紀錄；可驗證 chain',
+      },
+    },
+  },
+  en: {
+    common: {
+      app_title: 'PatentMind AI',
+      app_tag_poc: 'POC',
+      nav: {
+        analyze: 'Analyze',
+        audit: 'Audit',
+        cases: 'Cases',
+        expand: 'Expand navigation',
+        collapse: 'Collapse navigation',
+      },
+      shell: {
+        audit_chip: {
+          ok: 'Chain verified',
+          checking: 'Verifying…',
+          fail: 'Chain mismatch — contact ops',
+          rows: '{{rows}} rows',
+        },
+        role_badge: {
+          attorney: 'Attorney',
+          paralegal: 'Paralegal',
+          it_admin: 'IT Admin',
+          auditor: 'Auditor',
+        },
+        trust: {
+          redaction_default: 'Auto-mask active',
+          redaction_active: '{{count}} entities masked',
+          redaction_tooltip:
+            'PII and customer dictionaries are applied before any LLM call (CLAUDE.md §4 invariant).',
+          mapping_default: 'Mapping table on-prem',
+          mapping_tooltip:
+            'Reversal map stored at data/redaction_mapping.db — NEVER leaves on-prem (CLAUDE.md §9).',
+          routing_auto: 'Routing: Auto',
+          routing_confidential: 'Routing: Local LLM (confidential)',
+          routing_tooltip_auto:
+            'Standard cases may use cloud models; cases ending in -CONF auto-route to the on-prem LLM.',
+          routing_tooltip_conf:
+            'Case ID ends in -CONF: routed to the on-prem LLM per CLAUDE.md §4 invariant #7.',
+        },
+      },
+      buttons: {
+        login: 'Login',
+        logout: 'Logout',
+        submit: 'Submit',
+        cancel: 'Cancel',
+      },
+      coming_soon: 'Coming soon',
+      upload: {
+        drop_zone: 'Drop PDF / DOCX here, or',
+        browse: 'browse files',
+        invalid_type: 'Only PDF or DOCX supported',
+        too_large: 'File too large (>30MB)',
+        upload_button: 'Upload',
+        cancel_button: 'Cancel',
+        retry_button: 'Retry',
+        use_this_text: 'Use this text',
+        extracting: 'Server processing... (scanned pages need OCR, may take 10-30s)',
+        success: 'Extracted {{pages}} pages / {{chars}} chars',
+        ocr_used: '{{count}} pages via OCR (cost ${{cost}})',
+        loaded_chip: 'Loaded from {{filename}} ({{pages}} pages)',
+        switch_to_paste: 'Paste text instead',
+        switch_to_upload: 'Upload file instead',
+        docx_no_preview: 'DOCX preview not supported; extracted text will appear below',
+        pdf_no_inline: 'This browser cannot preview PDFs inline — use the link below to download and view',
+        preview_pages: '{{count}} pages',
+        preview_chars: '{{count}} chars',
+        preview_ocr: "{{count}} pages OCR'd",
+        preview_page_n: 'Page {{n}}',
+        uploading: 'Uploading...',
+        change_file: 'Change file',
+        file_selected: 'File selected',
+        toast_success: 'Extracted {{pages}} pages, text loaded below',
+        element_table_title: 'Figure elements / 圖式元件',
+        element_table_numeral: 'Numeral',
+        element_table_desc: 'Description',
+      },
+      signoff: {
+        review_each: 'I have reviewed each item / 我已逐項確認',
+        export: 'Export response',
+        exporting: 'Exporting…',
+        export_hint: 'Tick the confirmation above to enable export.',
+        accept: 'Accept',
+        accepted: 'Accepted',
+        edit: 'Edit',
+        add_line: 'Add sentence',
+        new_line_placeholder: 'Type a sentence you wrote yourself…',
+        save: 'Save',
+        cancel: 'Cancel',
+        source_ai: 'AI generated',
+        source_edited: 'Attorney edited',
+        source_added: 'Attorney added',
+        source_paralegal_edited: 'Paralegal edited',
+        source_paralegal_added: 'Paralegal added',
+        decided_count: '{{decided}}/{{total}} decided',
+        signoff_required:
+          'Attorney sign-off required: tick "I have reviewed each item" before export. No document was produced.',
+        export_success: 'Response exported (signed off)',
+        export_failed: 'Export failed',
+        download: 'Download .txt',
+        result_title: 'Signed-off response',
+        signed_off_by: 'Signed off by',
+        content_hash: 'Content hash (SHA-256)',
+        no_accepted: 'No accepted sentences to export yet.',
+        close: 'Close',
+      },
+      budget: {
+        title: 'Budget',
+        month_to_date: 'Month to date',
+        projected: 'Projected month-end',
+        per_model: 'Per-model spend',
+        on_track: 'On track',
+        will_exceed: 'Will exceed cap',
+        no_cap: 'No cap set',
+        cap: 'Monthly cap',
+        today: 'Today',
+        model: 'Model',
+      },
+      magic: {
+        link_cta: 'Email me a sign-in link / 寄送登入連結',
+        request: 'Send link',
+        requesting: 'Sending…',
+        user_label: 'Account',
+        user_placeholder: 'Enter account (e.g. alice)',
+        sent: 'If that account exists, a sign-in link has been sent.',
+        demo_label: 'DEMO — shown for the demo only; production emails the link',
+        sign_in_with_link: 'Sign in with this link',
+        consuming: 'Signing in…',
+        back: 'Back to identity selection',
+        consume_failed: 'Link invalid or already used — please request a new one.',
+      },
+      landing: {
+        tagline: 'AI-assisted patent OA response — automatic analysis & draft generation',
+        value_classify: 'Auto-classify rejections (§22-2 obviousness, §26-2 antecedent basis, +5)',
+        value_grounded: 'RAG-grounded citations — every quote points to real prior art',
+        value_deadline: 'Auto-compute statutory deadlines (TW + US, holiday roll-forward)',
+        value_compliance: 'Auto redaction + audit chain (law firm compliance)',
+        pick_user: 'Select an identity',
+        poc_note: 'Internal test environment — select an identity below to continue.',
+        footer: 'v0.3 · internal use',
+      },
+      placeholder: {
+        cases_title: 'Case Management — Coming Soon',
+        cases_subtitle: 'Phase 4 features',
+        cases_bullet_1: 'Drag-drop multiple OAs (batch processing)',
+        cases_bullet_2: 'Case timeline visualization (filing → response → reexam → final)',
+        cases_bullet_3: 'Sync with external docketing systems (PAS / Townes)',
+        back_to_analyze: 'Back to Analyze',
+      },
+      errors: {
+        session_expired: 'Session expired. Please log in again.',
+        no_access: 'You do not have access to this case. Verify case_id matches your identity.',
+        file_too_large: 'File too large. Maximum 30MB.',
+        rate_limited: 'Too many requests. Please wait and retry.',
+        server_busy: 'Server busy.',
+        network: 'Connection failed. Check network and backend.',
+        request_failed: 'Request failed.',
+        unexpected: 'Unexpected error.',
+        retry: 'Retry',
+        dismiss: 'Dismiss',
+        login_again: 'Login',
+        retry_in: 'Retry in {{seconds}}s',
+        technical_details: 'Technical details',
+      },
+      empty: {
+        no_result_title: 'Ready to analyze',
+        no_result_desc: 'Enter or upload an OA on the left, then click "Analyze OA"',
+        no_result_hint: 'Defaults to CASE-2025-001 (Alice has access)',
+        no_audit_title: 'No audit records yet',
+        no_audit_desc: 'Will appear here after any API call completes',
+      },
+      audit: {
+        hero: {
+          rows_label: 'Audit rows',
+          mismatches_label: 'Mismatches',
+          last_verified_label: 'Last verified',
+          never_verified: 'Not verified yet',
+        },
+        verify_now: 'Verify chain now',
+        verifying: 'Verifying…',
+        verify_passed: 'All {{rows}} rows passed hash verification — no tampering detected.',
+        verify_failed: '{{count}} rows tampered: {{rows}}',
+      },
+      analyze: {
+        pane_input: 'Input',
+        pane_drafts: 'Drafts',
+        pane_refs: 'References',
+        input: {
+          oa_full_text: 'OA full text',
+          target_patent: 'Target patent',
+          case_id: 'Case ID',
+          preview_redaction: 'Preview redaction',
+          analyze_oa: 'Analyze OA',
+          analyzing: 'Analyzing…',
+          redaction_preview_title: 'Redaction preview',
+          rules_triggered: 'Rules triggered:',
+          quota: 'Quota',
+          token_today: "Today's tokens (you)",
+          token_month: "This month's tokens (tenant)",
+        },
+        drafts: {
+          strategy: 'Response strategy',
+          examiner_argument: 'Examiner argument',
+          signoff_label: 'Draft (attorney signs off line by line — Q16)',
+          analyzing: 'Analyzing…',
+          running_note:
+            'On-prem llama3.1:8b runs on CPU; a single analysis takes ~5–7 min. Re-submitting the same OA + case hits the cache (<1s).',
+        },
+        stages: {
+          redact: 'Redact PII / customer IDs (Q10)',
+          parse: 'Parse OA & identify rejections (parse_oa)',
+          retrieve: 'Retrieve prior art (RAG, Q6+Q7)',
+          draft: 'Draft response (draft_response, grounded Q14)',
+          verify: 'Verify citations (verify_citations, Q14)',
+          deadline: 'Compute deadline (Q17)',
+          unmask: 'Restore PII, finalize response',
+        },
+        claim_tree: {
+          title: 'Claim dependency tree',
+          claims: 'claims',
+          legend: {
+            rejected: 'Rejected',
+            cascade: 'Cascade',
+            clean: 'Clean',
+          },
+        },
+        result: {
+          tab_input: 'Input',
+          tab_drafts: 'Drafts',
+          tab_refs: 'Refs',
+          deadline_label: 'Deadline (Q17)',
+          days: 'days',
+          why: 'Why',
+          collapse: 'Collapse',
+          received: 'Received',
+          statutory: 'Statutory',
+          internal: 'Internal target',
+          calendar: 'Holiday calendar',
+        },
+        refs: {
+          cited_title: 'Cited prior art',
+          rag_title: 'RAG retrieval (Q6, Q7, Q14 grounding)',
+          empty_title: 'No references yet',
+          empty_desc: 'After analysis, examiner-cited art + RAG-retrieved prior art appear here.',
+          no_hits: 'No RAG hits for this rejection.',
+          open_full: 'Open full text',
+          score: 'score',
+        },
+        verifier: {
+          heading: 'Citation verification',
+          removed_title: '{{count}} citation(s) removed',
+          verified_title: 'All {{count}} citation(s) verified',
+          no_data: 'No citation verification data',
+          grounded: 'grounded {{count}}',
+          removed: 'removed {{count}}',
+          conf: 'conf {{pct}}%',
+          removed_list: 'removed: {{items}}',
+          verified_by: 'verified by {{model}}',
+        },
+        drafts_meta: {
+          grounded: 'grounded citations {{count}}',
+          verifier_conf: 'verifier confidence {{pct}}%',
+          requires_review: 'requires attorney review: {{value}}',
+          confidence: 'confidence {{pct}}%',
+        },
+      },
+      audit_table: {
+        log_title: 'Audit Log',
+        log_desc: 'Append-only SQLite with UPDATE/DELETE triggers blocking edits. Production adds hourly S3 Object Lock archival.',
+        refresh: 'Refresh',
+        col_time: 'Time (UTC)',
+        col_user: 'User',
+        col_case: 'Case',
+        col_endpoint: 'Endpoint',
+        col_model: 'Model',
+        col_tokens: 'Tokens',
+        col_ms: 'ms',
+        col_mask: 'Mask rules (Q10)',
+        col_policy: 'Policy (Q12/18)',
+      },
+      login: {
+        subtitle: 'Patent OA response assistant',
+        user_alice: 'Can upload OAs, view analysis, sign off drafts',
+        user_bob: 'Assists with upload; can only see CASE-2025-001 / 002',
+        user_carol: 'Views dashboards & quota; no case access',
+        user_dave: 'Read-only audit log; can verify the chain',
+      },
+    },
+  },
+};
+
+// Restore the user's persisted language BEFORE first render so a returning
+// user who chose English doesn't flash zh-TW on the login page (the language
+// toggle in AppShell also writes this key, but it only mounts post-login).
+// localStorage may be unavailable (private mode / SSR) — fall back to zh-TW.
+const LANG_STORAGE_KEY = 'pm.lang';
+function initialLanguage() {
+  try {
+    const saved = window.localStorage.getItem(LANG_STORAGE_KEY);
+    if (saved === 'en' || saved === 'zh-TW') return saved;
+  } catch {
+    /* non-fatal */
+  }
+  return 'zh-TW';
+}
+
+const startLang = initialLanguage();
+
+i18n.use(initReactI18next).init({
+  resources,
+  lng: startLang,
+  fallbackLng: 'en',
+  defaultNS: 'common',
+  ns: ['common'],
+  interpolation: {
+    escapeValue: false,
+  },
+  react: {
+    useSuspense: false,
+  },
+});
+
+// Map the i18next language code to a BCP-47 html `lang` value. zh-TW → zh-Hant
+// (the script subtag is what assistive tech + font shaping key off).
+export function htmlLangFor(lng) {
+  return (lng || '').startsWith('zh') ? 'zh-Hant' : 'en';
+}
+
+// Keep the document language attribute in sync for assistive tech + correct
+// font shaping. Set the initial value here; the AppShell toggle updates it
+// on change.
+if (typeof document !== 'undefined') {
+  document.documentElement.lang = htmlLangFor(startLang);
+}
+
+export default i18n;

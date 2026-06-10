@@ -1,0 +1,102 @@
+{
+  "case_id": "CASE-DEMO-042",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 394,
+    "estimated_cost_usd": 0.016493999999999998,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3528
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-05-16",
+      "2026-05-17"
+    ],
+    "received_date": "2026-03-17",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW201912200"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06200000015087426,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -18,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-05-16 (weekend/holiday) to 2026-05-18.",
+      "⚠️  Only -18 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 18 days ago."
+    ],
+    "received_date": "2026-03-17",
+    "recommended_internal_deadline": "2026-05-11T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW201912200"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-05-18T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100023",
+      "score": 0.8963099718093872,
+      "section": "abstract",
+      "text_preview": "醫療影像深度學習分割方法。"
+    },
+    {
+      "patent_no": "TW202594321",
+      "score": 0.8772761821746826,
+      "section": "claim_1",
+      "text_preview": "一種藥物緩釋奈米微粒，包括：一聚甲基丙烯酸-甲基丙烯酸酯共聚物核殼結構；以及一藥物，包覆於該核殼結構之核心；其中該核殼結構於 pH 值小於 5.5 時展開以釋放該藥物。"
+    },
+    {
+      "patent_no": "TW2026100015",
+      "score": 0.8686326146125793,
+      "section": "abstract",
+      "text_preview": "一種針對 HER2 高表現腫瘤之抗體藥物複合物，以可裂解連結基將 MMAE 細胞毒藥連接至 trastuzumab 衍生抗體。"
+    }
+  ],
+  "status": "ok"
+}

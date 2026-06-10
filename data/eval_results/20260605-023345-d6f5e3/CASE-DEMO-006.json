@@ -1,0 +1,99 @@
+{
+  "case_id": "CASE-DEMO-006",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 383,
+    "estimated_cost_usd": 0.016437,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3564
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-11-17",
+      "2025-11-18"
+    ],
+    "received_date": "2025-09-18",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          6,
+          7
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "other",
+        "statute": "專利法第26條第4項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06299999984912574,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -200,
+    "deadline_warnings": [
+      "⚠️  Only -200 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 200 days ago."
+    ],
+    "received_date": "2025-09-18",
+    "recommended_internal_deadline": "2025-11-10T23:59:00+08:00",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          6,
+          7
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.84,
+        "examiner_argument_preview": "審查官指出申請專利範圍未為說明書所支持，不符專利法第26條第4項規定。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2025-11-17T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100006",
+      "score": 0.8556392192840576,
+      "section": "body",
+      "text_preview": "【技術領域】生物可分解聚酯製備。\n【先前技術】習知 PLGA 多以辛酸亞錫催化，殘留錫毒性議題。\n【發明內容】採雙金屬鋅-鎂催化劑替代錫。\n【實施方式】聚合溫度 110°C，時間 24 小時，產物 Mw 約 80 kDa。\n"
+    },
+    {
+      "patent_no": "TW202583210",
+      "score": 0.8555711507797241,
+      "section": "claim_5",
+      "text_preview": "如請求項1所述之鉸鏈結構，更包括一定位彈片，提供於展開與折疊時之觸感。"
+    },
+    {
+      "patent_no": "TW2026100041",
+      "score": 0.8546556234359741,
+      "section": "abstract",
+      "text_preview": "氫燃料電池雙極板結構。"
+    }
+  ],
+  "status": "ok"
+}

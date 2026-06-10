@@ -1,0 +1,101 @@
+{
+  "case_id": "CASE-DEMO-034",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 384,
+    "estimated_cost_usd": 0.016932,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3724
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-07-08",
+      "2026-08-09"
+    ],
+    "received_date": "2026-05-09",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US11234567",
+          "WO2021100001"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 33,
+    "deadline_warnings": [],
+    "received_date": "2026-05-09",
+    "recommended_internal_deadline": "2026-07-01T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US11234567"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-07-08T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8835475444793701,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之薄膜，其中該兩性離子聚合物為 sulfobetaine methacrylate 聚合物。"
+    },
+    {
+      "patent_no": "TW202582109",
+      "score": 0.8808743953704834,
+      "section": "abstract",
+      "text_preview": "一種協作型機器手臂力控制方法，採用導納控制結合自適應阻抗，依工件剛性即時調整阻抗參數，兼顧順應性與定位精度。"
+    },
+    {
+      "patent_no": "US18000004",
+      "score": 0.8771312236785889,
+      "section": "claim_2",
+      "text_preview": "2. The method of claim 1, wherein the Gaussian noise variance is calibrated to achieve a target epsilon."
+    }
+  ],
+  "status": "ok"
+}

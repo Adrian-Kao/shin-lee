@@ -1,0 +1,104 @@
+{
+  "case_id": "CASE-DEMO-031",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 384,
+    "estimated_cost_usd": 0.016932,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3724
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-04-15",
+      "2026-04-14"
+    ],
+    "received_date": "2026-02-14",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "TW202011111",
+          "JP2022100001"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0779999999795109,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -51,
+    "deadline_warnings": [
+      "⚠️  Only -51 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 51 days ago."
+    ],
+    "received_date": "2026-02-14",
+    "recommended_internal_deadline": "2026-04-08T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "TW202011111"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-04-15T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100007",
+      "score": 0.862799882888794,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之方法，其中該熵以 Shannon entropy 計算。"
+    },
+    {
+      "patent_no": "TW202592109",
+      "score": 0.861401379108429,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之保鮮膜，其中該奈米纖維素塗層之厚度介於 0.5 至 5 微米之間。"
+    },
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8570089340209961,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之方法，更包括依即時電價動態調整調控報酬。"
+    }
+  ],
+  "status": "ok"
+}

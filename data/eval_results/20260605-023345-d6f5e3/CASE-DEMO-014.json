@@ -1,0 +1,110 @@
+{
+  "case_id": "CASE-DEMO-014",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 391,
+    "estimated_cost_usd": 0.016995,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3710
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-10-18",
+      "2025-10-19"
+    ],
+    "received_date": "2025-08-19",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "cited_prior_art": [
+          "CN114567890",
+          "US20220045678"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06199999991804361,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -228,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-10-18 (weekend/holiday) to 2025-10-20.",
+      "⚠️  Only -228 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 228 days ago."
+    ],
+    "received_date": "2025-08-19",
+    "recommended_internal_deadline": "2025-10-13T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "cited_prior_art": [
+          "TW202598765",
+          "TW202598765"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-10-20T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100004",
+      "score": 0.8985630869865417,
+      "section": "claim_1",
+      "text_preview": "一種脂質奈米顆粒組合物，包括：一可離子化脂質、一輔助脂質、膽固醇及一 PEG 脂質；其中該可離子化脂質之疏水鏈含支鏈酯基。"
+    },
+    {
+      "patent_no": "TW202604321",
+      "score": 0.8552021384239197,
+      "section": "body",
+      "text_preview": "00 nm），於銀燒結貼附層 930 中之體積比為 15%。\n\n請參閱第二圖，奈米鑽石填料 934 採表面金屬化處理，其結構為內部鑽石核心 934a、外覆鎳層 934b（厚度 5 nm）與最外銀層 934c（厚度 10 nm）；鎳層 934b 作為過渡層改善鑽石與銀之潤濕性，銀層 934c 與外部銀基體 932 於燒結"
+    },
+    {
+      "patent_no": "TW2026100044",
+      "score": 0.8510669469833374,
+      "section": "claim_1",
+      "text_preview": "一種家庭控制平台，包括：一中央伺服器；複數感測器；及一行動裝置 App。"
+    }
+  ],
+  "status": "ok"
+}

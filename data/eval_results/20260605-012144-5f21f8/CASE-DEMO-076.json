@@ -1,0 +1,108 @@
+{
+  "case_id": "CASE-DEMO-076",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 385,
+    "estimated_cost_usd": 0.017079,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3768
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-01-18",
+      "2026-02-19"
+    ],
+    "received_date": "2025-11-19",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10111222",
+          "US10222333"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "35 U.S.C. § 103"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.06300000008195639,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -137,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-01-18 (weekend/holiday) to 2026-01-19.",
+      "⚠️  Only -137 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 137 days ago."
+    ],
+    "received_date": "2025-11-19",
+    "recommended_internal_deadline": "2026-01-12T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US18000004",
+          "US18000004"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "Examiner alleges the claims are obvious in view of the cited references. The combination of features is asserted to be a predictable result of routine engineeri",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-01-19T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202583210",
+      "score": 0.8676925301551819,
+      "section": "claim_6",
+      "text_preview": "如請求項1所述之鉸鏈結構，其中該齒輪組與該凸輪組同軸組裝。"
+    },
+    {
+      "patent_no": "TW2026100001",
+      "score": 0.8673633933067322,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】本發明關於一種固態電池正極塗布方法。\n【先前技術】習知固態電池正極多採單層塗布，電子與離子傳導路徑共用，於高負載下界面阻抗顯著升高。\n【發明內容】本發明以雙層塗布分離電子導電與離子導電功能。\n【實施方式】底層厚度約20μm含碳黑導電劑與PVDF黏結劑；上層厚度約60μm含Li6PS5Cl硫化物固態"
+    },
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8661330938339233,
+      "section": "abstract",
+      "text_preview": "一種反滲透薄膜，於聚醯胺活性層接枝兩性離子聚合物，以提高抗污染性能並維持高鹽分截留率。"
+    }
+  ],
+  "status": "ok"
+}

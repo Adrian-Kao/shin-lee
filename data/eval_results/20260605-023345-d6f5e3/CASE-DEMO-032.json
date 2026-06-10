@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-032",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 389,
+    "estimated_cost_usd": 0.016652999999999998,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3606
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-05-04",
+      "2026-05-05"
+    ],
+    "received_date": "2026-03-05",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10987654",
+          "EP3654321"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.04699999978765845,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -32,
+    "deadline_warnings": [
+      "⚠️  Only -32 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 32 days ago."
+    ],
+    "received_date": "2026-03-05",
+    "recommended_internal_deadline": "2026-04-27T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10987654",
+          "EP3654321"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-05-04T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100014",
+      "score": 0.8808209300041199,
+      "section": "claim_1",
+      "text_preview": "一種下行排程方法，包括：於 O-DU 接收 UE 之通道狀態回報；依該通道狀態以 proportional-fair 演算法分配 PRB；經 O-FH 介面傳送至 O-RU。"
+    },
+    {
+      "patent_no": "TW2026100040",
+      "score": 0.8790216445922852,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之手套，其量測範圍涵蓋 -50°C 至 +200°C。"
+    },
+    {
+      "patent_no": "TW2026100001",
+      "score": 0.8596100807189941,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】本發明關於一種固態電池正極塗布方法。\n【先前技術】習知固態電池正極多採單層塗布，電子與離子傳導路徑共用，於高負載下界面阻抗顯著升高。\n【發明內容】本發明以雙層塗布分離電子導電與離子導電功能。\n【實施方式】底層厚度約20μm含碳黑導電劑與PVDF黏結劑；上層厚度約60μm含Li6PS5Cl硫化物固態"
+    }
+  ],
+  "status": "ok"
+}

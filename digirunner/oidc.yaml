@@ -1,0 +1,143 @@
+# digiRunner OIDC provider configuration — template
+#
+# Per https://blog.tpisoftware.com/en/smartmgmt/apimgmt/oidc-apim/ digiRunner
+# uses OIDC to delegate authentication to the firm's IdP (Keycloak / Auth0 /
+# Okta / Azure AD). This file documents the required claims and mappings;
+# digiRunner's admin UI is where the operator actually pastes them.
+#
+# Fields marked [CONFIRM WITH TPISOFT] should be checked against the
+# digiRunner Enterprise 2026 schema during Phase 3.2 setup.
+
+apiVersion: digirunner.tpisoftware.com/v2026  # [CONFIRM WITH TPISOFT]
+kind: OIDCProviderConfig
+metadata:
+  name: firm-idp
+  environment: pilot
+
+provider:
+  # The IdP issuer URL. digiRunner discovers /.well-known/openid-configuration.
+  # Examples:
+  #   Keycloak: https://idp.lawfirm.example/realms/patentmind
+  #   Auth0:    https://lawfirm.us.auth0.com/
+  #   Okta:     https://lawfirm.okta.com/oauth2/default
+  #   Azure AD: https://login.microsoftonline.com/<tenant-id>/v2.0
+  issuer: ${OIDC_ISSUER_URL}
+  client_id: ${OIDC_CLIENT_ID}
+  client_secret: ${OIDC_CLIENT_SECRET}  # from external secret vault
+  # Redirect URI registered at the IdP. digiRunner will receive the code here.
+  redirect_uri: https://patentmind.lawfirm.example/api/auth/callback
+  # PKCE recommended for SPA-initiated flows. digiRunner supports it.
+  pkce:
+    enabled: true
+    method: S256
+  # Scopes requested at the IdP authorize endpoint.
+  scopes:
+    - openid
+    - profile
+    - email
+    - patentmind:tenant   # custom scope mapped to tenant_id claim
+    - patentmind:role     # custom scope mapped to role claim
+
+# Claim → digiRunner internal identity mapping.
+# digiRunner uses these to construct the upstream-forwarded headers
+# (X-User-Id / X-Tenant-Id / X-User-Role) that the thin gateway trusts via
+# Day 8C's UPSTREAM_AUTH_TRUSTED_IPS path.
+claim_mapping:
+  # The "subject" claim becomes our user_id.
+  user_id:
+    source: claim.sub
+    required: true
+  # Tenant_id from a custom IdP claim or group attribute.
+  # If the IdP can't supply this directly, configure a Keycloak mapper:
+  #   user-attribute "tenant_id" → token claim "tenant_id"
+  tenant_id:
+    source: claim.tenant_id
+    required: true
+    fallback: claim.organization_id  # Auth0 organizations feature
+  # Role mapping. The IdP must emit one of:
+  #   "attorney" | "paralegal" | "auditor" | "it_admin"
+  # See backend/shared/models.py:UserRole for the enum.
+  role:
+    source: claim.role
+    required: true
+    allowed_values: [attorney, paralegal, auditor, it_admin]
+  # Display name for the UI's "logged in as ..." indicator.
+  display_name:
+    source: claim.name
+    fallback: claim.email
+    required: false
+  # Email for audit logs.
+  email:
+    source: claim.email
+    required: false
+
+# Session policy. digiRunner mints a short-lived session token after
+# validating the IdP's ID token. We do NOT forward the raw OIDC token to
+# the thin gateway — only the mapped identity headers.
+session:
+  type: cookie
+  cookie_name: pmsession
+  cookie_attributes:
+    secure: true
+    httponly: true
+    samesite: Lax
+    path: /
+    # 30 min matches backend/gateway/auth.py:_JWT_TTL_SECONDS for parity.
+    max_age: 1800
+  # Refresh tokens kept server-side in digiRunner's session store.
+  refresh:
+    enabled: true
+    rotate_on_use: true
+  # Logout flushes both the digiRunner session AND triggers OIDC RP-Initiated Logout.
+  logout:
+    rp_initiated: true
+    post_logout_redirect_uri: https://patentmind.lawfirm.example/
+
+# Audit hooks: digiRunner emits a "login_success" / "login_failure" event
+# per attempt. Forward these to our thin gateway's audit endpoint so the
+# events join the hash chain. (Login events are currently outside our
+# audit scope — Phase 3.2 adds them.)
+audit_hooks:
+  login_success:
+    forward_to: http://patentmind-thin-gw.svc.cluster.local:8010/v1/gateway/audit/append
+    payload_template: |
+      {
+        "user_id": "${claim.sub}",
+        "tenant_id": "${claim.tenant_id}",
+        "case_id": "AUTH-LOGIN",
+        "endpoint": "/v1/auth/oidc/callback",
+        "request_payload": {"client_ip": "${request.client_ip}"},
+        "response_payload": {"success": true},
+        "policy_decisions": {"oidc_validated": true},
+        "model": "n/a",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_cost_usd": 0.0
+      }
+  login_failure:
+    forward_to: http://patentmind-thin-gw.svc.cluster.local:8010/v1/gateway/audit/append
+    payload_template: |
+      {
+        "user_id": "${claim.sub|unknown}",
+        "tenant_id": "${claim.tenant_id|unknown}",
+        "case_id": "AUTH-LOGIN",
+        "endpoint": "/v1/auth/oidc/callback",
+        "request_payload": {"client_ip": "${request.client_ip}", "error": "${error}"},
+        "response_payload": {"success": false},
+        "policy_decisions": {"oidc_validated": false},
+        "model": "n/a",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_cost_usd": 0.0
+      }
+
+# Environment variables digiRunner expects.
+# Set via TPIsoftware secret vault.
+env:
+  - name: OIDC_ISSUER_URL
+    required: true
+  - name: OIDC_CLIENT_ID
+    required: true
+  - name: OIDC_CLIENT_SECRET
+    required: true
+    secret: true

@@ -1,0 +1,105 @@
+{
+  "case_id": "CASE-DEMO-037",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 385,
+    "estimated_cost_usd": 0.016863,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3696
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-08-02",
+      "2026-08-03"
+    ],
+    "received_date": "2026-06-03",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US11567890",
+          "CN112345678"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 59,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-08-02 (weekend/holiday) to 2026-08-03."
+    ],
+    "received_date": "2026-06-03",
+    "recommended_internal_deadline": "2026-07-27T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US11567890"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-08-03T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100044",
+      "score": 0.8748042583465576,
+      "section": "body",
+      "text_preview": "【技術領域】智慧家庭。\n【先前技術】略。\n【實施方式】伺服器執行 AI 模型；行動 App 顯示狀態。\n"
+    },
+    {
+      "patent_no": "TW202595432",
+      "score": 0.8682799339294434,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之系統，其中該預測控制器採用 Smith 預測器。"
+    },
+    {
+      "patent_no": "TW2026100043",
+      "score": 0.8666970133781433,
+      "section": "abstract",
+      "text_preview": "醫療影像深度學習病灶分割模型。"
+    }
+  ],
+  "status": "ok"
+}

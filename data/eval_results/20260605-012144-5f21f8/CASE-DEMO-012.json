@@ -1,0 +1,138 @@
+{
+  "case_id": "CASE-DEMO-012",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 2,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 1556,
+    "estimated_cost_usd": 0.041978999999999995,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 6213
+  },
+  "drafts": [
+    {
+      "confidence": 0.86,
+      "draft_text_chars": 398,
+      "draft_text_lines": 9,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "專利法第43條第2項",
+        "專利法第26條第2項"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。本案擬以將該用語改為「一第一電動車」之方式建立先行詞，並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，兼顧明確性與技術完整性。"
+    },
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-2",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-01-14",
+      "2025-01-15"
+    ],
+    "received_date": "2024-11-15",
+    "rejection_types": [
+      "103_obviousness",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          3,
+          8
+        ],
+        "cited_prior_art": [
+          "US20200234567",
+          "TW201912345"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      },
+      {
+        "affected_claims": [
+          8
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0779999999795109,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -507,
+    "deadline_warnings": [
+      "⚠️  Only -507 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 507 days ago."
+    ],
+    "received_date": "2024-11-15",
+    "recommended_internal_deadline": "2025-01-07T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.93,
+        "examiner_argument_preview": "審查官指出請求項1之用語於所依附之請求項及本項之技術內容中並未見其先行詞，致申請專利範圍不明確，不符專利法第26條第2項之規定。",
+        "rejection_type": "antecedent_basis"
+      },
+      {
+        "affected_claims": [
+          1,
+          3,
+          8
+        ],
+        "cited_prior_art": [
+          "TW202601098",
+          "TW202601098"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-01-14T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100001",
+      "score": 0.9013842940330505,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之方法，其中該第一漿料之碳黑含量介於3至8重量百分比。"
+    },
+    {
+      "patent_no": "TW2026100005",
+      "score": 0.8824113607406616,
+      "section": "body",
+      "text_preview": "【技術領域】經導管心臟瓣膜置換裝置。\n【先前技術】習知 TAVR 釋放後無法回收，定位不佳時須改採開心手術。\n【發明內容】設計可逆向回收環。\n【實施方式】支架釋放後 30 秒內可透過繫帶回收重置最多 3 次。\n"
+    },
+    {
+      "patent_no": "TW2026100043",
+      "score": 0.8734541535377502,
+      "section": "body",
+      "text_preview": "【技術領域】醫療影像分割。\n【先前技術】2D U-Net 損失層間資訊。\n【發明內容】3D U-Net 提升分割精度。\n【實施方式】Dice 損失函數訓練 200 epochs。\n"
+    }
+  ],
+  "status": "ok"
+}

@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-002",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 390,
+    "estimated_cost_usd": 0.017646,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3932
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-08-14",
+      "2025-08-15"
+    ],
+    "received_date": "2025-06-15",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW201912345",
+          "US10123456"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.125,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -295,
+    "deadline_warnings": [
+      "⚠️  Only -295 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 295 days ago."
+    ],
+    "received_date": "2025-06-15",
+    "recommended_internal_deadline": "2025-08-07T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW202612345",
+          "TW202612345"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-08-14T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100028",
+      "score": 0.8866391181945801,
+      "section": "body",
+      "text_preview": "【技術領域】區塊鏈共識。\n【實施方式】節點交換訊息以達成共識。\n"
+    },
+    {
+      "patent_no": "TW2026100040",
+      "score": 0.8734254837036133,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之手套，其中該溫度感測器之取樣頻率為 1 Hz。"
+    },
+    {
+      "patent_no": "TW202584321",
+      "score": 0.855434775352478,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種具表面鈍化之鈣鈦礦量子點發光二極體（QLED），特別是於 CsPbBr₃ 鈣鈦礦量子點表面以胺基矽烷分子進行鈍化處理，用以降低非輻射復合並提升外部量子效率（EQE）之發光元件結構。\n\n【先前技術】\n鈣鈦礦量子點（如 CsPbBr₃）因其窄半高寬（FWHM ≈ 20 nm）與寬色域"
+    }
+  ],
+  "status": "ok"
+}

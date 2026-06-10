@@ -1,0 +1,103 @@
+{
+  "case_id": "CASE-DEMO-019",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 395,
+    "estimated_cost_usd": 0.016581,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3552
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-07-14",
+      "2025-07-15"
+    ],
+    "received_date": "2025-05-15",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "CN108888999"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.031999999890103936,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -320,
+    "deadline_warnings": [
+      "⚠️  Only -320 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 320 days ago."
+    ],
+    "received_date": "2025-05-15",
+    "recommended_internal_deadline": "2025-07-07T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "TW202593210"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2025-07-14T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202601098",
+      "score": 0.8407525420188904,
+      "section": "claim_7",
+      "text_preview": "如請求項1所述之方法，更包括將該再訓練後之模型部署至產線推論伺服器。"
+    },
+    {
+      "patent_no": "TW202598765",
+      "score": 0.8355196714401245,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之方法，更包括以 Dice 損失與 Focal 損失之加權和訓練該方法之模型。"
+    },
+    {
+      "patent_no": "TW202591098",
+      "score": 0.8350839018821716,
+      "section": "abstract",
+      "text_preview": "一種鋰離子電池電解液添加劑，採用氟化碳酸丙烯酯與磷酸三甲酯之混合物，於正極界面形成穩定 SEI 膜，提升高溫循環壽命。"
+    }
+  ],
+  "status": "ok"
+}

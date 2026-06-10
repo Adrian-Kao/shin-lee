@@ -1,0 +1,102 @@
+{
+  "case_id": "CASE-DEMO-013",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 396,
+    "estimated_cost_usd": 0.016728,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3596
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-07-05",
+      "2025-07-06"
+    ],
+    "received_date": "2025-05-06",
+    "rejection_types": [
+      "101_subject_matter"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "101_subject_matter",
+        "statute": "專利法第24條第2款"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -333,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-07-05 (weekend/holiday) to 2025-07-07.",
+      "⚠️  Only -333 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 333 days ago."
+    ],
+    "received_date": "2025-05-06",
+    "recommended_internal_deadline": "2025-06-30T23:59:00+08:00",
+    "rejection_types": [
+      "101_subject_matter"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.86,
+        "examiner_argument_preview": "審查官認為所請發明屬專利法第24條所列法定不予專利之事項，不得給予專利保護。",
+        "rejection_type": "101_subject_matter"
+      }
+    ],
+    "statutory_deadline": "2025-07-07T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100010",
+      "score": 0.8714193105697632,
+      "section": "body",
+      "text_preview": "【技術領域】切削刀具塗層。\n【先前技術】TiAlN 塗層於 800°C 以上氧化加速。\n【發明內容】高熵塗層提升熱穩定性。\n【實施方式】PVD 多陰極電弧蒸鍍。\n"
+    },
+    {
+      "patent_no": "US18000005",
+      "score": 0.8712231516838074,
+      "section": "claim_1",
+      "text_preview": "1. A LiDAR module comprising: a 905 nm laser diode; a MEMS mirror configured to scan the laser beam; and a single-photon avalanche diode (SPAD) array configured"
+    },
+    {
+      "patent_no": "TW202583210",
+      "score": 0.8650767207145691,
+      "section": "claim_6",
+      "text_preview": "如請求項1所述之鉸鏈結構，其中該齒輪組與該凸輪組同軸組裝。"
+    }
+  ],
+  "status": "ok"
+}

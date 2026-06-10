@@ -1,0 +1,98 @@
+{
+  "case_id": "CASE-DEMO-066",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 387,
+    "estimated_cost_usd": 0.016842,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3679
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-08-23",
+      "2026-08-24"
+    ],
+    "received_date": "2026-06-24",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202000036"
+        ],
+        "rejection_type": "other",
+        "statute": "專利法第32條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 80,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-08-23 (weekend/holiday) to 2026-08-24."
+    ],
+    "received_date": "2026-06-24",
+    "recommended_internal_deadline": "2026-08-17T23:59:00+08:00",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.83,
+        "examiner_argument_preview": "審查官指出本案與同申請人之新型專利屬一案兩請，依專利法第32條應擇一聲明。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2026-08-24T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202617461",
+      "score": 0.8321565389633179,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該特定事件包括實際電流超過該第一參考值達一預設容許區間。"
+    },
+    {
+      "patent_no": "TW202609876",
+      "score": 0.8207629919052124,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種風力發電葉片之複合材料層疊結構，特別是於玻璃纖維增強塑膠（GFRP）層之間夾設黏彈性阻尼層，以降低葉片於高頻顫振時之振幅並延長疲勞壽命之結構技術。\n\n【先前技術】\n風力發電葉片於運轉時承受陣風、湍流及塔影效應之週期性氣動載荷，葉尖速度可達 80~100 m/s，葉片自然頻率與激振"
+    },
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8187024593353271,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之方法，更包括依即時電價動態調整調控報酬。"
+    }
+  ],
+  "status": "ok"
+}

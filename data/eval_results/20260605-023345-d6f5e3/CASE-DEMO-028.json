@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-028",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 390,
+    "estimated_cost_usd": 0.016434,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3528
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-05-14",
+      "2026-05-15"
+    ],
+    "received_date": "2026-03-15",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "CN114567123",
+          "US20220123987"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.07800000021234155,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -22,
+    "deadline_warnings": [
+      "⚠️  Only -22 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 22 days ago."
+    ],
+    "received_date": "2026-03-15",
+    "recommended_internal_deadline": "2026-05-07T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW202584321",
+          "TW202584321"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-05-14T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100030",
+      "score": 0.873530924320221,
+      "section": "abstract",
+      "text_preview": "抗發炎肽段組合物。"
+    },
+    {
+      "patent_no": "TW2026100023",
+      "score": 0.8734870553016663,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之方法，更包括以後處理修飾該分割結果。"
+    },
+    {
+      "patent_no": "TW2026100005",
+      "score": 0.8703644871711731,
+      "section": "abstract",
+      "text_preview": "一種經導管主動脈瓣膜置換 (TAVR) 裝置，於支架近端設置可逆向回收機構，便於釋放後微調位置或回收重置。"
+    }
+  ],
+  "status": "ok"
+}

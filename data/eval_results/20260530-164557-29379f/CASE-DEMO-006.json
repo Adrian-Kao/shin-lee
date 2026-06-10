@@ -1,0 +1,99 @@
+{
+  "case_id": "CASE-DEMO-006",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 383,
+    "estimated_cost_usd": 0.017538,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3931
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-11-17",
+      "2025-11-18"
+    ],
+    "received_date": "2025-09-18",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          6,
+          7
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "other",
+        "statute": "專利法第26條第4項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -194,
+    "deadline_warnings": [
+      "⚠️  Only -194 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 194 days ago."
+    ],
+    "received_date": "2025-09-18",
+    "recommended_internal_deadline": "2025-11-10T23:59:00+08:00",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          6,
+          7
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.84,
+        "examiner_argument_preview": "審查官指出申請專利範圍未為說明書所支持，不符專利法第26條第4項規定。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2025-11-17T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202605432",
+      "score": 0.8627374172210693,
+      "section": "abstract",
+      "text_preview": "一種 LED 驅動 IC，內建自適應漣波抑制電路，依輸入電壓變化與負載條件即時調整補償電流，以維持 LED 亮度均勻。"
+    },
+    {
+      "patent_no": "TW202587654",
+      "score": 0.8612747192382812,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種應用於工業廢水處理之氮摻雜二氧化鈦（N-TiO₂）奈米棒光觸媒，特別是於可見光下能高效分解有機染料污染物之光催化材料。\n\n【先前技術】\n二氧化鈦（TiO₂）為最廣泛應用之光觸媒，惟其能隙 3.2 eV 對應於紫外光（< 388 nm），於太陽光譜中占比僅 4%，於室內可見光環境下"
+    },
+    {
+      "patent_no": "TW202595432",
+      "score": 0.8606823086738586,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之系統，更包括於通訊鏈路恢復時，以最小平方法將預測值與實際量測值平滑融合。"
+    }
+  ],
+  "status": "ok"
+}

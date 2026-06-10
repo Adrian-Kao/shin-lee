@@ -1,0 +1,106 @@
+{
+  "case_id": "CASE-DEMO-024",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 389,
+    "estimated_cost_usd": 0.017109,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3758
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-04-05",
+      "2026-04-04"
+    ],
+    "received_date": "2026-02-04",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          5
+        ],
+        "cited_prior_art": [
+          "US20200234123",
+          "WO2021123456"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.04699999978765845,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -60,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-04-05 (weekend/holiday) to 2026-04-06.",
+      "⚠️  Only -60 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 60 days ago."
+    ],
+    "received_date": "2026-02-04",
+    "recommended_internal_deadline": "2026-03-30T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          5
+        ],
+        "cited_prior_art": [
+          "TW202588765",
+          "TW202588765"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-04-06T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8927696347236633,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種智慧電網之需量反應（Demand Response, DR）控制方法，特別是由聚合商透過雙向通訊收集多用戶之可調控負載，並以階層式優化算法在滿足用戶舒適度限制下達成電網調度目標之控制方法。\n\n【先前技術】\n再生能源佔比提升使電網供電端波動加劇，電網調度中心需於秒級至小時級時間尺度"
+    },
+    {
+      "patent_no": "US18000006",
+      "score": 0.8883181810379028,
+      "section": "background",
+      "text_preview": "Background: SDN controllers introduce RTT overhead.\nDescription: Cache reduces lookup time."
+    },
+    {
+      "patent_no": "TW202611234",
+      "score": 0.8879007697105408,
+      "section": "claim_1",
+      "text_preview": "一種最大功率追蹤方法，包括：量測一即時光電功率梯度；依該梯度執行擾動觀察法以決定操作點；計算一擾動補償項並據以修正下一次擾動量。"
+    }
+  ],
+  "status": "ok"
+}

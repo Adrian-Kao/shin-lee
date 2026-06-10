@@ -1,0 +1,108 @@
+{
+  "case_id": "CASE-DEMO-073",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 385,
+    "estimated_cost_usd": 0.017061,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3762
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-12-21",
+      "2026-01-22"
+    ],
+    "received_date": "2025-10-22",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10876123",
+          "US10543678"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "35 U.S.C. § 103"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.0940000000409782,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -165,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-12-21 (weekend/holiday) to 2025-12-22.",
+      "⚠️  Only -165 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 165 days ago."
+    ],
+    "received_date": "2025-10-22",
+    "recommended_internal_deadline": "2025-12-15T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US18000001",
+          "US18000001"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "Examiner alleges the claims are obvious in view of the cited references. The combination of features is asserted to be a predictable result of routine engineeri",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-12-22T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202617461",
+      "score": 0.8597858548164368,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該特定事件包括實際電流超過該第一參考值達一預設容許區間。"
+    },
+    {
+      "patent_no": "TW2026100041",
+      "score": 0.8473576307296753,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之雙極板，其中該流道間距為 2 毫米。"
+    },
+    {
+      "patent_no": "TW2026100006",
+      "score": 0.8251573443412781,
+      "section": "abstract",
+      "text_preview": "一種生物可分解聚乳酸-乙醇酸共聚酯之製備方法，以雙金屬催化劑於低溫開環聚合，獲得分子量分布窄之共聚物。"
+    }
+  ],
+  "status": "ok"
+}

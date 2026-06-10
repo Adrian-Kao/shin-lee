@@ -1,0 +1,98 @@
+{
+  "case_id": "CASE-DEMO-001",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 1199,
+    "estimated_cost_usd": 0.029117999999999998,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3711
+  },
+  "drafts": [
+    {
+      "confidence": 0.86,
+      "draft_text_chars": 398,
+      "draft_text_lines": 9,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "專利法第43條第2項",
+        "專利法第26條第2項"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。本案擬以將該用語改為「一第一電動車」之方式建立先行詞，並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，兼顧明確性與技術完整性。"
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-07-28",
+      "2025-07-29"
+    ],
+    "received_date": "2025-05-29",
+    "rejection_types": [
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          5
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.01600000006146729,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -306,
+    "deadline_warnings": [
+      "⚠️  Only -306 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 306 days ago."
+    ],
+    "received_date": "2025-05-29",
+    "recommended_internal_deadline": "2025-07-21T23:59:00+08:00",
+    "rejection_types": [
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          5
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.93,
+        "examiner_argument_preview": "審查官指出請求項5之「該第一電動車」於所依附之請求項及本項之技術內容中並未見有「第一電動車」之先行詞，致申請專利範圍不明確，不符專利法第26條第2項之規定。",
+        "rejection_type": "antecedent_basis"
+      }
+    ],
+    "statutory_deadline": "2025-07-28T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202582109",
+      "score": 0.8783890008926392,
+      "section": "abstract",
+      "text_preview": "一種協作型機器手臂力控制方法，採用導納控制結合自適應阻抗，依工件剛性即時調整阻抗參數，兼顧順應性與定位精度。"
+    },
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8573333024978638,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該可調控負載包括空調、熱水器及電動車充電。"
+    },
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8502298593521118,
+      "section": "body",
+      "text_preview": "入低溫氧電漿處理機，於 50 W、O₂ 流量 20 sccm 下處理 30 秒，於 PA 表面引入過氧基（-OOH）；步驟 S2420，將活化後薄膜浸入 SBMA 單體水溶液（濃度 5 wt%）並加入鐵離子催化劑（Fe²⁺ 0.1 mM）；步驟 S2430，於 25°C、氮氣保護下進行自由基聚合 2 小時；步驟 S24"
+    }
+  ],
+  "status": "ok"
+}

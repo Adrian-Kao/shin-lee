@@ -1,0 +1,100 @@
+{
+  "case_id": "CASE-DEMO-009",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 407,
+    "estimated_cost_usd": 0.016857,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3584
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-09-20",
+      "2025-09-22"
+    ],
+    "received_date": "2025-07-22",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          3,
+          4
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "other",
+        "statute": "專利法第26條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0779999999795109,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -256,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-09-20 (weekend/holiday) to 2025-09-22.",
+      "⚠️  Only -256 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 256 days ago."
+    ],
+    "received_date": "2025-07-22",
+    "recommended_internal_deadline": "2025-09-15T23:59:00+08:00",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          3,
+          4
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.85,
+        "examiner_argument_preview": "審查官指出說明書未充分揭露所請技術內容，致該技術領域者無法據以實現，不符專利法第26條第1項。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2025-09-22T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100032",
+      "score": 0.8967328071594238,
+      "section": "claim_1",
+      "text_preview": "一種資料壓縮方法，適用於任意資料類型，達成至少 50% 壓縮率。"
+    },
+    {
+      "patent_no": "TW202604321",
+      "score": 0.8950265645980835,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之結構，其中該奈米鑽石填料之粒徑介於50奈米至500奈米之間。"
+    },
+    {
+      "patent_no": "TW202593210",
+      "score": 0.8851656317710876,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之骨支架，其中該氫氧基磷灰石粒子之重量比為基材重量之 10% 至 30%。"
+    }
+  ],
+  "status": "ok"
+}

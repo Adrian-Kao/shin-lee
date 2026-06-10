@@ -1,0 +1,105 @@
+{
+  "case_id": "CASE-DEMO-037",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 385,
+    "estimated_cost_usd": 0.017304,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3843
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-08-02",
+      "2026-08-03"
+    ],
+    "received_date": "2026-06-03",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US11567890",
+          "CN112345678"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.030999999959021807,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 59,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-08-02 (weekend/holiday) to 2026-08-03."
+    ],
+    "received_date": "2026-06-03",
+    "recommended_internal_deadline": "2026-07-27T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US11567890"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-08-03T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202602109",
+      "score": 0.8860070705413818,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種低功耗廣域網路（Low Power Wide Area Network, LPWAN）終端裝置之自適應工作週期協定，尤指應用於 NB-IoT 或 LoRa 等具有不連續接收（Discontinuous Reception, DRX）機制之 IoT 終端裝置中，依信號強度與封包重傳"
+    },
+    {
+      "patent_no": "TW2026100041",
+      "score": 0.8702688217163086,
+      "section": "claim_1",
+      "text_preview": "一種燃料電池雙極板，包括：一基板；於該基板上之蛇形流道；及一密封圈。"
+    },
+    {
+      "patent_no": "US18000006",
+      "score": 0.8694603443145752,
+      "section": "claim_1",
+      "text_preview": "1. An SDN controller comprising: a flow table receiver; a flow rule generator; and a flow cache configured to store recently generated rules for repeated lookup"
+    }
+  ],
+  "status": "ok"
+}

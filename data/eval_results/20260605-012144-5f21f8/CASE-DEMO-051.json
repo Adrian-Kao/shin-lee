@@ -1,0 +1,95 @@
+{
+  "case_id": "CASE-DEMO-051",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 1171,
+    "estimated_cost_usd": 0.028136999999999995,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3524
+  },
+  "drafts": [
+    {
+      "confidence": 0.86,
+      "draft_text_chars": 398,
+      "draft_text_lines": 9,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "專利法第43條第2項",
+        "專利法第26條第2項"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。本案擬以將該用語改為「一第一電動車」之方式建立先行詞，並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，兼顧明確性與技術完整性。"
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-08-05",
+      "2026-08-06"
+    ],
+    "received_date": "2026-06-06",
+    "rejection_types": [
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          3
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 61,
+    "deadline_warnings": [],
+    "received_date": "2026-06-06",
+    "recommended_internal_deadline": "2026-07-29T23:59:00+08:00",
+    "rejection_types": [
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.93,
+        "examiner_argument_preview": "審查官指出請求項1之用語於所依附之請求項及本項之技術內容中並未見其先行詞，致申請專利範圍不明確，不符專利法第26條第2項之規定。",
+        "rejection_type": "antecedent_basis"
+      }
+    ],
+    "statutory_deadline": "2026-08-05T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100001",
+      "score": 0.9013842940330505,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之方法，其中該第一漿料之碳黑含量介於3至8重量百分比。"
+    },
+    {
+      "patent_no": "TW2026100005",
+      "score": 0.8726394772529602,
+      "section": "claim_1",
+      "text_preview": "一種瓣膜置換裝置，包括：一自膨脹鎳鈦合金支架；一固定於該支架之三葉式生物瓣膜；以及一連接於支架近端之可逆向回收環。"
+    },
+    {
+      "patent_no": "TW2026100021",
+      "score": 0.8700399398803711,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之系統，更包括一處理器連接該等感測器。"
+    }
+  ],
+  "status": "ok"
+}

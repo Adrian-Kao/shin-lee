@@ -1,0 +1,113 @@
+{
+  "case_id": "CASE-DEMO-068",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 2,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": false
+  },
+  "cost_meta": {
+    "completion_tokens": 395,
+    "estimated_cost_usd": 0.016704,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3593
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-05-20",
+      "2026-05-21"
+    ],
+    "received_date": "2026-03-21",
+    "rejection_types": [
+      "102_novelty",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10765111"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      },
+      {
+        "affected_claims": [
+          3
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0940000000409782,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -16,
+    "deadline_warnings": [
+      "⚠️  Only -16 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 16 days ago."
+    ],
+    "received_date": "2026-03-21",
+    "recommended_internal_deadline": "2026-05-13T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10765111"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-05-20T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8851108551025391,
+      "section": "claim_5",
+      "text_preview": "如請求項1所述之薄膜，其中該兩性離子聚合物之接枝密度為每平方公分 1×10¹⁴ 至 1×10¹⁵ 條鏈。"
+    },
+    {
+      "patent_no": "US18000004",
+      "score": 0.8745483160018921,
+      "section": "claim_2",
+      "text_preview": "2. The method of claim 1, wherein the Gaussian noise variance is calibrated to achieve a target epsilon."
+    },
+    {
+      "patent_no": "TW2026100002",
+      "score": 0.8558074831962585,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該預測週期為 1 至 5 毫秒。"
+    }
+  ],
+  "status": "ok"
+}

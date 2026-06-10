@@ -1,0 +1,103 @@
+{
+  "case_id": "CASE-DEMO-038",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 388,
+    "estimated_cost_usd": 0.016458,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3546
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-01-19",
+      "2026-01-20"
+    ],
+    "received_date": "2025-11-20",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10234567",
+          "TW201734567"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06299999984912574,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -137,
+    "deadline_warnings": [
+      "⚠️  Only -137 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 137 days ago."
+    ],
+    "received_date": "2025-11-20",
+    "recommended_internal_deadline": "2026-01-12T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10234567",
+          "TW201734567"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-01-19T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202588765",
+      "score": 0.9091156125068665,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之薄膜，其中該兩性離子聚合物為 sulfobetaine methacrylate 聚合物。"
+    },
+    {
+      "patent_no": "TW202591098",
+      "score": 0.8993595838546753,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之添加劑，其中該磷酸三甲酯經過分子篩脫水處理。"
+    },
+    {
+      "patent_no": "TW2026100041",
+      "score": 0.8862890005111694,
+      "section": "claim_1",
+      "text_preview": "一種燃料電池雙極板，包括：一基板；於該基板上之蛇形流道；及一密封圈。"
+    }
+  ],
+  "status": "ok"
+}

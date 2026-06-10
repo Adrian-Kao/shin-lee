@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-020",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 390,
+    "estimated_cost_usd": 0.017625,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3925
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-04-28",
+      "2026-04-27"
+    ],
+    "received_date": "2026-02-27",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW202012345",
+          "JP2021045678"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -38,
+    "deadline_warnings": [
+      "⚠️  Only -38 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 38 days ago."
+    ],
+    "received_date": "2026-02-27",
+    "recommended_internal_deadline": "2026-04-21T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW202592109",
+          "TW202592109"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-04-28T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202617461",
+      "score": 0.8922531604766846,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之方法，更包括於該特定事件發生時，向其他電動車充電站重新分配剩餘可供電功率。"
+    },
+    {
+      "patent_no": "TW202604321",
+      "score": 0.8825585842132568,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種高熱導率之半導體晶片貼附結構，特別是適用於碳化矽（SiC）、氮化鎵（GaN）等第三代半導體高功率元件之銀燒結（silver sintering）貼附層中加入奈米鑽石填料形成複合貼附結構之技術。\n\n【先前技術】\n第三代半導體元件因高功率密度（>500 W/cm²）對封裝之熱管理要求"
+    },
+    {
+      "patent_no": "US18000004",
+      "score": 0.8801589012145996,
+      "section": "background",
+      "text_preview": "Background: Standard FedAvg leaks information.\nDescription: DP-FedAvg with calibrated noise."
+    }
+  ],
+  "status": "ok"
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "CASE-DEMO-078",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 362,
+    "estimated_cost_usd": 0.016374,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3648
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-09-14",
+      "2026-10-16"
+    ],
+    "received_date": "2026-07-16",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10999000"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "35 U.S.C. § 102"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.06300000008195639,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 101,
+    "deadline_warnings": [],
+    "received_date": "2026-07-16",
+    "recommended_internal_deadline": "2026-09-07T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US18000006"
+        ],
+        "confidence": 0.91,
+        "examiner_argument_preview": "Examiner alleges the claims lack novelty over the primary reference, asserting that all elements are disclosed therein.",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-09-14T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100036",
+      "score": 0.9013659358024597,
+      "section": "abstract",
+      "text_preview": "智慧水表結構。"
+    },
+    {
+      "patent_no": "TW2026100008",
+      "score": 0.8868658542633057,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之天線，其中該介質基板介電常數介於 2.2 至 3.5。"
+    },
+    {
+      "patent_no": "TW202609876",
+      "score": 0.8715893030166626,
+      "section": "abstract",
+      "text_preview": "一種風力發電葉片之複合材料層疊結構，於玻璃纖維增強層之間夾設黏彈性阻尼層，以降低葉片於高頻顫振之振幅並延長疲勞壽命。"
+    }
+  ],
+  "status": "ok"
+}

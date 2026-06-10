@@ -1,0 +1,108 @@
+{
+  "case_id": "CASE-DEMO-016",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 390,
+    "estimated_cost_usd": 0.016956,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3702
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-04-19",
+      "2025-04-18"
+    ],
+    "received_date": "2025-02-18",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US20180123456",
+          "TW201712345"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.09300000010989606,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -410,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-04-19 (weekend/holiday) to 2025-04-21.",
+      "⚠️  Only -410 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 410 days ago."
+    ],
+    "received_date": "2025-02-18",
+    "recommended_internal_deadline": "2025-04-14T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW202596543",
+          "TW202596543"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-04-21T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202595432",
+      "score": 0.8693394660949707,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之系統，更包括於通訊鏈路恢復時，以最小平方法將預測值與實際量測值平滑融合。"
+    },
+    {
+      "patent_no": "TW202589876",
+      "score": 0.8655086159706116,
+      "section": "body",
+      "text_preview": "10 分鐘；步驟 S2330，將清洗後不鏽鋼板置入 CAE-PVD 真空鍍膜室，於 1×10⁻³ Pa 真空、200°C 基材溫度下以 100 V 偏壓進行 Ar 離子轟擊清潔表面；步驟 S2340，引入氮氣（流量 80 sccm，分壓 0.6 Pa）並啟動 Ti 陰極電弧（弧電流 80 A）於不鏽鋼表面沉積 TiN "
+    },
+    {
+      "patent_no": "TW202603210",
+      "score": 0.8479951024055481,
+      "section": "abstract",
+      "text_preview": "一種毫米波天線陣列之分區校正方法，將陣列劃分為多個子陣列，依序對每個子陣列執行通道校正並更新相位係數，以縮短整體校正時間。"
+    }
+  ],
+  "status": "ok"
+}

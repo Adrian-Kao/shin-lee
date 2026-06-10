@@ -1,0 +1,103 @@
+{
+  "case_id": "CASE-DEMO-008",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 388,
+    "estimated_cost_usd": 0.016464,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3548
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-03-10",
+      "2026-03-09"
+    ],
+    "received_date": "2026-01-09",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202012345",
+          "US11234567"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -87,
+    "deadline_warnings": [
+      "⚠️  Only -87 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 87 days ago."
+    ],
+    "received_date": "2026-01-09",
+    "recommended_internal_deadline": "2026-03-03T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202605432",
+          "TW202605432"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-03-10T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100005",
+      "score": 0.8763891458511353,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之裝置，其中該可逆向回收環包括三個對稱分布之繫帶。"
+    },
+    {
+      "patent_no": "TW202608765",
+      "score": 0.8748441934585571,
+      "section": "abstract",
+      "text_preview": "一種電池管理系統之 SOC 估測方法，採用擴展卡爾曼濾波結合自適應噪音共變異數調整，依據電壓電流量測殘差動態更新過程噪音與量測噪音矩陣以提高估測精度。"
+    },
+    {
+      "patent_no": "TW2026100002",
+      "score": 0.8614196181297302,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該預測週期為 1 至 5 毫秒。"
+    }
+  ],
+  "status": "ok"
+}

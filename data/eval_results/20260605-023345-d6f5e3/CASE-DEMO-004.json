@@ -1,0 +1,104 @@
+{
+  "case_id": "CASE-DEMO-004",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 395,
+    "estimated_cost_usd": 0.016533,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3536
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-10-04",
+      "2025-10-05"
+    ],
+    "received_date": "2025-08-05",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          4
+        ],
+        "cited_prior_art": [
+          "TW201234567"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0779999999795109,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -241,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-10-04 (weekend/holiday) to 2025-10-07.",
+      "⚠️  Only -241 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 241 days ago."
+    ],
+    "received_date": "2025-08-05",
+    "recommended_internal_deadline": "2025-09-30T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          4
+        ],
+        "cited_prior_art": [
+          "TW202609876"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2025-10-07T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100039",
+      "score": 0.9172664284706116,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之處理器，其能適應任意未來新型加密演算法。"
+    },
+    {
+      "patent_no": "TW202608765",
+      "score": 0.8902413249015808,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之方法，其中該過程噪音共變異數矩陣 Q 之調整係依據殘差之滑動視窗變異數。"
+    },
+    {
+      "patent_no": "TW2026100011",
+      "score": 0.8899800181388855,
+      "section": "abstract",
+      "text_preview": "一種應用於 EUV 微影之多層膜遮罩基板，以 Mo/Si 多層膜搭配 Ru 覆蓋層，提升 13.5 nm 波長之反射率。"
+    }
+  ],
+  "status": "ok"
+}

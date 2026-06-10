@@ -1,0 +1,103 @@
+{
+  "case_id": "CASE-DEMO-040",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 388,
+    "estimated_cost_usd": 0.016551,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3577
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-12-16",
+      "2025-12-17"
+    ],
+    "received_date": "2025-10-17",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10765432",
+          "TW201611234"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -171,
+    "deadline_warnings": [
+      "⚠️  Only -171 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 171 days ago."
+    ],
+    "received_date": "2025-10-17",
+    "recommended_internal_deadline": "2025-12-09T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10765432",
+          "TW201611234"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-12-16T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100011",
+      "score": 0.8715286254882812,
+      "section": "body",
+      "text_preview": "【技術領域】EUV 微影遮罩。\n【先前技術】習知 Mo/Si 多層膜需保護層。\n【發明內容】Ru 覆蓋層兼具反射保護。\n【實施方式】40 對 Mo/Si 配 3 nm Ru。\n"
+    },
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8581938147544861,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之薄膜，其於模擬污染水之 1000 小時連續操作通量衰減小於 15%。"
+    },
+    {
+      "patent_no": "TW2026100026",
+      "score": 0.8550081253051758,
+      "section": "body",
+      "text_preview": "【技術領域】催化劑製備。\n【先前技術】略。\n【發明內容】本發明提供高活性催化劑。\n【實施方式】將金屬鹽溶液與支撐體混合並煅燒即得。\n"
+    }
+  ],
+  "status": "ok"
+}

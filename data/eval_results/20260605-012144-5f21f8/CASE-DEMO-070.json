@@ -1,0 +1,135 @@
+{
+  "case_id": "CASE-DEMO-070",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 2,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 769,
+    "estimated_cost_usd": 0.030624,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 6363
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    },
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-2",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-07-20",
+      "2026-07-21"
+    ],
+    "received_date": "2026-05-21",
+    "rejection_types": [
+      "103_obviousness",
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10888111",
+          "TW202100888"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      },
+      {
+        "affected_claims": [
+          3
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "other",
+        "statute": "專利法第26條第4項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.09300000010989606,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 45,
+    "deadline_warnings": [],
+    "received_date": "2026-05-21",
+    "recommended_internal_deadline": "2026-07-13T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness",
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10888111",
+          "TW202100888"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      },
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.84,
+        "examiner_argument_preview": "審查官指出申請專利範圍未為說明書所支持，不符專利法第26條第4項規定。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2026-07-20T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100033",
+      "score": 0.8734822869300842,
+      "section": "abstract",
+      "text_preview": "電商平台動態定價方法。"
+    },
+    {
+      "patent_no": "TW2026100003",
+      "score": 0.8722974061965942,
+      "section": "claim_1",
+      "text_preview": "一種光調變器，包括：一馬赫詹德干涉結構；一第一相位臂含 PIN 結載子注入區；一第二相位臂含 PN 反向偏壓區。"
+    },
+    {
+      "patent_no": "TW2026100007",
+      "score": 0.8715029954910278,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該門檻每 N 個推論週期更新一次。"
+    }
+  ],
+  "status": "ok"
+}

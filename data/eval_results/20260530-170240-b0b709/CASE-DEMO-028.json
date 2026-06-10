@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-028",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 390,
+    "estimated_cost_usd": 0.018096,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 4082
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-05-14",
+      "2026-05-15"
+    ],
+    "received_date": "2026-03-15",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "CN114567123",
+          "US20220123987"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.014999999897554517,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -16,
+    "deadline_warnings": [
+      "⚠️  Only -16 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 16 days ago."
+    ],
+    "received_date": "2026-03-15",
+    "recommended_internal_deadline": "2026-05-07T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW202584321",
+          "TW202584321"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-05-14T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202598765",
+      "score": 0.8671027421951294,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種應用 Vision Transformer 於醫療 CT 影像之分割方法，特別是對肺部 CT 影像中之小型肺結節進行像素級分割，透過於不同尺度切片區塊間執行交叉注意力以提升分割之 Dice 係數。\n\n【先前技術】\n肺癌篩檢中早期肺結節之直徑常小於 5 mm，於 CT 影像中僅佔少"
+    },
+    {
+      "patent_no": "TW202606543",
+      "score": 0.865241527557373,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之方法，更包括依接收端之請求功率調整致能線圈之輸入電流。"
+    },
+    {
+      "patent_no": "TW202585432",
+      "score": 0.8650237321853638,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種應用於 248 奈米深紫外光（DUV）微影製程之化學增幅型光阻劑組成物，特別是含羥基苯乙烯共聚物樹脂、硫鎓鹽光酸產生劑（PAG）與胺類淬滅劑之配方。\n\n【先前技術】\nDUV 微影技術為 90 奈米至 28 奈米半導體製造之主流，化學增幅型光阻（CAR）為其關鍵材料；曝光時 PAG"
+    }
+  ],
+  "status": "ok"
+}

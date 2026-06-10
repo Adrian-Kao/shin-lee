@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-074",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 385,
+    "estimated_cost_usd": 0.017001,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3742
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-03-18",
+      "2026-04-17"
+    ],
+    "received_date": "2026-01-17",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10333555",
+          "US10876200"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "35 U.S.C. § 103"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.06200000015087426,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -79,
+    "deadline_warnings": [
+      "⚠️  Only -79 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 79 days ago."
+    ],
+    "received_date": "2026-01-17",
+    "recommended_internal_deadline": "2026-03-11T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US18000002",
+          "US18000002"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "Examiner alleges the claims are obvious in view of the cited references. The combination of features is asserted to be a predictable result of routine engineeri",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-03-18T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202617461",
+      "score": 0.8639330863952637,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之方法，更包括於該特定事件發生時，向其他電動車充電站重新分配剩餘可供電功率。"
+    },
+    {
+      "patent_no": "TW2026100005",
+      "score": 0.8531612157821655,
+      "section": "body",
+      "text_preview": "【技術領域】經導管心臟瓣膜置換裝置。\n【先前技術】習知 TAVR 釋放後無法回收，定位不佳時須改採開心手術。\n【發明內容】設計可逆向回收環。\n【實施方式】支架釋放後 30 秒內可透過繫帶回收重置最多 3 次。\n"
+    },
+    {
+      "patent_no": "TW202612345",
+      "score": 0.8497364521026611,
+      "section": "abstract",
+      "text_preview": "一種電池模組熱管理裝置，於電池芯外側佈設相變化材料層，利用相變化材料之潛熱於高負載期間吸收熱量，並於低負載期間透過冷卻流道再生散熱。"
+    }
+  ],
+  "status": "ok"
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "CASE-DEMO-017",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 382,
+    "estimated_cost_usd": 0.016881,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3717
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-12-13",
+      "2025-12-14"
+    ],
+    "received_date": "2025-10-14",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          7
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "other",
+        "statute": "專利法第26條第4項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06200000015087426,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -172,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-12-13 (weekend/holiday) to 2025-12-15.",
+      "⚠️  Only -172 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 172 days ago."
+    ],
+    "received_date": "2025-10-14",
+    "recommended_internal_deadline": "2025-12-08T23:59:00+08:00",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          7
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.84,
+        "examiner_argument_preview": "審查官指出申請專利範圍未為說明書所支持，不符專利法第26條第4項規定。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2025-12-15T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100033",
+      "score": 0.8734822869300842,
+      "section": "abstract",
+      "text_preview": "電商平台動態定價方法。"
+    },
+    {
+      "patent_no": "TW2026100003",
+      "score": 0.8722974061965942,
+      "section": "claim_1",
+      "text_preview": "一種光調變器，包括：一馬赫詹德干涉結構；一第一相位臂含 PIN 結載子注入區；一第二相位臂含 PN 反向偏壓區。"
+    },
+    {
+      "patent_no": "TW2026100007",
+      "score": 0.8715029954910278,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該門檻每 N 個推論週期更新一次。"
+    }
+  ],
+  "status": "ok"
+}

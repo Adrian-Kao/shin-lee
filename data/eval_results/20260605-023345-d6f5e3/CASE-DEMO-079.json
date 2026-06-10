@@ -1,0 +1,88 @@
+{
+  "case_id": "CASE-DEMO-079",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 0,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": false
+  },
+  "cost_meta": {
+    "completion_tokens": 338,
+    "estimated_cost_usd": 0.015624,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3518
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-10-13",
+      "2025-10-14"
+    ],
+    "received_date": "2025-08-14",
+    "rejection_types": [],
+    "rejections": [],
+    "response_months": 2
+  },
+  "latency_sec": 0.0779999999795109,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -235,
+    "deadline_warnings": [
+      "⚠️  Only -235 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 235 days ago."
+    ],
+    "received_date": "2025-08-14",
+    "recommended_internal_deadline": "2025-10-07T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US7654321"
+        ],
+        "confidence": 0.7,
+        "examiner_argument_preview": "Generic rejection synthesised from OA text.",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-10-13T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202584321",
+      "score": 0.9086253046989441,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之發光二極體，其中該鈣鈦礦量子點為 CsPbBr3。"
+    },
+    {
+      "patent_no": "TW202583210",
+      "score": 0.898356556892395,
+      "section": "claim_7",
+      "text_preview": "如請求項1所述之鉸鏈結構，更包括一外殼，包覆該齒輪組與該凸輪組。"
+    },
+    {
+      "patent_no": "US18000003",
+      "score": 0.8980852365493774,
+      "section": "claim_3",
+      "text_preview": "3. The method of claim 1, wherein the limits are recomputed every 100 milliseconds."
+    }
+  ],
+  "status": "ok"
+}

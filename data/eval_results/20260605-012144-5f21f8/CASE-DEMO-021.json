@@ -1,0 +1,137 @@
+{
+  "case_id": "CASE-DEMO-021",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 2,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 1556,
+    "estimated_cost_usd": 0.041234999999999994,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 5965
+  },
+  "drafts": [
+    {
+      "confidence": 0.86,
+      "draft_text_chars": 398,
+      "draft_text_lines": 9,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "專利法第43條第2項",
+        "專利法第26條第2項"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。本案擬以將該用語改為「一第一電動車」之方式建立先行詞，並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，兼顧明確性與技術完整性。"
+    },
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-2",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-08-29",
+      "2025-08-30"
+    ],
+    "received_date": "2025-06-30",
+    "rejection_types": [
+      "103_obviousness",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          4
+        ],
+        "cited_prior_art": [
+          "US20210054321",
+          "CN112233445"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      },
+      {
+        "affected_claims": [
+          5
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06299999984912574,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -280,
+    "deadline_warnings": [
+      "⚠️  Only -280 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 280 days ago."
+    ],
+    "received_date": "2025-06-30",
+    "recommended_internal_deadline": "2025-08-22T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.93,
+        "examiner_argument_preview": "審查官指出請求項1之用語於所依附之請求項及本項之技術內容中並未見其先行詞，致申請專利範圍不明確，不符專利法第26條第2項之規定。",
+        "rejection_type": "antecedent_basis"
+      },
+      {
+        "affected_claims": [
+          1,
+          4,
+          5
+        ],
+        "cited_prior_art": [
+          "TW202591098",
+          "TW202591098"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-08-29T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100016",
+      "score": 0.9150768518447876,
+      "section": "abstract",
+      "text_preview": "一種應用於半導體濕製程之流體控制閥，以氣壓驅動隔膜結構達成低死體積切換。"
+    },
+    {
+      "patent_no": "TW2026100001",
+      "score": 0.9013842940330505,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之方法，其中該第一漿料之碳黑含量介於3至8重量百分比。"
+    },
+    {
+      "patent_no": "TW202600987",
+      "score": 0.8926922082901001,
+      "section": "body",
+      "text_preview": "點密度稀疏、近距離處密集，隨機降採樣 30% 後遠距離物件之輪廓出現破洞；本發明降採樣後遠距離點稀疏而近距離點均勻，因近距離區域之多點被合併為單一質心，整體幾何分布趨於均勻。請參閱第四圖，於 KITTI 物件偵測測試集上，本發明降採樣後之 PointPillars 偵測 mAP 為 81.2%，隨機降採樣為 77.4%"
+    }
+  ],
+  "status": "ok"
+}

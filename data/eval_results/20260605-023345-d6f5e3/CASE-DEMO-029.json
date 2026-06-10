@@ -1,0 +1,99 @@
+{
+  "case_id": "CASE-DEMO-029",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 1171,
+    "estimated_cost_usd": 0.028488,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3641
+  },
+  "drafts": [
+    {
+      "confidence": 0.86,
+      "draft_text_chars": 398,
+      "draft_text_lines": 9,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "專利法第43條第2項",
+        "專利法第26條第2項"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。本案擬以將該用語改為「一第一電動車」之方式建立先行詞，並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，兼顧明確性與技術完整性。"
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-03-31",
+      "2026-03-30"
+    ],
+    "received_date": "2026-01-30",
+    "rejection_types": [
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          4,
+          8
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06200000015087426,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -66,
+    "deadline_warnings": [
+      "⚠️  Only -66 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 66 days ago."
+    ],
+    "received_date": "2026-01-30",
+    "recommended_internal_deadline": "2026-03-24T23:59:00+08:00",
+    "rejection_types": [
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.93,
+        "examiner_argument_preview": "審查官指出請求項1之用語於所依附之請求項及本項之技術內容中並未見其先行詞，致申請專利範圍不明確，不符專利法第26條第2項之規定。",
+        "rejection_type": "antecedent_basis"
+      }
+    ],
+    "statutory_deadline": "2026-03-31T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100001",
+      "score": 0.8728363513946533,
+      "section": "abstract",
+      "text_preview": "一種固態電池複合正極之雙層塗布方法，先塗布富含電子導電添加之底層，再塗布富含硫化物固態電解質之上層，提升正極界面導離子率。"
+    },
+    {
+      "patent_no": "TW202584321",
+      "score": 0.8638401627540588,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之發光二極體，其中該鈣鈦礦量子點為 CsPbBr3。"
+    },
+    {
+      "patent_no": "TW202597654",
+      "score": 0.8467923402786255,
+      "section": "abstract",
+      "text_preview": "一種穿戴式裝置之 PPG 訊號處理方法，融合三軸加速度計訊號以補償運動偽影，提升心率量測準確度。"
+    }
+  ],
+  "status": "ok"
+}

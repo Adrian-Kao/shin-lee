@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-005",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 390,
+    "estimated_cost_usd": 0.01677,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3640
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-02-06",
+      "2026-02-08"
+    ],
+    "received_date": "2025-12-08",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10567890",
+          "JP2019112233"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06299999984912574,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -119,
+    "deadline_warnings": [
+      "⚠️  Only -119 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 119 days ago."
+    ],
+    "received_date": "2025-12-08",
+    "recommended_internal_deadline": "2026-01-30T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW202608765",
+          "TW202608765"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-02-06T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100029",
+      "score": 0.8691724538803101,
+      "section": "abstract",
+      "text_preview": "通訊協定優化方法。"
+    },
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8685042858123779,
+      "section": "claim_7",
+      "text_preview": "如請求項6所述之方法，其中該聯邦學習採用安全多方計算協定。"
+    },
+    {
+      "patent_no": "TW202591098",
+      "score": 0.8657535314559937,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之添加劑，其中該添加劑使電池於攝氏 60 度循環 500 次後容量保持率高於 80%。"
+    }
+  ],
+  "status": "ok"
+}

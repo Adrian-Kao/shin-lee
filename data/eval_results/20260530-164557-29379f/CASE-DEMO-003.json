@@ -1,0 +1,143 @@
+{
+  "case_id": "CASE-DEMO-003",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 2,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 1559,
+    "estimated_cost_usd": 0.043398,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 6671
+  },
+  "drafts": [
+    {
+      "confidence": 0.86,
+      "draft_text_chars": 398,
+      "draft_text_lines": 9,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "專利法第43條第2項",
+        "專利法第26條第2項"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。本案擬以將該用語改為「一第一電動車」之方式建立先行詞，並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，兼顧明確性與技術完整性。"
+    },
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-2",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-06-09",
+      "2025-06-10"
+    ],
+    "received_date": "2025-04-10",
+    "rejection_types": [
+      "103_obviousness",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "cited_prior_art": [
+          "TW201805123",
+          "US9876543"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      },
+      {
+        "affected_claims": [
+          7
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -355,
+    "deadline_warnings": [
+      "⚠️  Only -355 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 355 days ago."
+    ],
+    "received_date": "2025-04-10",
+    "recommended_internal_deadline": "2025-06-02T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.93,
+        "examiner_argument_preview": "審查官指出請求項1之用語於所依附之請求項及本項之技術內容中並未見其先行詞，致申請專利範圍不明確，不符專利法第26條第2項之規定。",
+        "rejection_type": "antecedent_basis"
+      },
+      {
+        "affected_claims": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          7
+        ],
+        "cited_prior_art": [
+          "TW202611234",
+          "TW202611234"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-06-09T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202593210",
+      "score": 0.8644143342971802,
+      "section": "claim_1",
+      "text_preview": "一種骨支架，包括：一 PCL/PLA 共混基材，其中 PCL 與 PLA 之重量比介於 4:6 至 6:4 之間；以及氫氧基磷灰石粒子，分散於該基材中。"
+    },
+    {
+      "patent_no": "TW202596543",
+      "score": 0.8623608350753784,
+      "section": "body",
+      "text_preview": "訊號 s_HR(n)；步驟 S1640，峰值偵測器 1624 於 s_HR(n) 上以振幅閾值與最小間隔（0.3 秒）約束偵測峰值；步驟 S1650，計算相鄰峰值間隔之倒數得到瞬時心率，並以 5 秒滑動窗取中位數作為輸出心率 HR(t)，顯示於顯示器 1630。\n\n請參閱第四圖，於跑步機 6 km/h 測試中時域峰值偵"
+    },
+    {
+      "patent_no": "TW202595432",
+      "score": 0.8615156412124634,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之系統，其中該預測控制器採用 Smith 預測器。"
+    }
+  ],
+  "status": "ok"
+}

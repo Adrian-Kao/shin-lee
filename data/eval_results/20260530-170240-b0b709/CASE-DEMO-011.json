@@ -1,0 +1,101 @@
+{
+  "case_id": "CASE-DEMO-011",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 394,
+    "estimated_cost_usd": 0.017099999999999997,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3730
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-04-13",
+      "2026-04-12"
+    ],
+    "received_date": "2026-02-12",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US20210032456"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.030999999959021807,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -47,
+    "deadline_warnings": [
+      "⚠️  Only -47 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 47 days ago."
+    ],
+    "received_date": "2026-02-12",
+    "recommended_internal_deadline": "2026-04-06T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202602109"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-04-13T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202602109",
+      "score": 0.8774290084838867,
+      "section": "body",
+      "text_preview": "強度量測單元 1122、一重傳計數器 1132、一計時器 1130、一上行資料佇列 1140、及一電池 1150。處理器 1110 內部執行一 DRX 決策模組 1112，負責依信號強度與重傳率決定下次 DRX 週期。\n\n請參閱第二圖，本實施例之自適應 DRX 控制流程包括：步驟 S1110，終端裝置 1100 於 D"
+    },
+    {
+      "patent_no": "TW202609876",
+      "score": 0.8734108209609985,
+      "section": "abstract",
+      "text_preview": "一種風力發電葉片之複合材料層疊結構，於玻璃纖維增強層之間夾設黏彈性阻尼層，以降低葉片於高頻顫振之振幅並延長疲勞壽命。"
+    },
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8674793839454651,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之方法，更包括依即時電價動態調整調控報酬。"
+    }
+  ],
+  "status": "ok"
+}

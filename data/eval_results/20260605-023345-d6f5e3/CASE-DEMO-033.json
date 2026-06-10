@@ -1,0 +1,102 @@
+{
+  "case_id": "CASE-DEMO-033",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 384,
+    "estimated_cost_usd": 0.016406999999999998,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3549
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-06-11",
+      "2026-06-12"
+    ],
+    "received_date": "2026-04-12",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10456789"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.04699999978765845,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 6,
+    "deadline_warnings": [
+      "⚠️  Only 6 days remaining — escalate immediately."
+    ],
+    "received_date": "2026-04-12",
+    "recommended_internal_deadline": "2026-06-04T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10456789"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-06-11T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100024",
+      "score": 0.8805013298988342,
+      "section": "abstract",
+      "text_preview": "電動車馬達控制電路。"
+    },
+    {
+      "patent_no": "TW2026100007",
+      "score": 0.8741141557693481,
+      "section": "body",
+      "text_preview": "【技術領域】邊緣 AI 推論加速。\n【先前技術】習知靜態剪枝會犧牲精度。\n【發明內容】以動態熵閾值決定稀疏度。\n【實施方式】於 INT8 推論時依特徵熵跳過 30~70% 權重。\n"
+    },
+    {
+      "patent_no": "TW2026100044",
+      "score": 0.868308961391449,
+      "section": "claim_1",
+      "text_preview": "一種家庭控制平台，包括：一中央伺服器；複數感測器；及一行動裝置 App。"
+    }
+  ],
+  "status": "ok"
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "CASE-DEMO-047",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 393,
+    "estimated_cost_usd": 0.017556,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3887
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-08-26",
+      "2026-08-27"
+    ],
+    "received_date": "2026-06-27",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10999888"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06300000008195639,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 82,
+    "deadline_warnings": [],
+    "received_date": "2026-06-27",
+    "recommended_internal_deadline": "2026-08-19T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10999888"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-08-26T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100016",
+      "score": 0.9025759696960449,
+      "section": "abstract",
+      "text_preview": "一種應用於半導體濕製程之流體控制閥，以氣壓驅動隔膜結構達成低死體積切換。"
+    },
+    {
+      "patent_no": "TW202611234",
+      "score": 0.8989049792289734,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種應用於太陽能逆變器之最大功率點追蹤（Maximum Power Point Tracking, MPPT）方法，尤指一種於擾動觀察法之基礎上引入擾動補償項以縮小功率震盪、加速收斂、並能應對局部遮蔽條件之追蹤方法。\n\n【先前技術】\n太陽能光電板之 P-V 曲線受日照強度、模組溫度及"
+    },
+    {
+      "patent_no": "TW202586543",
+      "score": 0.8967674970626831,
+      "section": "body",
+      "text_preview": "₈、SF₆、O₂、He 四路質量流量控制器）。\n\n本實施例之 TSV 蝕刻製程為：步驟 S2610，於 4 吋矽晶圓上以 SiO₂ 硬掩模定義 5 μm 直徑 TSV 孔圖案；步驟 S2620，將晶圓送入反應腔體 2610，抽至 1×10⁻⁵ Torr 真空；步驟 S2630，通入混合氣體 C₄F₈（80 sccm）、"
+    }
+  ],
+  "status": "ok"
+}

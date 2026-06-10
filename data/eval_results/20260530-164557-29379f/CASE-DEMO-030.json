@@ -1,0 +1,144 @@
+{
+  "case_id": "CASE-DEMO-030",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 2,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 777,
+    "estimated_cost_usd": 0.031202999999999998,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 6516
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    },
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-2",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-01-06",
+      "2025-01-07"
+    ],
+    "received_date": "2024-11-07",
+    "rejection_types": [
+      "103_obviousness",
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US20210112233",
+          "TW202011234"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      },
+      {
+        "affected_claims": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "cited_prior_art": [
+          "TW202012109"
+        ],
+        "rejection_type": "other",
+        "statute": "專利法第32條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.030999999959021807,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -509,
+    "deadline_warnings": [
+      "⚠️  Only -509 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 509 days ago."
+    ],
+    "received_date": "2024-11-07",
+    "recommended_internal_deadline": "2024-12-30T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness",
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "cited_prior_art": [
+          "TW202582109",
+          "TW202582109"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      },
+      {
+        "affected_claims": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.83,
+        "examiner_argument_preview": "審查官指出本案與同申請人之新型專利屬一案兩請，依專利法第32條應擇一聲明。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2025-01-06T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202588765",
+      "score": 0.9042043685913086,
+      "section": "body",
+      "text_preview": "入低溫氧電漿處理機，於 50 W、O₂ 流量 20 sccm 下處理 30 秒，於 PA 表面引入過氧基（-OOH）；步驟 S2420，將活化後薄膜浸入 SBMA 單體水溶液（濃度 5 wt%）並加入鐵離子催化劑（Fe²⁺ 0.1 mM）；步驟 S2430，於 25°C、氮氣保護下進行自由基聚合 2 小時；步驟 S24"
+    },
+    {
+      "patent_no": "TW202587654",
+      "score": 0.8787827491760254,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種應用於工業廢水處理之氮摻雜二氧化鈦（N-TiO₂）奈米棒光觸媒，特別是於可見光下能高效分解有機染料污染物之光催化材料。\n\n【先前技術】\n二氧化鈦（TiO₂）為最廣泛應用之光觸媒，惟其能隙 3.2 eV 對應於紫外光（< 388 nm），於太陽光譜中占比僅 4%，於室內可見光環境下"
+    },
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8753911256790161,
+      "section": "abstract",
+      "text_preview": "一種反滲透薄膜，於聚醯胺活性層接枝兩性離子聚合物，以提高抗污染性能並維持高鹽分截留率。"
+    }
+  ],
+  "status": "ok"
+}

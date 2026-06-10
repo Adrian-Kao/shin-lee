@@ -1,0 +1,102 @@
+{
+  "case_id": "CASE-DEMO-013",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 396,
+    "estimated_cost_usd": 0.017093999999999998,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3718
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-07-05",
+      "2025-07-06"
+    ],
+    "received_date": "2025-05-06",
+    "rejection_types": [
+      "101_subject_matter"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "101_subject_matter",
+        "statute": "專利法第24條第2款"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.030999999959021807,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -327,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-07-05 (weekend/holiday) to 2025-07-07.",
+      "⚠️  Only -327 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 327 days ago."
+    ],
+    "received_date": "2025-05-06",
+    "recommended_internal_deadline": "2025-06-30T23:59:00+08:00",
+    "rejection_types": [
+      "101_subject_matter"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.86,
+        "examiner_argument_preview": "審查官認為所請發明屬專利法第24條所列法定不予專利之事項，不得給予專利保護。",
+        "rejection_type": "101_subject_matter"
+      }
+    ],
+    "statutory_deadline": "2025-07-07T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8799989223480225,
+      "section": "abstract",
+      "text_preview": "一種智慧電網之需量反應控制方法，由聚合商透過雙向通訊收集多用戶之可調控負載，以階層式優化在滿足用戶舒適度限制下達成電網調度目標。"
+    },
+    {
+      "patent_no": "TW202593210",
+      "score": 0.869303286075592,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種骨組織工程用之生物可降解支架，特別是由聚己內酯（PCL）與聚乳酸（PLA）共混並摻入氫氧基磷灰石（hydroxyapatite, HA）粒子製成之多孔骨支架，兼具生物可降解性、機械強度與骨整合性。\n\n【先前技術】\n骨組織工程支架需提供臨時力學支撐並引導新生骨生長，於完成功能後逐步"
+    },
+    {
+      "patent_no": "TW202608765",
+      "score": 0.8680809736251831,
+      "section": "claim_1",
+      "text_preview": "一種狀態估測方法，包括：取得電池之即時電壓與電流；以擴展卡爾曼濾波估算 SOC；計算量測殘差；依該量測殘差動態調整過程噪音共變異數矩陣 Q 與量測噪音共變異數矩陣 R。"
+    }
+  ],
+  "status": "ok"
+}

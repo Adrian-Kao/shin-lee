@@ -1,0 +1,15 @@
+# LEGACY BUNDLE — kept only for backward compatibility with the original
+# OCR/RAG prototype. Backend runtime deps now live in `backend/requirements.txt`.
+# New backend work should install from that file:
+#     pip install -r backend/requirements.txt
+httpx>=0.27.2
+numpy>=1.26.4
+pillow>=10.4.0
+pydantic>=2.9.2
+pymupdf>=1.24.10
+python-dotenv>=1.0.1
+qdrant-client==1.12.1
+rich>=13.8.1
+sentence-transformers>=3.0.1
+paddleocr>=2.8.1
+paddlepaddle>=2.6.2

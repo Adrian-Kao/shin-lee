@@ -1,0 +1,103 @@
+{
+  "case_id": "CASE-DEMO-018",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 388,
+    "estimated_cost_usd": 0.017346,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3842
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-05-06",
+      "2026-05-07"
+    ],
+    "received_date": "2026-03-07",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US20210156789",
+          "CN112345678"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.01600000006146729,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -24,
+    "deadline_warnings": [
+      "⚠️  Only -24 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 24 days ago."
+    ],
+    "received_date": "2026-03-07",
+    "recommended_internal_deadline": "2026-04-29T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202594321",
+          "TW202594321"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-05-06T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8503174185752869,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種反滲透（RO）海水淡化薄膜，特別是於聚醯胺活性層表面接枝兩性離子聚合物，以提高抗污染性能並維持高鹽分截留率之改質薄膜。\n\n【先前技術】\n海水淡化反滲透薄膜之主要瓶頸在於膜面污染，包括有機物吸附、生物膜成長與無機物結垢，均會造成通量衰減與能耗增加。習知聚醯胺（PA）薄膜表面具苯環疏"
+    },
+    {
+      "patent_no": "TW202587654",
+      "score": 0.8462002277374268,
+      "section": "abstract",
+      "text_preview": "一種應用於工業廢水處理之氮摻雜二氧化鈦奈米棒光觸媒，於可見光下對有機染料展現高分解效率。"
+    },
+    {
+      "patent_no": "TW202605432",
+      "score": 0.8423588871955872,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之積體電路，更包括一過熱保護電路。"
+    }
+  ],
+  "status": "ok"
+}

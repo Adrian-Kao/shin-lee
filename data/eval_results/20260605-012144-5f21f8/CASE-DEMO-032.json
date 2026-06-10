@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-032",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 389,
+    "estimated_cost_usd": 0.016568999999999997,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3578
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-05-04",
+      "2026-05-05"
+    ],
+    "received_date": "2026-03-05",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10987654",
+          "EP3654321"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06200000015087426,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -32,
+    "deadline_warnings": [
+      "⚠️  Only -32 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 32 days ago."
+    ],
+    "received_date": "2026-03-05",
+    "recommended_internal_deadline": "2026-04-27T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10987654",
+          "EP3654321"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-05-04T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202602109",
+      "score": 0.8856295943260193,
+      "section": "claim_1",
+      "text_preview": "一種 LPWAN 終端裝置之控制方法，包括：量測下行信號強度與封包重傳率；依該等量測值動態調整睡眠間隔；於該睡眠間隔結束後喚醒以接收下行封包。"
+    },
+    {
+      "patent_no": "TW2026100044",
+      "score": 0.8701616525650024,
+      "section": "body",
+      "text_preview": "【技術領域】智慧家庭。\n【先前技術】略。\n【實施方式】伺服器執行 AI 模型；行動 App 顯示狀態。\n"
+    },
+    {
+      "patent_no": "US18000001",
+      "score": 0.8694748878479004,
+      "section": "abstract",
+      "text_preview": "A gallium nitride high-electron-mobility transistor (GaN HEMT) structure with an integrated field plate to reduce peak electric field."
+    }
+  ],
+  "status": "ok"
+}

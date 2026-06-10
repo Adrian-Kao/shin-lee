@@ -1,0 +1,103 @@
+{
+  "case_id": "CASE-DEMO-041",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 394,
+    "estimated_cost_usd": 0.016977,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3689
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-04-29",
+      "2026-04-28"
+    ],
+    "received_date": "2026-02-28",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10567123"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -37,
+    "deadline_warnings": [
+      "⚠️  Only -37 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 37 days ago."
+    ],
+    "received_date": "2026-02-28",
+    "recommended_internal_deadline": "2026-04-22T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10567123"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-04-29T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100007",
+      "score": 0.8570530414581299,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該門檻每 N 個推論週期更新一次。"
+    },
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8545999526977539,
+      "section": "body",
+      "text_preview": "入低溫氧電漿處理機，於 50 W、O₂ 流量 20 sccm 下處理 30 秒，於 PA 表面引入過氧基（-OOH）；步驟 S2420，將活化後薄膜浸入 SBMA 單體水溶液（濃度 5 wt%）並加入鐵離子催化劑（Fe²⁺ 0.1 mM）；步驟 S2430，於 25°C、氮氣保護下進行自由基聚合 2 小時；步驟 S24"
+    },
+    {
+      "patent_no": "TW2026100007",
+      "score": 0.8534715175628662,
+      "section": "body",
+      "text_preview": "【技術領域】邊緣 AI 推論加速。\n【先前技術】習知靜態剪枝會犧牲精度。\n【發明內容】以動態熵閾值決定稀疏度。\n【實施方式】於 INT8 推論時依特徵熵跳過 30~70% 權重。\n"
+    }
+  ],
+  "status": "ok"
+}

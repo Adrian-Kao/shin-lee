@@ -1,0 +1,104 @@
+{
+  "case_id": "CASE-DEMO-031",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 384,
+    "estimated_cost_usd": 0.016962,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3734
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-04-15",
+      "2026-04-14"
+    ],
+    "received_date": "2026-02-14",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "TW202011111",
+          "JP2022100001"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -51,
+    "deadline_warnings": [
+      "⚠️  Only -51 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 51 days ago."
+    ],
+    "received_date": "2026-02-14",
+    "recommended_internal_deadline": "2026-04-08T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "TW202011111"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-04-15T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100011",
+      "score": 0.8990877270698547,
+      "section": "body",
+      "text_preview": "【技術領域】EUV 微影遮罩。\n【先前技術】習知 Mo/Si 多層膜需保護層。\n【發明內容】Ru 覆蓋層兼具反射保護。\n【實施方式】40 對 Mo/Si 配 3 nm Ru。\n"
+    },
+    {
+      "patent_no": "TW2026100007",
+      "score": 0.8933405876159668,
+      "section": "abstract",
+      "text_preview": "一種應用於邊緣 AI 加速器之神經網路稀疏化推論方法，依輸入特徵之熵動態跳過低重要性權重，降低運算量與功耗。"
+    },
+    {
+      "patent_no": "TW202606543",
+      "score": 0.8748595714569092,
+      "section": "body",
+      "text_preview": "上方並透過無線通訊模組 756 通知控制器 740 啟動對位；步驟 S720，控制器 740 依序對 712_11～712_33 之 9 個線圈施加 100 kHz 微功率探測脈衝（5 W, 50 ms）；步驟 S730，鎖相迴路 730 於每一線圈量測反射阻抗之相位差 φ_ij；步驟 S740，控制器 740 依 9"
+    }
+  ],
+  "status": "ok"
+}

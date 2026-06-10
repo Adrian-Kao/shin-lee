@@ -1,0 +1,108 @@
+{
+  "case_id": "CASE-DEMO-076",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 385,
+    "estimated_cost_usd": 0.017211,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3812
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-01-18",
+      "2026-02-19"
+    ],
+    "received_date": "2025-11-19",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10111222",
+          "US10222333"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "35 U.S.C. § 103"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -137,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-01-18 (weekend/holiday) to 2026-01-19.",
+      "⚠️  Only -137 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 137 days ago."
+    ],
+    "received_date": "2025-11-19",
+    "recommended_internal_deadline": "2026-01-12T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US18000004",
+          "US18000004"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "Examiner alleges the claims are obvious in view of the cited references. The combination of features is asserted to be a predictable result of routine engineeri",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-01-19T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202612345",
+      "score": 0.8903316855430603,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之裝置，其中該冷卻流道內流通介電冷卻液。"
+    },
+    {
+      "patent_no": "TW202594321",
+      "score": 0.8823204040527344,
+      "section": "body",
+      "text_preview": "羧基質子化為 -COOH，外殼吸水溶脹至原體積之 2~3 倍，孔隙增大至 8~15 nm，藥物快速擴散釋出。\n\n請參閱第三圖及第四圖，於 PBS pH 7.4、37°C 模擬血液環境下 24 小時藥物累積釋放率 13%；於 PBS pH 5.0、37°C 模擬腫瘤微環境下 24 小時累積釋放率 84%；於 4T1 乳癌"
+    },
+    {
+      "patent_no": "TW2026100001",
+      "score": 0.8800933361053467,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之方法，更包括於上層塗布後施以等靜壓壓密。"
+    }
+  ],
+  "status": "ok"
+}

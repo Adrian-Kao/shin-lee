@@ -1,0 +1,107 @@
+{
+  "case_id": "CASE-DEMO-007",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 390,
+    "estimated_cost_usd": 0.017469,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3873
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2024-11-11",
+      "2024-11-12"
+    ],
+    "received_date": "2024-09-12",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          5
+        ],
+        "cited_prior_art": [
+          "EP3210987",
+          "US10888777"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.030999999959021807,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -565,
+    "deadline_warnings": [
+      "⚠️  Only -565 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 565 days ago."
+    ],
+    "received_date": "2024-09-12",
+    "recommended_internal_deadline": "2024-11-04T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          5
+        ],
+        "cited_prior_art": [
+          "TW202606543",
+          "TW202606543"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2024-11-11T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202586543",
+      "score": 0.8950615525245667,
+      "section": "body",
+      "text_preview": "₈、SF₆、O₂、He 四路質量流量控制器）。\n\n本實施例之 TSV 蝕刻製程為：步驟 S2610，於 4 吋矽晶圓上以 SiO₂ 硬掩模定義 5 μm 直徑 TSV 孔圖案；步驟 S2620，將晶圓送入反應腔體 2610，抽至 1×10⁻⁵ Torr 真空；步驟 S2630，通入混合氣體 C₄F₈（80 sccm）、"
+    },
+    {
+      "patent_no": "TW202595432",
+      "score": 0.8764869570732117,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之系統，更包括於通訊鏈路恢復時，以最小平方法將預測值與實際量測值平滑融合。"
+    },
+    {
+      "patent_no": "TW202611234",
+      "score": 0.8732548952102661,
+      "section": "claim_5",
+      "text_preview": "如請求項1所述之方法，其中該操作點之更新週期介於5毫秒至50毫秒之間。"
+    }
+  ],
+  "status": "ok"
+}

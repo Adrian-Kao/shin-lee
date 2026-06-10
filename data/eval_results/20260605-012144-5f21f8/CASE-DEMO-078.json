@@ -1,0 +1,98 @@
+{
+  "case_id": "CASE-DEMO-078",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 362,
+    "estimated_cost_usd": 0.016943999999999997,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3838
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-09-14",
+      "2026-10-16"
+    ],
+    "received_date": "2026-07-16",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10999000"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "35 U.S.C. § 102"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.06299999984912574,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 101,
+    "deadline_warnings": [],
+    "received_date": "2026-07-16",
+    "recommended_internal_deadline": "2026-09-07T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US18000006"
+        ],
+        "confidence": 0.91,
+        "examiner_argument_preview": "Examiner alleges the claims lack novelty over the primary reference, asserting that all elements are disclosed therein.",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-09-14T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100033",
+      "score": 0.8620612025260925,
+      "section": "abstract",
+      "text_preview": "電商平台動態定價方法。"
+    },
+    {
+      "patent_no": "TW202608765",
+      "score": 0.8526145219802856,
+      "section": "body",
+      "text_preview": "矩陣 P(k|k-1)；步驟 S520，計算量測殘差 e(k) = z(k) - h(x̂(k|k-1))，其中 z(k) 為電壓量測值；步驟 S530，將最近 N 個（本實施例 N=20）殘差存入滑動視窗並計算其樣本變異數 σ²_e(k)；步驟 S540，依 σ²_e(k) 與模型理論變異數 σ²_theory 之比"
+    },
+    {
+      "patent_no": "TW2026100003",
+      "score": 0.8424074053764343,
+      "section": "claim_1",
+      "text_preview": "一種光調變器，包括：一馬赫詹德干涉結構；一第一相位臂含 PIN 結載子注入區；一第二相位臂含 PN 反向偏壓區。"
+    }
+  ],
+  "status": "ok"
+}

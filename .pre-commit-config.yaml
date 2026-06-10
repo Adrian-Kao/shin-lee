@@ -1,0 +1,41 @@
+# Pre-commit hooks for patentmind-poc.
+# Install once with: pre-commit install
+# Run on all files:  pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(data/|docs/.*\.pdf$|frontend/package-lock\.json$)
+      - id: end-of-file-fixer
+        exclude: ^(data/|docs/.*\.pdf$|frontend/package-lock\.json$)
+      - id: check-yaml
+        # GitHub Actions workflows use !!str / anchors that are fine but the
+        # YAML parser in this hook can choke on some valid GHA constructs
+        # (notably ${{ ... }} expressions that look like flow-style mappings).
+        # Workflows are validated separately by GitHub's own parser on push.
+        args: ["--allow-multiple-documents"]
+        exclude: ^\.github/workflows/
+      - id: check-added-large-files
+        # Patent OA fixtures (PDF/PNG/scanned figures) routinely exceed 500KB
+        # but are legitimate test inputs. Exclude data/ and docs/*.pdf rather
+        # than raising the global cap, so accidental binary commits elsewhere
+        # are still caught.
+        args: ["--maxkb=500"]
+        exclude: ^(data/|docs/.*\.pdf$)
+      - id: check-merge-conflict
+      - id: check-toml
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        files: ^frontend/.*\.(js|jsx|json|css|md)$
+        exclude: ^frontend/(node_modules/|dist/|package-lock\.json$)

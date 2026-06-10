@@ -1,0 +1,105 @@
+{
+  "case_id": "CASE-DEMO-010",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 389,
+    "estimated_cost_usd": 0.016524,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3563
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-05-27",
+      "2025-05-28"
+    ],
+    "received_date": "2025-03-28",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10678901",
+          "TW202087654"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06200000015087426,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -374,
+    "deadline_warnings": [
+      "⚠️  Only -374 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 374 days ago."
+    ],
+    "received_date": "2025-03-28",
+    "recommended_internal_deadline": "2025-05-20T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "TW202603210",
+          "TW202603210"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-05-27T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100042",
+      "score": 0.862704873085022,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之系統，其中該 AI 預測模型為 Transformer 結構。"
+    },
+    {
+      "patent_no": "TW2026100001",
+      "score": 0.8534952402114868,
+      "section": "abstract",
+      "text_preview": "一種固態電池複合正極之雙層塗布方法，先塗布富含電子導電添加之底層，再塗布富含硫化物固態電解質之上層，提升正極界面導離子率。"
+    },
+    {
+      "patent_no": "TW2026100005",
+      "score": 0.8525114059448242,
+      "section": "abstract",
+      "text_preview": "一種經導管主動脈瓣膜置換 (TAVR) 裝置，於支架近端設置可逆向回收機構，便於釋放後微調位置或回收重置。"
+    }
+  ],
+  "status": "ok"
+}

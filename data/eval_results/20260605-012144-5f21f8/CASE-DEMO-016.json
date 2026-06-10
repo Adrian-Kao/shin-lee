@@ -1,0 +1,108 @@
+{
+  "case_id": "CASE-DEMO-016",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 390,
+    "estimated_cost_usd": 0.016707,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3619
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-04-19",
+      "2025-04-18"
+    ],
+    "received_date": "2025-02-18",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US20180123456",
+          "TW201712345"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.04699999978765845,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -410,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-04-19 (weekend/holiday) to 2025-04-21.",
+      "⚠️  Only -410 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 410 days ago."
+    ],
+    "received_date": "2025-02-18",
+    "recommended_internal_deadline": "2025-04-14T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "TW202596543",
+          "TW202596543"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-04-21T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202596543",
+      "score": 0.8793171048164368,
+      "section": "body",
+      "text_preview": "訊號 s_HR(n)；步驟 S1640，峰值偵測器 1624 於 s_HR(n) 上以振幅閾值與最小間隔（0.3 秒）約束偵測峰值；步驟 S1650，計算相鄰峰值間隔之倒數得到瞬時心率，並以 5 秒滑動窗取中位數作為輸出心率 HR(t)，顯示於顯示器 1630。\n\n請參閱第四圖，於跑步機 6 km/h 測試中時域峰值偵"
+    },
+    {
+      "patent_no": "TW202596543",
+      "score": 0.871492862701416,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該指定頻帶分量對應 0.5 至 4 Hz。"
+    },
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8683420419692993,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之薄膜，其中該兩性離子聚合物為 sulfobetaine methacrylate 聚合物。"
+    }
+  ],
+  "status": "ok"
+}

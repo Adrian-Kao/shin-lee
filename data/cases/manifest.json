@@ -1,0 +1,2888 @@
+{
+  "version": "1.0",
+  "case_count": 80,
+  "patents_written": 80,
+  "oas_written": 80,
+  "reexams_written": 7,
+  "cases": [
+    {
+      "case_id": "CASE-DEMO-001",
+      "patent_no": "TW202617461",
+      "title": "電動車充電站之充電管理方法及系統",
+      "applicants": [
+        "拓連科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        10,
+        30
+      ],
+      "publication_date_roc": [
+        115,
+        5,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        5,
+        29
+      ],
+      "oa_doc_no": "11420571970",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        5
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-002",
+      "patent_no": "TW202612345",
+      "title": "電動車電池模組之相變化熱管理裝置",
+      "applicants": [
+        "瑞昱能源科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        3,
+        14
+      ],
+      "publication_date_roc": [
+        115,
+        1,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        6,
+        15
+      ],
+      "oa_doc_no": "11420654321",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "TW201912345",
+        "US10123456"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-003",
+      "patent_no": "TW202611234",
+      "title": "具擾動補償之太陽能逆變器最大功率追蹤方法",
+      "applicants": [
+        "晶碩電力科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        11,
+        8
+      ],
+      "publication_date_roc": [
+        114,
+        7,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        4,
+        10
+      ],
+      "oa_doc_no": "11420441001",
+      "rejection_types": [
+        "103_obviousness",
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        7
+      ],
+      "cited_prior_art": [
+        "TW201805123",
+        "US9876543"
+      ],
+      "has_reexam": true,
+      "reexam_outcome": "不予專利處分"
+    },
+    {
+      "case_id": "CASE-DEMO-004",
+      "patent_no": "TW202609876",
+      "title": "風力發電葉片之複合材料層疊結構",
+      "applicants": [
+        "昇晟綠能股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        6,
+        17
+      ],
+      "publication_date_roc": [
+        114,
+        4,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        8,
+        5
+      ],
+      "oa_doc_no": "11420805123",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1,
+        4
+      ],
+      "cited_prior_art": [
+        "TW201234567"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-005",
+      "patent_no": "TW202608765",
+      "title": "電池管理系統之自適應狀態估測方法",
+      "applicants": [
+        "騰瀚智能股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        1,
+        22
+      ],
+      "publication_date_roc": [
+        114,
+        10,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        12,
+        8
+      ],
+      "oa_doc_no": "11421208009",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "JP2019112233",
+        "US10567890"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-006",
+      "patent_no": "TW202607654",
+      "title": "智慧電網之多階層需量反應控制方法",
+      "applicants": [
+        "智網能源服務股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        8,
+        30
+      ],
+      "publication_date_roc": [
+        114,
+        5,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        9,
+        18
+      ],
+      "oa_doc_no": "11420918050",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        6,
+        7
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-007",
+      "patent_no": "TW202606543",
+      "title": "無線充電系統之多線圈相位對位方法",
+      "applicants": [
+        "磁鏈無線科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        4,
+        5
+      ],
+      "publication_date_roc": [
+        114,
+        1,
+        1
+      ],
+      "oa_date_roc": [
+        113,
+        9,
+        12
+      ],
+      "oa_doc_no": "11320912077",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        5
+      ],
+      "cited_prior_art": [
+        "EP3210987",
+        "US10888777"
+      ],
+      "has_reexam": true,
+      "reexam_outcome": "不予專利處分"
+    },
+    {
+      "case_id": "CASE-DEMO-008",
+      "patent_no": "TW202605432",
+      "title": "具自適應漣波抑制之 LED 驅動積體電路",
+      "applicants": [
+        "群驅科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        2,
+        14
+      ],
+      "publication_date_roc": [
+        114,
+        11,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        1,
+        9
+      ],
+      "oa_doc_no": "11520109004",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "TW202012345",
+        "US11234567"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-009",
+      "patent_no": "TW202604321",
+      "title": "含鑽石填料之銀燒結晶片貼附結構",
+      "applicants": [
+        "晶熱半導體股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        12,
+        1
+      ],
+      "publication_date_roc": [
+        114,
+        6,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        7,
+        22
+      ],
+      "oa_doc_no": "11420722012",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        3,
+        4
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-010",
+      "patent_no": "TW202603210",
+      "title": "5G 毫米波天線陣列之分區校正方法",
+      "applicants": [
+        "望波通訊股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        10,
+        20
+      ],
+      "publication_date_roc": [
+        114,
+        3,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        3,
+        28
+      ],
+      "oa_doc_no": "11420328088",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "TW202087654",
+        "US10678901"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-011",
+      "patent_no": "TW202602109",
+      "title": "低功耗廣域網路之自適應工作週期協定",
+      "applicants": [
+        "拓星物聯股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        4,
+        8
+      ],
+      "publication_date_roc": [
+        114,
+        12,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        2,
+        12
+      ],
+      "oa_doc_no": "11520212022",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "US20210032456"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-012",
+      "patent_no": "TW202601098",
+      "title": "基於主動學習之製造瑕疵檢測方法",
+      "applicants": [
+        "智眼科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        9,
+        5
+      ],
+      "publication_date_roc": [
+        114,
+        2,
+        1
+      ],
+      "oa_date_roc": [
+        113,
+        11,
+        15
+      ],
+      "oa_doc_no": "11321115019",
+      "rejection_types": [
+        "103_obviousness",
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        1,
+        3,
+        8
+      ],
+      "cited_prior_art": [
+        "TW201912345",
+        "US20200234567"
+      ],
+      "has_reexam": true,
+      "reexam_outcome": "不予專利處分"
+    },
+    {
+      "case_id": "CASE-DEMO-013",
+      "patent_no": "TW202600987",
+      "title": "點雲資料之體素網格降採樣方法",
+      "applicants": [
+        "朝光智駕股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        5,
+        18
+      ],
+      "publication_date_roc": [
+        113,
+        12,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        5,
+        6
+      ],
+      "oa_doc_no": "11420506033",
+      "rejection_types": [
+        "101_subject_matter"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-014",
+      "patent_no": "TW202598765",
+      "title": "多尺度 Transformer 之肺結節 CT 影像分割方法",
+      "applicants": [
+        "生光智慧醫療股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        12,
+        22
+      ],
+      "publication_date_roc": [
+        114,
+        6,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        8,
+        19
+      ],
+      "oa_doc_no": "11420819077",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "cited_prior_art": [
+        "CN114567890",
+        "US20220045678"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-015",
+      "patent_no": "TW202597654",
+      "title": "穿戴式多模態生理感測之動作補償方法",
+      "applicants": [
+        "心動感測股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        1,
+        10
+      ],
+      "publication_date_roc": [
+        114,
+        9,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        11,
+        25
+      ],
+      "oa_doc_no": "11421125014",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        5
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-016",
+      "patent_no": "TW202596543",
+      "title": "基於小波分解之手錶心率偵測方法",
+      "applicants": [
+        "蘋宇穿戴股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        3,
+        9
+      ],
+      "publication_date_roc": [
+        113,
+        11,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        2,
+        18
+      ],
+      "oa_doc_no": "11420218012",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "TW201712345",
+        "US20180123456"
+      ],
+      "has_reexam": true,
+      "reexam_outcome": "不予專利處分"
+    },
+    {
+      "case_id": "CASE-DEMO-017",
+      "patent_no": "TW202595432",
+      "title": "具延遲補償之遠端手術機器人觸覺回饋系統",
+      "applicants": [
+        "微手智控股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        8,
+        11
+      ],
+      "publication_date_roc": [
+        114,
+        4,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        10,
+        14
+      ],
+      "oa_doc_no": "11421014066",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        7
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-018",
+      "patent_no": "TW202594321",
+      "title": "pH 響應型聚合物藥物緩釋奈米微粒",
+      "applicants": [
+        "昇研生技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        27
+      ],
+      "publication_date_roc": [
+        115,
+        2,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        3,
+        7
+      ],
+      "oa_doc_no": "11520307054",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "CN112345678",
+        "US20210156789"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-019",
+      "patent_no": "TW202593210",
+      "title": "含氫氧基磷灰石之 PCL/PLA 共混骨支架",
+      "applicants": [
+        "再生骨醫材股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        7,
+        19
+      ],
+      "publication_date_roc": [
+        114,
+        2,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        5,
+        15
+      ],
+      "oa_doc_no": "11420515022",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "CN108888999"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-020",
+      "patent_no": "TW202592109",
+      "title": "具抗菌奈米纖維素塗層之食品保鮮膜",
+      "applicants": [
+        "綠鮮包材股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        2,
+        22
+      ],
+      "publication_date_roc": [
+        114,
+        12,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        2,
+        27
+      ],
+      "oa_doc_no": "11520227033",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "JP2021045678",
+        "TW202012345"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-021",
+      "patent_no": "TW202591098",
+      "title": "鋰離子電池用氟化碳酸酯系電解液添加劑",
+      "applicants": [
+        "格能電化股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        11,
+        2
+      ],
+      "publication_date_roc": [
+        114,
+        5,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        6,
+        30
+      ],
+      "oa_doc_no": "11420630021",
+      "rejection_types": [
+        "103_obviousness",
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        1,
+        4,
+        5
+      ],
+      "cited_prior_art": [
+        "CN112233445",
+        "US20210054321"
+      ],
+      "has_reexam": true,
+      "reexam_outcome": "不予專利處分"
+    },
+    {
+      "case_id": "CASE-DEMO-022",
+      "patent_no": "TW202590987",
+      "title": "高鋰含量層狀氧化物固態電池正極材料",
+      "applicants": [
+        "晶躍能源股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        3,
+        1
+      ],
+      "publication_date_roc": [
+        114,
+        11,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        1,
+        17
+      ],
+      "oa_doc_no": "11520117044",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "US20220033456"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-023",
+      "patent_no": "TW202589876",
+      "title": "TiN 鍍層不鏽鋼氫燃料電池雙極板",
+      "applicants": [
+        "氫銳能源股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        6,
+        5
+      ],
+      "publication_date_roc": [
+        113,
+        12,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        4,
+        25
+      ],
+      "oa_doc_no": "11420425099",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "CN113001234",
+        "US20180056789"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-024",
+      "patent_no": "TW202588765",
+      "title": "兩性離子改質聚醯胺海水淡化薄膜",
+      "applicants": [
+        "凈研膜材股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        17
+      ],
+      "publication_date_roc": [
+        115,
+        1,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        2,
+        4
+      ],
+      "oa_doc_no": "11520204017",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        5
+      ],
+      "cited_prior_art": [
+        "US20200234123",
+        "WO2021123456"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-025",
+      "patent_no": "TW202587654",
+      "title": "氮摻雜二氧化鈦奈米棒光觸媒",
+      "applicants": [
+        "澈光環境科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        9,
+        21
+      ],
+      "publication_date_roc": [
+        114,
+        4,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        7,
+        8
+      ],
+      "oa_doc_no": "11420708023",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        3
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-026",
+      "patent_no": "TW202586543",
+      "title": "高深寬比矽蝕刻用氟碳混合氣體組成",
+      "applicants": [
+        "新晶半導體股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        2,
+        8
+      ],
+      "publication_date_roc": [
+        113,
+        10,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        1,
+        22
+      ],
+      "oa_doc_no": "11420122055",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "TW201712789",
+        "US20180198765"
+      ],
+      "has_reexam": true,
+      "reexam_outcome": "不予專利處分"
+    },
+    {
+      "case_id": "CASE-DEMO-027",
+      "patent_no": "TW202585432",
+      "title": "化學增幅型 DUV 光阻劑配方",
+      "applicants": [
+        "銳光半導體材料股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        4,
+        26
+      ],
+      "publication_date_roc": [
+        113,
+        11,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        2,
+        7
+      ],
+      "oa_doc_no": "11420207011",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "JP2019112233"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-028",
+      "patent_no": "TW202584321",
+      "title": "具表面鈍化之鈣鈦礦量子點發光二極體",
+      "applicants": [
+        "晶銘光電股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        13
+      ],
+      "publication_date_roc": [
+        115,
+        2,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        3,
+        15
+      ],
+      "oa_doc_no": "11520315062",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "CN114567123",
+        "US20220123987"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-029",
+      "patent_no": "TW202583210",
+      "title": "雙軸同步式折疊裝置鉸鏈結構",
+      "applicants": [
+        "合鋐機構股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        8
+      ],
+      "publication_date_roc": [
+        114,
+        12,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        1,
+        30
+      ],
+      "oa_doc_no": "11520130088",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        4,
+        8
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-030",
+      "patent_no": "TW202582109",
+      "title": "具自適應阻抗之機器手臂力控制方法",
+      "applicants": [
+        "協作機器股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        1,
+        19
+      ],
+      "publication_date_roc": [
+        113,
+        9,
+        1
+      ],
+      "oa_date_roc": [
+        113,
+        11,
+        7
+      ],
+      "oa_doc_no": "11321107027",
+      "rejection_types": [
+        "103_obviousness",
+        "other"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "cited_prior_art": [
+        "TW202011234",
+        "TW202012109",
+        "US20210112233"
+      ],
+      "has_reexam": true,
+      "reexam_outcome": "不予專利處分"
+    },
+    {
+      "case_id": "CASE-DEMO-031",
+      "patent_no": "TW2026100001",
+      "title": "固態電池複合正極塗布方法",
+      "applicants": [
+        "晶碩固態能源股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        4,
+        20
+      ],
+      "publication_date_roc": [
+        115,
+        6,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        2,
+        14
+      ],
+      "oa_doc_no": "11520214011",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "JP2022100001",
+        "TW202011111"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-032",
+      "patent_no": "TW2026100002",
+      "title": "毫米波相位陣列波束成形方法",
+      "applicants": [
+        "崇瀚通訊股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        7,
+        1
+      ],
+      "publication_date_roc": [
+        115,
+        4,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        3,
+        5
+      ],
+      "oa_doc_no": "11520305020",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "EP3654321",
+        "US10987654"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-033",
+      "patent_no": "TW2026100003",
+      "title": "矽光子馬赫詹德調變器結構",
+      "applicants": [
+        "量光半導體股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        9,
+        25
+      ],
+      "publication_date_roc": [
+        115,
+        7,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        4,
+        12
+      ],
+      "oa_doc_no": "11520412005",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "US10456789"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-034",
+      "patent_no": "TW2026100004",
+      "title": "mRNA 疫苗脂質奈米顆粒配方",
+      "applicants": [
+        "澤生生物科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        5
+      ],
+      "publication_date_roc": [
+        115,
+        5,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        5,
+        9
+      ],
+      "oa_doc_no": "11520509033",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "US11234567",
+        "WO2021100001"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-035",
+      "patent_no": "TW2026100005",
+      "title": "經導管主動脈瓣膜置換裝置",
+      "applicants": [
+        "晟康醫療器材股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        12,
+        12
+      ],
+      "publication_date_roc": [
+        114,
+        12,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        9,
+        18
+      ],
+      "oa_doc_no": "11420918001",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        3
+      ],
+      "cited_prior_art": [
+        "EP3123456",
+        "US10876543"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-036",
+      "patent_no": "TW2026100006",
+      "title": "生物可分解 PLGA 共聚酯製備方法",
+      "applicants": [
+        "柏鑫材料化工股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        7
+      ],
+      "publication_date_roc": [
+        115,
+        3,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        1,
+        22
+      ],
+      "oa_doc_no": "11520122044",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "TW201912345",
+        "US10345678"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-037",
+      "patent_no": "TW2026100007",
+      "title": "邊緣裝置神經網路稀疏化推論方法",
+      "applicants": [
+        "銳碁智能科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        8,
+        30
+      ],
+      "publication_date_roc": [
+        115,
+        6,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        6,
+        3
+      ],
+      "oa_doc_no": "11520603017",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "CN112345678",
+        "US11567890"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-038",
+      "patent_no": "TW2026100008",
+      "title": "低軌衛星 Ku 頻段陣列天線結構",
+      "applicants": [
+        "翔太空通訊股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        10,
+        8
+      ],
+      "publication_date_roc": [
+        114,
+        8,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        11,
+        20
+      ],
+      "oa_doc_no": "11421120002",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "TW201734567",
+        "US10234567"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-039",
+      "patent_no": "TW2026100009",
+      "title": "海鮮急速冷凍保鮮處理方法",
+      "applicants": [
+        "鮮鋐食品股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        2,
+        18
+      ],
+      "publication_date_roc": [
+        114,
+        10,
+        15
+      ],
+      "oa_date_roc": [
+        114,
+        12,
+        11
+      ],
+      "oa_doc_no": "11421211050",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "JP2019112233",
+        "TW201823456"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-040",
+      "patent_no": "TW2026100010",
+      "title": "高熵合金切削刀具塗層",
+      "applicants": [
+        "晟泰材料科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        1,
+        30
+      ],
+      "publication_date_roc": [
+        114,
+        11,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        10,
+        17
+      ],
+      "oa_doc_no": "11421017088",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "TW201611234",
+        "US10765432"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-041",
+      "patent_no": "TW2026100011",
+      "title": "EUV 微影遮罩多層膜結構",
+      "applicants": [
+        "皓晶微影科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        3,
+        5
+      ],
+      "publication_date_roc": [
+        115,
+        1,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        2,
+        28
+      ],
+      "oa_doc_no": "11520228006",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "US10567123"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-042",
+      "patent_no": "TW2026100012",
+      "title": "車載顯示器防眩光學鍍膜",
+      "applicants": [
+        "昱光光電股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        4,
+        4
+      ],
+      "publication_date_roc": [
+        115,
+        2,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        3,
+        17
+      ],
+      "oa_doc_no": "11520317012",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "TW201912200"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-043",
+      "patent_no": "TW2026100013",
+      "title": "手腕式心電圖量測手環",
+      "applicants": [
+        "京醫穿戴科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        11,
+        27
+      ],
+      "publication_date_roc": [
+        114,
+        9,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        10,
+        9
+      ],
+      "oa_doc_no": "11421009077",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "US10456000"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-044",
+      "patent_no": "TW2026100014",
+      "title": "O-RAN 開放介面下行排程方法",
+      "applicants": [
+        "寶橋通訊股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        18
+      ],
+      "publication_date_roc": [
+        115,
+        3,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        4,
+        25
+      ],
+      "oa_doc_no": "11520425019",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "US11000123"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-045",
+      "patent_no": "TW2026100015",
+      "title": "HER2 標靶抗體藥物複合物",
+      "applicants": [
+        "翔奕生技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        7,
+        14
+      ],
+      "publication_date_roc": [
+        115,
+        4,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        5,
+        22
+      ],
+      "oa_doc_no": "11520522003",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "WO2020100001"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-046",
+      "patent_no": "TW2026100016",
+      "title": "半導體製程流體控制閥",
+      "applicants": [
+        "欣諧精密股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        6
+      ],
+      "publication_date_roc": [
+        115,
+        5,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        6,
+        12
+      ],
+      "oa_doc_no": "11520612021",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "US10876111"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-047",
+      "patent_no": "TW2026100017",
+      "title": "數位微流體 PCR 晶片",
+      "applicants": [
+        "微滴生醫股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        8,
+        8
+      ],
+      "publication_date_roc": [
+        115,
+        6,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        6,
+        27
+      ],
+      "oa_doc_no": "11520627043",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "US10999888"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-048",
+      "patent_no": "TW2026100018",
+      "title": "鈣鈦礦量子點背光膜",
+      "applicants": [
+        "昱晶光電股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        9,
+        1
+      ],
+      "publication_date_roc": [
+        115,
+        7,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        7,
+        8
+      ],
+      "oa_doc_no": "11520708099",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "CN111234567"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-049",
+      "patent_no": "TW2026100019",
+      "title": "車用毫米波雷達訊號處理電路",
+      "applicants": [
+        "晨昱車用電子股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        1
+      ],
+      "publication_date_roc": [
+        115,
+        3,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        4,
+        7
+      ],
+      "oa_doc_no": "11520407010",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        3
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-050",
+      "patent_no": "TW2026100020",
+      "title": "工業機器人視覺定位裝置",
+      "applicants": [
+        "維信智能股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        16
+      ],
+      "publication_date_roc": [
+        115,
+        4,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        5,
+        14
+      ],
+      "oa_doc_no": "11520514013",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        2
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-051",
+      "patent_no": "TW2026100021",
+      "title": "智慧家庭氣象感測系統",
+      "applicants": [
+        "鴻晟物聯股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        7,
+        11
+      ],
+      "publication_date_roc": [
+        115,
+        5,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        6,
+        6
+      ],
+      "oa_doc_no": "11520606025",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        3
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-052",
+      "patent_no": "TW2026100022",
+      "title": "智慧路燈照度自動調整系統",
+      "applicants": [
+        "瑞均智慧城市股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        8,
+        9
+      ],
+      "publication_date_roc": [
+        115,
+        6,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        6,
+        30
+      ],
+      "oa_doc_no": "11520630007",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        3
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-053",
+      "patent_no": "TW2026100023",
+      "title": "醫療影像深度學習分割方法",
+      "applicants": [
+        "華育醫療影像股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        10,
+        2
+      ],
+      "publication_date_roc": [
+        115,
+        7,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        7,
+        19
+      ],
+      "oa_doc_no": "11520719041",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        3
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-054",
+      "patent_no": "TW2026100024",
+      "title": "電動車馬達控制電路",
+      "applicants": [
+        "旭騰動力股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        11,
+        22
+      ],
+      "publication_date_roc": [
+        115,
+        8,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        8,
+        5
+      ],
+      "oa_doc_no": "11520805028",
+      "rejection_types": [
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        2
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-055",
+      "patent_no": "TW2026100025",
+      "title": "通用人工智慧推理引擎",
+      "applicants": [
+        "元宇宙科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        4,
+        8
+      ],
+      "publication_date_roc": [
+        115,
+        2,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        3,
+        28
+      ],
+      "oa_doc_no": "11520328059",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-056",
+      "patent_no": "TW2026100026",
+      "title": "高活性催化劑製備方法",
+      "applicants": [
+        "金匯化工股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        17
+      ],
+      "publication_date_roc": [
+        115,
+        3,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        5,
+        2
+      ],
+      "oa_doc_no": "11520502021",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-057",
+      "patent_no": "TW2026100027",
+      "title": "無創血糖監測裝置",
+      "applicants": [
+        "健翔生醫股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        23
+      ],
+      "publication_date_roc": [
+        115,
+        4,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        6,
+        18
+      ],
+      "oa_doc_no": "11520618036",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-058",
+      "patent_no": "TW2026100028",
+      "title": "區塊鏈分散式共識方法",
+      "applicants": [
+        "鏈源科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        7,
+        30
+      ],
+      "publication_date_roc": [
+        115,
+        5,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        7,
+        8
+      ],
+      "oa_doc_no": "11520708022",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-059",
+      "patent_no": "TW2026100029",
+      "title": "通訊協定優化方法",
+      "applicants": [
+        "元越網通股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        8,
+        14
+      ],
+      "publication_date_roc": [
+        115,
+        6,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        7,
+        25
+      ],
+      "oa_doc_no": "11520725003",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-060",
+      "patent_no": "TW2026100030",
+      "title": "抗發炎肽段組合物",
+      "applicants": [
+        "健泰生技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        9,
+        5
+      ],
+      "publication_date_roc": [
+        115,
+        7,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        8,
+        11
+      ],
+      "oa_doc_no": "11520811044",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-061",
+      "patent_no": "TW2026100031",
+      "title": "半導體散熱結構",
+      "applicants": [
+        "柏均熱導股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        10,
+        11
+      ],
+      "publication_date_roc": [
+        115,
+        8,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        8,
+        28
+      ],
+      "oa_doc_no": "11520828017",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-062",
+      "patent_no": "TW2026100032",
+      "title": "資料壓縮處理方法",
+      "applicants": [
+        "新越資訊股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        11,
+        14
+      ],
+      "publication_date_roc": [
+        115,
+        9,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        9,
+        10
+      ],
+      "oa_doc_no": "11520910026",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-063",
+      "patent_no": "TW2026100033",
+      "title": "電商平台動態定價方法",
+      "applicants": [
+        "優購商務股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        4,
+        30
+      ],
+      "publication_date_roc": [
+        115,
+        2,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        4,
+        18
+      ],
+      "oa_doc_no": "11520418050",
+      "rejection_types": [
+        "101_subject_matter"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-064",
+      "patent_no": "TW2026100034",
+      "title": "矩陣求解最佳化演算法",
+      "applicants": [
+        "元算科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        28
+      ],
+      "publication_date_roc": [
+        115,
+        3,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        5,
+        13
+      ],
+      "oa_doc_no": "11520513061",
+      "rejection_types": [
+        "101_subject_matter"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-065",
+      "patent_no": "TW2026100035",
+      "title": "可摺疊鍵盤結構",
+      "applicants": [
+        "盛凌電子股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        21
+      ],
+      "publication_date_roc": [
+        115,
+        4,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        5,
+        30
+      ],
+      "oa_doc_no": "11520530072",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "TW202000035"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-066",
+      "patent_no": "TW2026100036",
+      "title": "智慧水表結構",
+      "applicants": [
+        "源騰水務股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        7,
+        19
+      ],
+      "publication_date_roc": [
+        115,
+        5,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        6,
+        24
+      ],
+      "oa_doc_no": "11520624083",
+      "rejection_types": [
+        "other"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "TW202000036"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-067",
+      "patent_no": "TW2026100037",
+      "title": "電動車車載充電器熱管理電路",
+      "applicants": [
+        "優汎動力股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        3,
+        19
+      ],
+      "publication_date_roc": [
+        115,
+        1,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        2,
+        19
+      ],
+      "oa_doc_no": "11520219005",
+      "rejection_types": [
+        "103_obviousness",
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "cited_prior_art": [
+        "TW201912001",
+        "US10456000"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-068",
+      "patent_no": "TW2026100038",
+      "title": "醫療影像儲存與檢索系統",
+      "applicants": [
+        "健旭醫資股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        4,
+        24
+      ],
+      "publication_date_roc": [
+        115,
+        2,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        3,
+        21
+      ],
+      "oa_doc_no": "11520321009",
+      "rejection_types": [
+        "102_novelty",
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "US10765111"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-069",
+      "patent_no": "TW2026100039",
+      "title": "可重組態加密處理器",
+      "applicants": [
+        "陞鋒資安股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        24
+      ],
+      "publication_date_roc": [
+        115,
+        3,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        4,
+        16
+      ],
+      "oa_doc_no": "11520416018",
+      "rejection_types": [
+        "103_obviousness",
+        "other"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "TW201500001",
+        "US10543210"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-070",
+      "patent_no": "TW2026100040",
+      "title": "穿戴式溫度感測手套",
+      "applicants": [
+        "翔威穿戴股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        18
+      ],
+      "publication_date_roc": [
+        115,
+        4,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        5,
+        21
+      ],
+      "oa_doc_no": "11520521030",
+      "rejection_types": [
+        "103_obviousness",
+        "other"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "TW202100888",
+        "US10888111"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-071",
+      "patent_no": "TW2026100041",
+      "title": "氫燃料電池雙極板結構",
+      "applicants": [
+        "氫晟能源股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        8,
+        13
+      ],
+      "publication_date_roc": [
+        115,
+        6,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        7,
+        22
+      ],
+      "oa_doc_no": "11520722049",
+      "rejection_types": [
+        "102_novelty",
+        "103_obviousness",
+        "antecedent_basis"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "cited_prior_art": [
+        "TW202000333",
+        "US10333444"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-072",
+      "patent_no": "TW2026100042",
+      "title": "氣象資料 AI 預測系統",
+      "applicants": [
+        "瀚晨智能股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        9,
+        14
+      ],
+      "publication_date_roc": [
+        115,
+        7,
+        15
+      ],
+      "oa_date_roc": [
+        115,
+        8,
+        26
+      ],
+      "oa_doc_no": "11520826062",
+      "rejection_types": [
+        "103_obviousness",
+        "antecedent_basis",
+        "other"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "cited_prior_art": [
+        "CN112333444",
+        "US11112222"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-073",
+      "patent_no": "US18000001",
+      "title": "GaN HEMT Power Transistor Structure",
+      "applicants": [
+        "Pinnacle Power Semi, Inc."
+      ],
+      "filing_date_roc": [
+        113,
+        3,
+        8
+      ],
+      "publication_date_roc": [
+        114,
+        12,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        10,
+        22
+      ],
+      "oa_doc_no": "USOA-2025-10001",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "US10543678",
+        "US10876123"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-074",
+      "patent_no": "US18000002",
+      "title": "Wearable Continuous Glucose Monitor with Adhesive Patch",
+      "applicants": [
+        "Helix Bio Wearables, Inc."
+      ],
+      "filing_date_roc": [
+        113,
+        5,
+        11
+      ],
+      "publication_date_roc": [
+        115,
+        1,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        1,
+        17
+      ],
+      "oa_doc_no": "USOA-2026-01234",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "US10333555",
+        "US10876200"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-075",
+      "patent_no": "US18000003",
+      "title": "Dynamic Load Balancing for EV Charging Stations",
+      "applicants": [
+        "Voltcore Networks, Inc."
+      ],
+      "filing_date_roc": [
+        113,
+        8,
+        22
+      ],
+      "publication_date_roc": [
+        115,
+        6,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        6,
+        9
+      ],
+      "oa_doc_no": "USOA-2026-06789",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "US10654321",
+        "US10987111"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-076",
+      "patent_no": "US18000004",
+      "title": "Federated Learning with Differential Privacy",
+      "applicants": [
+        "NovaPrivacy AI Labs, Inc."
+      ],
+      "filing_date_roc": [
+        113,
+        4,
+        3
+      ],
+      "publication_date_roc": [
+        114,
+        12,
+        15
+      ],
+      "oa_date_roc": [
+        114,
+        11,
+        19
+      ],
+      "oa_doc_no": "USOA-2025-11567",
+      "rejection_types": [
+        "103_obviousness"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3
+      ],
+      "cited_prior_art": [
+        "US10111222",
+        "US10222333"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-077",
+      "patent_no": "US18000005",
+      "title": "Solid-state LiDAR with MEMS Mirror",
+      "applicants": [
+        "Lumosense Inc."
+      ],
+      "filing_date_roc": [
+        113,
+        6,
+        26
+      ],
+      "publication_date_roc": [
+        115,
+        3,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        4,
+        3
+      ],
+      "oa_doc_no": "USOA-2026-04001",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1,
+        2
+      ],
+      "cited_prior_art": [
+        "US10765111"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-078",
+      "patent_no": "US18000006",
+      "title": "Software Defined Network Controller with Flow Caching",
+      "applicants": [
+        "Stratum Networks Inc."
+      ],
+      "filing_date_roc": [
+        113,
+        9,
+        9
+      ],
+      "publication_date_roc": [
+        115,
+        7,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        7,
+        16
+      ],
+      "oa_doc_no": "USOA-2026-07555",
+      "rejection_types": [
+        "102_novelty"
+      ],
+      "affected_claims": [
+        1
+      ],
+      "cited_prior_art": [
+        "US10999000"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-079",
+      "patent_no": "TW2026100043",
+      "title": "醫療影像深度學習病灶分割模型",
+      "applicants": [
+        "健翼醫療科技股份有限公司"
+      ],
+      "filing_date_roc": [
+        112,
+        8,
+        15
+      ],
+      "publication_date_roc": [
+        114,
+        6,
+        1
+      ],
+      "oa_date_roc": [
+        114,
+        8,
+        14
+      ],
+      "oa_doc_no": "11420814099",
+      "rejection_types": [],
+      "affected_claims": [],
+      "cited_prior_art": [],
+      "has_reexam": false,
+      "reexam_outcome": null
+    },
+    {
+      "case_id": "CASE-DEMO-080",
+      "patent_no": "TW2026100044",
+      "title": "智慧家庭整合控制平台",
+      "applicants": [
+        "昱晨智能家居股份有限公司"
+      ],
+      "filing_date_roc": [
+        113,
+        2,
+        6
+      ],
+      "publication_date_roc": [
+        115,
+        1,
+        1
+      ],
+      "oa_date_roc": [
+        115,
+        4,
+        1
+      ],
+      "oa_doc_no": "11520401099",
+      "rejection_types": [
+        "101_subject_matter",
+        "102_novelty",
+        "103_obviousness",
+        "antecedent_basis",
+        "other"
+      ],
+      "affected_claims": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "cited_prior_art": [
+        "US10444555",
+        "US10666777"
+      ],
+      "has_reexam": false,
+      "reexam_outcome": null
+    }
+  ]
+}

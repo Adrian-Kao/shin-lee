@@ -1,0 +1,101 @@
+{
+  "case_id": "CASE-DEMO-022",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 394,
+    "estimated_cost_usd": 0.017558999999999998,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3883
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-03-18",
+      "2026-03-17"
+    ],
+    "received_date": "2026-01-17",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US20220033456"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0779999999795109,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -79,
+    "deadline_warnings": [
+      "⚠️  Only -79 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 79 days ago."
+    ],
+    "received_date": "2026-01-17",
+    "recommended_internal_deadline": "2026-03-11T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202590987"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-03-18T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202600987",
+      "score": 0.8837317824363708,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種三維點雲資料之降採樣方法，特別是應用於自駕車 LiDAR 系統前處理階段，以固定體素網格將點雲分區並於每個體素內僅保留質心點以降低資料量之演算法。\n\n【先前技術】\n車載 LiDAR 每秒產生 1~3 百萬點之三維點雲資料，於後續物件偵測與追蹤前須先降採樣以符合即時處理要求。習知隨"
+    },
+    {
+      "patent_no": "US18000006",
+      "score": 0.8738632202148438,
+      "section": "claim_1",
+      "text_preview": "1. An SDN controller comprising: a flow table receiver; a flow rule generator; and a flow cache configured to store recently generated rules for repeated lookup"
+    },
+    {
+      "patent_no": "TW202605432",
+      "score": 0.8724616765975952,
+      "section": "claim_1",
+      "text_preview": "一種 LED 驅動積體電路，包括：一電流控制單元；以及一自適應漣波抑制電路，用以依輸入電壓變化與負載條件即時調整補償電流。"
+    }
+  ],
+  "status": "ok"
+}

@@ -1,0 +1,103 @@
+{
+  "case_id": "CASE-DEMO-077",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 363,
+    "estimated_cost_usd": 0.016512,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3689
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-06-02",
+      "2026-07-03"
+    ],
+    "received_date": "2026-04-03",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10765111"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "35 U.S.C. § 102"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.06300000008195639,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -3,
+    "deadline_warnings": [
+      "⚠️  Only -3 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 3 days ago."
+    ],
+    "received_date": "2026-04-03",
+    "recommended_internal_deadline": "2026-05-26T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US18000005"
+        ],
+        "confidence": 0.91,
+        "examiner_argument_preview": "Examiner alleges the claims lack novelty over the primary reference, asserting that all elements are disclosed therein.",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-06-02T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202602109",
+      "score": 0.8937174677848816,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之方法，其中該睡眠間隔之上限為600秒。"
+    },
+    {
+      "patent_no": "TW2026100014",
+      "score": 0.8920056223869324,
+      "section": "claim_1",
+      "text_preview": "一種下行排程方法，包括：於 O-DU 接收 UE 之通道狀態回報；依該通道狀態以 proportional-fair 演算法分配 PRB；經 O-FH 介面傳送至 O-RU。"
+    },
+    {
+      "patent_no": "TW202587654",
+      "score": 0.889923632144928,
+      "section": "abstract",
+      "text_preview": "一種應用於工業廢水處理之氮摻雜二氧化鈦奈米棒光觸媒，於可見光下對有機染料展現高分解效率。"
+    }
+  ],
+  "status": "ok"
+}

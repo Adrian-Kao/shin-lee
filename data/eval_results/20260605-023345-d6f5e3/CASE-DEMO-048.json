@@ -1,0 +1,100 @@
+{
+  "case_id": "CASE-DEMO-048",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 394,
+    "estimated_cost_usd": 0.016746,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3612
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-09-06",
+      "2026-09-08"
+    ],
+    "received_date": "2026-07-08",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "CN111234567"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.031999999890103936,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 94,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-09-06 (weekend/holiday) to 2026-09-07."
+    ],
+    "received_date": "2026-07-08",
+    "recommended_internal_deadline": "2026-08-31T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202131234"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-09-07T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202606543",
+      "score": 0.8703349828720093,
+      "section": "claim_5",
+      "text_preview": "如請求項1所述之方法，其中該錯位方向之判斷另依接收端傳回之充電效率訊號修正。"
+    },
+    {
+      "patent_no": "TW202594321",
+      "score": 0.8538691997528076,
+      "section": "body",
+      "text_preview": "羧基質子化為 -COOH，外殼吸水溶脹至原體積之 2~3 倍，孔隙增大至 8~15 nm，藥物快速擴散釋出。\n\n請參閱第三圖及第四圖，於 PBS pH 7.4、37°C 模擬血液環境下 24 小時藥物累積釋放率 13%；於 PBS pH 5.0、37°C 模擬腫瘤微環境下 24 小時累積釋放率 84%；於 4T1 乳癌"
+    },
+    {
+      "patent_no": "TW2026100006",
+      "score": 0.8377106189727783,
+      "section": "claim_1",
+      "text_preview": "一種共聚酯製備方法，包括：將乳酸交酯與乙交酯以 75:25 莫耳比混合；於 110°C 加入雙金屬鋅-鎂催化劑進行開環聚合；於聚合完成後沉澱純化。"
+    }
+  ],
+  "status": "ok"
+}

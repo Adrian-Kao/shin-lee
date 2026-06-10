@@ -1,0 +1,101 @@
+{
+  "case_id": "CASE-DEMO-022",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 394,
+    "estimated_cost_usd": 0.016524,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3538
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-03-18",
+      "2026-03-17"
+    ],
+    "received_date": "2026-01-17",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US20220033456"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06199999991804361,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -79,
+    "deadline_warnings": [
+      "⚠️  Only -79 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 79 days ago."
+    ],
+    "received_date": "2026-01-17",
+    "recommended_internal_deadline": "2026-03-11T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202590987"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2026-03-18T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100009",
+      "score": 0.8702940940856934,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之方法，其中該噴霧處理時間介於 30 秒至 90 秒。"
+    },
+    {
+      "patent_no": "TW2026100033",
+      "score": 0.8661365509033203,
+      "section": "abstract",
+      "text_preview": "電商平台動態定價方法。"
+    },
+    {
+      "patent_no": "TW202608765",
+      "score": 0.8651365637779236,
+      "section": "claim_1",
+      "text_preview": "一種狀態估測方法，包括：取得電池之即時電壓與電流；以擴展卡爾曼濾波估算 SOC；計算量測殘差；依該量測殘差動態調整過程噪音共變異數矩陣 Q 與量測噪音共變異數矩陣 R。"
+    }
+  ],
+  "status": "ok"
+}

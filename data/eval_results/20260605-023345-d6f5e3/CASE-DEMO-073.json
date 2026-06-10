@@ -1,0 +1,108 @@
+{
+  "case_id": "CASE-DEMO-073",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 385,
+    "estimated_cost_usd": 0.01749,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3905
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-12-21",
+      "2026-01-22"
+    ],
+    "received_date": "2025-10-22",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10876123",
+          "US10543678"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "35 U.S.C. § 103"
+      }
+    ],
+    "response_months": 3
+  },
+  "latency_sec": 0.10899999993853271,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -165,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2025-12-21 (weekend/holiday) to 2025-12-22.",
+      "⚠️  Only -165 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 165 days ago."
+    ],
+    "received_date": "2025-10-22",
+    "recommended_internal_deadline": "2025-12-15T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US18000001",
+          "US18000001"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "Examiner alleges the claims are obvious in view of the cited references. The combination of features is asserted to be a predictable result of routine engineeri",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-12-22T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100035",
+      "score": 0.8646801710128784,
+      "section": "claim_1",
+      "text_preview": "一種可摺疊鍵盤，包括：一第一鍵盤本體；一第二鍵盤本體；及連接於兩本體間之樞轉軸。"
+    },
+    {
+      "patent_no": "TW202594321",
+      "score": 0.8587425947189331,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之奈米微粒，其中該藥物為抗癌藥物 doxorubicin。"
+    },
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8438650369644165,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種智慧電網之需量反應（Demand Response, DR）控制方法，特別是由聚合商透過雙向通訊收集多用戶之可調控負載，並以階層式優化算法在滿足用戶舒適度限制下達成電網調度目標之控制方法。\n\n【先前技術】\n再生能源佔比提升使電網供電端波動加劇，電網調度中心需於秒級至小時級時間尺度"
+    }
+  ],
+  "status": "ok"
+}

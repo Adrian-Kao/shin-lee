@@ -1,0 +1,101 @@
+{
+  "case_id": "CASE-DEMO-043",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 393,
+    "estimated_cost_usd": 0.016356,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3487
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-12-08",
+      "2025-12-09"
+    ],
+    "received_date": "2025-10-09",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10456000"
+        ],
+        "rejection_type": "102_novelty",
+        "statute": "專利法第22條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.04699999978765845,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -179,
+    "deadline_warnings": [
+      "⚠️  Only -179 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 179 days ago."
+    ],
+    "received_date": "2025-10-09",
+    "recommended_internal_deadline": "2025-12-01T23:59:00+08:00",
+    "rejection_types": [
+      "102_novelty"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "US10456000"
+        ],
+        "confidence": 0.9,
+        "examiner_argument_preview": "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。",
+        "rejection_type": "102_novelty"
+      }
+    ],
+    "statutory_deadline": "2025-12-08T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202612345",
+      "score": 0.8885700702667236,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之裝置，其中該相變化材料層內含金屬泡沫骨架以提升熱導率。"
+    },
+    {
+      "patent_no": "TW2026100025",
+      "score": 0.8865646123886108,
+      "section": "abstract",
+      "text_preview": "通用人工智慧推理引擎。"
+    },
+    {
+      "patent_no": "TW2026100037",
+      "score": 0.8818942308425903,
+      "section": "abstract",
+      "text_preview": "電動車車載充電器熱管理電路。"
+    }
+  ],
+  "status": "ok"
+}

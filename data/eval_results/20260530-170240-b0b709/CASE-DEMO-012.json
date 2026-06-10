@@ -1,0 +1,138 @@
+{
+  "case_id": "CASE-DEMO-012",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 2,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 1556,
+    "estimated_cost_usd": 0.043643999999999995,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 6768
+  },
+  "drafts": [
+    {
+      "confidence": 0.86,
+      "draft_text_chars": 398,
+      "draft_text_lines": 9,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "專利法第43條第2項",
+        "專利法第26條第2項"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。本案擬以將該用語改為「一第一電動車」之方式建立先行詞，並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，兼顧明確性與技術完整性。"
+    },
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-2",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2025-01-14",
+      "2025-01-15"
+    ],
+    "received_date": "2024-11-15",
+    "rejection_types": [
+      "103_obviousness",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          3,
+          8
+        ],
+        "cited_prior_art": [
+          "US20200234567",
+          "TW201912345"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      },
+      {
+        "affected_claims": [
+          8
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.030999999959021807,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": -501,
+    "deadline_warnings": [
+      "⚠️  Only -501 days remaining — escalate immediately.",
+      "⛔ DEADLINE PASSED 501 days ago."
+    ],
+    "received_date": "2024-11-15",
+    "recommended_internal_deadline": "2025-01-07T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness",
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.93,
+        "examiner_argument_preview": "審查官指出請求項1之用語於所依附之請求項及本項之技術內容中並未見其先行詞，致申請專利範圍不明確，不符專利法第26條第2項之規定。",
+        "rejection_type": "antecedent_basis"
+      },
+      {
+        "affected_claims": [
+          1,
+          3,
+          8
+        ],
+        "cited_prior_art": [
+          "TW202601098",
+          "TW202601098"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2025-01-14T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202601098",
+      "score": 0.8695902824401855,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種基於主動學習（Active Learning）之製造瑕疵檢測方法，特別是應用於 PCB 表面缺陷檢測時，以卷積神經網路（CNN）集成模型推論並依預測不確定度挑選樣本送人工標註以降低總標註成本之 AI 檢測方法。\n\n【先前技術】\nPCB 製造產線之表面缺陷檢測傳統以人工目視為主，近"
+    },
+    {
+      "patent_no": "TW202593210",
+      "score": 0.8644143342971802,
+      "section": "claim_1",
+      "text_preview": "一種骨支架，包括：一 PCL/PLA 共混基材，其中 PCL 與 PLA 之重量比介於 4:6 至 6:4 之間；以及氫氧基磷灰石粒子，分散於該基材中。"
+    },
+    {
+      "patent_no": "TW202587654",
+      "score": 0.8643413186073303,
+      "section": "body",
+      "text_preview": ")₂，40 mmol）作為氮源、氟化銨（NH₄F，5 mmol）作為形貌控制劑、去離子水（10 mL）作為水解觸發劑；步驟 S2530，將混合物轉入 50 mL 鐵氟龍襯墊不鏽鋼水熱反應釜，180°C 反應 12 小時；步驟 S2540，自然冷卻後離心收集產物，以去離子水與乙醇各清洗三次；步驟 S2550，於 80°C"
+    }
+  ],
+  "status": "ok"
+}

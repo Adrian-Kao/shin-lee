@@ -1,0 +1,99 @@
+{
+  "case_id": "CASE-DEMO-052",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": false
+  },
+  "cost_meta": {
+    "completion_tokens": 339,
+    "estimated_cost_usd": 0.016214999999999997,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3710
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-08-29",
+      "2026-08-30"
+    ],
+    "received_date": "2026-06-30",
+    "rejection_types": [
+      "antecedent_basis"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          3
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "antecedent_basis",
+        "statute": "專利法第26條第2項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0470000000204891,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 87,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-08-29 (weekend/holiday) to 2026-08-31."
+    ],
+    "received_date": "2026-06-30",
+    "recommended_internal_deadline": "2026-08-24T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          3
+        ],
+        "cited_prior_art": [
+          "US7654321"
+        ],
+        "confidence": 0.7,
+        "examiner_argument_preview": "Generic rejection synthesised from OA text.",
+        "rejection_type": "103_obviousness"
+      }
+    ],
+    "statutory_deadline": "2026-08-31T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100035",
+      "score": 0.8816349506378174,
+      "section": "body",
+      "text_preview": "【技術領域】輸入裝置。\n【實施方式】略。\n"
+    },
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8534446954727173,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種反滲透（RO）海水淡化薄膜，特別是於聚醯胺活性層表面接枝兩性離子聚合物，以提高抗污染性能並維持高鹽分截留率之改質薄膜。\n\n【先前技術】\n海水淡化反滲透薄膜之主要瓶頸在於膜面污染，包括有機物吸附、生物膜成長與無機物結垢，均會造成通量衰減與能耗增加。習知聚醯胺（PA）薄膜表面具苯環疏"
+    },
+    {
+      "patent_no": "TW202601098",
+      "score": 0.8528225421905518,
+      "section": "claim_8",
+      "text_preview": "如請求項1所述之方法，其中該等卷積神經網路模型之輸入解析度介於 512×512 至 1024×1024 之間。"
+    }
+  ],
+  "status": "ok"
+}

@@ -1,0 +1,98 @@
+{
+  "case_id": "CASE-DEMO-066",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 387,
+    "estimated_cost_usd": 0.016338,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3511
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-08-23",
+      "2026-08-24"
+    ],
+    "received_date": "2026-06-24",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [
+          "TW202000036"
+        ],
+        "rejection_type": "other",
+        "statute": "專利法第32條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0779999999795109,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 80,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-08-23 (weekend/holiday) to 2026-08-24."
+    ],
+    "received_date": "2026-06-24",
+    "recommended_internal_deadline": "2026-08-17T23:59:00+08:00",
+    "rejection_types": [
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.83,
+        "examiner_argument_preview": "審查官指出本案與同申請人之新型專利屬一案兩請，依專利法第32條應擇一聲明。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2026-08-24T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202590987",
+      "score": 0.8947979211807251,
+      "section": "claim_3",
+      "text_preview": "如請求項1所述之材料，其與石榴石型固態電解質 Li7La3Zr2O12 直接接觸界面阻抗低於 100 歐姆·公分平方。"
+    },
+    {
+      "patent_no": "TW202612345",
+      "score": 0.880339503288269,
+      "section": "claim_4",
+      "text_preview": "如請求項1所述之裝置，其中該冷卻流道內流通介電冷卻液。"
+    },
+    {
+      "patent_no": "TW202584321",
+      "score": 0.8781075477600098,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之發光二極體，其中該鈣鈦礦量子點為 CsPbBr3。"
+    }
+  ],
+  "status": "ok"
+}

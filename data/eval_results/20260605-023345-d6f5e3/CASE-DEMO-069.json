@@ -1,0 +1,137 @@
+{
+  "case_id": "CASE-DEMO-069",
+  "comparison": {
+    "affected_claims_matches": 0,
+    "affected_claims_total": 2,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 793,
+    "estimated_cost_usd": 0.031257,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 6454
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    },
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-2",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-06-15",
+      "2026-06-16"
+    ],
+    "received_date": "2026-04-16",
+    "rejection_types": [
+      "103_obviousness",
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2
+        ],
+        "cited_prior_art": [
+          "US10543210",
+          "TW201500001"
+        ],
+        "rejection_type": "103_obviousness",
+        "statute": "專利法第22條第2項"
+      },
+      {
+        "affected_claims": [
+          3
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "other",
+        "statute": "專利法第26條第1項"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.0779999999795109,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 10,
+    "deadline_warnings": [
+      "⚠️  Only 10 days remaining — escalate immediately."
+    ],
+    "received_date": "2026-04-16",
+    "recommended_internal_deadline": "2026-06-08T23:59:00+08:00",
+    "rejection_types": [
+      "103_obviousness",
+      "other"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [
+          "US10543210",
+          "TW201500001"
+        ],
+        "confidence": 0.88,
+        "examiner_argument_preview": "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。",
+        "rejection_type": "103_obviousness"
+      },
+      {
+        "affected_claims": [
+          1,
+          2,
+          3
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.85,
+        "examiner_argument_preview": "審查官指出說明書未充分揭露所請技術內容，致該技術領域者無法據以實現，不符專利法第26條第1項。",
+        "rejection_type": "other"
+      }
+    ],
+    "statutory_deadline": "2026-06-15T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW202588765",
+      "score": 0.8952641487121582,
+      "section": "body",
+      "text_preview": "入低溫氧電漿處理機，於 50 W、O₂ 流量 20 sccm 下處理 30 秒，於 PA 表面引入過氧基（-OOH）；步驟 S2420，將活化後薄膜浸入 SBMA 單體水溶液（濃度 5 wt%）並加入鐵離子催化劑（Fe²⁺ 0.1 mM）；步驟 S2430，於 25°C、氮氣保護下進行自由基聚合 2 小時；步驟 S24"
+    },
+    {
+      "patent_no": "TW202609876",
+      "score": 0.8854814171791077,
+      "section": "body",
+      "text_preview": "呈正交配置，以提供雙向之面內剛性。\n\n請參閱第三圖，於模態實驗中以衝擊鎚激振葉片並量測加速度響應，習知單層 GFRP 葉片於 4.2 Hz 處出現第一彎曲模態尖峰，尖峰幅值 18 dB；本實施例於同一頻率處尖峰幅值降至 5.6 dB，顯示夾層阻尼結構對顫振之抑制效果。\n\n請參閱第四圖，當葉片殼體受到面外彎曲時，第一玻璃"
+    },
+    {
+      "patent_no": "TW202584321",
+      "score": 0.8820751905441284,
+      "section": "claim_2",
+      "text_preview": "如請求項1所述之發光二極體，其中該鈣鈦礦量子點為 CsPbBr3。"
+    }
+  ],
+  "status": "ok"
+}

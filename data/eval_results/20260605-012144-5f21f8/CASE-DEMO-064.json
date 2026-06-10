@@ -1,0 +1,96 @@
+{
+  "case_id": "CASE-DEMO-064",
+  "comparison": {
+    "affected_claims_matches": 1,
+    "affected_claims_total": 1,
+    "deadline_within_range": true,
+    "received_date_match": true,
+    "rejection_types_match": true
+  },
+  "cost_meta": {
+    "completion_tokens": 394,
+    "estimated_cost_usd": 0.016985999999999998,
+    "model": "claude-sonnet-4-6-mock",
+    "prompt_tokens": 3692
+  },
+  "drafts": [
+    {
+      "confidence": 0.82,
+      "draft_text_chars": 376,
+      "draft_text_lines": 1,
+      "grounded_citations": [
+        "[GROUNDED_REF_1]",
+        "[GROUNDED_REF_2]"
+      ],
+      "rejection_id": "rej-1",
+      "strategy_preview": "Argue non-obviousness by demonstrating an unexpected technical effect of the claimed combination beyond what the cited references teach."
+    }
+  ],
+  "expected": {
+    "deadline_candidates": [
+      "2026-07-12",
+      "2026-07-13"
+    ],
+    "received_date": "2026-05-13",
+    "rejection_types": [
+      "101_subject_matter"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "rejection_type": "101_subject_matter",
+        "statute": "專利法第24條"
+      }
+    ],
+    "response_months": 2
+  },
+  "latency_sec": 0.06200000015087426,
+  "model_used": "claude-sonnet-4-6-mock",
+  "predicted": {
+    "days_remaining": 38,
+    "deadline_warnings": [
+      "Statutory deadline rolled from 2026-07-12 (weekend/holiday) to 2026-07-13."
+    ],
+    "received_date": "2026-05-13",
+    "recommended_internal_deadline": "2026-07-06T23:59:00+08:00",
+    "rejection_types": [
+      "101_subject_matter"
+    ],
+    "rejections": [
+      {
+        "affected_claims": [
+          1
+        ],
+        "cited_prior_art": [],
+        "confidence": 0.86,
+        "examiner_argument_preview": "審查官認為所請發明屬專利法第24條所列法定不予專利之事項，不得給予專利保護。",
+        "rejection_type": "101_subject_matter"
+      }
+    ],
+    "statutory_deadline": "2026-07-13T23:59:00+08:00"
+  },
+  "retrieval_top_hits": [
+    {
+      "patent_no": "TW2026100026",
+      "score": 0.8850553035736084,
+      "section": "abstract",
+      "text_preview": "高活性催化劑製備方法。"
+    },
+    {
+      "patent_no": "TW202607654",
+      "score": 0.8799989223480225,
+      "section": "abstract",
+      "text_preview": "一種智慧電網之需量反應控制方法，由聚合商透過雙向通訊收集多用戶之可調控負載，以階層式優化在滿足用戶舒適度限制下達成電網調度目標。"
+    },
+    {
+      "patent_no": "TW202593210",
+      "score": 0.869303286075592,
+      "section": "body",
+      "text_preview": "【發明所屬之技術領域】\n本發明係關於一種骨組織工程用之生物可降解支架，特別是由聚己內酯（PCL）與聚乳酸（PLA）共混並摻入氫氧基磷灰石（hydroxyapatite, HA）粒子製成之多孔骨支架，兼具生物可降解性、機械強度與骨整合性。\n\n【先前技術】\n骨組織工程支架需提供臨時力學支撐並引導新生骨生長，於完成功能後逐步"
+    }
+  ],
+  "status": "ok"
+}

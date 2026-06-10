@@ -207,3 +207,67 @@ def test_resolve_unknown_user_can_claim_attorney():
         IdpIdentity(subject="newbie", issuer="idp", tenant_hint="t", role_hint="attorney")
     )
     assert user.role == UserRole.ATTORNEY
+
+
+# --- Boot guard: stub IdP defaults refused outside mock/test (review P2-5) --
+
+
+def _boot_subprocess(extra_env_lines: str) -> "subprocess.CompletedProcess[str]":
+    import subprocess
+    import sys
+    import textwrap
+    from pathlib import Path
+
+    script = textwrap.dedent(
+        f"""
+        import os
+        os.environ.pop('PYTEST_CURRENT_TEST', None)
+        os.environ['LLM_MODE'] = 'anthropic'
+        os.environ['ANTHROPIC_API_KEY'] = 'sk-fake'
+        os.environ['JWT_SECRET'] = 'a' * 64
+{extra_env_lines}
+        import sys
+        for mod in [m for m in list(sys.modules) if m.startswith('backend.')]:
+            del sys.modules[mod]
+        try:
+            import backend.shared.config  # noqa: F401
+            print('BOOT_OK')
+        except RuntimeError as exc:
+            print('GUARD_TRIPPED', exc)
+        """
+    )
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        encoding="utf-8",
+        timeout=30,
+        cwd=str(Path(__file__).resolve().parents[2]),
+    )
+
+
+def test_stub_idp_published_secret_refuses_non_mock_boot():
+    """OIDC/SAML stub providers with the PUBLISHED default signing secrets
+    must refuse to boot outside mock/test — anyone reading the repo could
+    mint valid IdP assertions."""
+    proc = _boot_subprocess("")  # no stub secrets -> published defaults
+    assert proc.returncode == 0, proc.stderr
+    assert "GUARD_TRIPPED" in proc.stdout, proc.stdout
+    assert "OIDC_PROVIDER=stub" in proc.stdout
+
+
+def test_stub_idp_private_secret_boots_ok():
+    proc = _boot_subprocess(
+        "        os.environ['OIDC_STUB_SIGNING_SECRET'] = 'private-x'\n"
+        "        os.environ['SAML_STUB_SIGNING_SECRET'] = 'private-y'"
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "BOOT_OK" in proc.stdout, proc.stdout
+
+
+def test_stub_idp_disabled_boots_ok():
+    proc = _boot_subprocess(
+        "        os.environ['OIDC_ENABLED'] = 'false'\n"
+        "        os.environ['SAML_ENABLED'] = 'false'"
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "BOOT_OK" in proc.stdout, proc.stdout

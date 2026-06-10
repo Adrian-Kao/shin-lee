@@ -77,6 +77,11 @@ ensure_secret() {
 ensure_secret JWT_SECRET 32
 ensure_secret INTERNAL_TOKEN 32
 ensure_secret DEMO_LOGIN_SECRET 16
+# Stub IdP signing secrets: config.py refuses the published "-do-not-ship"
+# defaults outside mock/test mode (review P2-5), and the delivery profile
+# runs LLM_MODE=dify. Private per-host values keep the stub flows working.
+ensure_secret OIDC_STUB_SIGNING_SECRET 16
+ensure_secret SAML_STUB_SIGNING_SECRET 16
 
 # Load .env if present so the same vars reach backend + scripts.
 if [ -f .env ]; then

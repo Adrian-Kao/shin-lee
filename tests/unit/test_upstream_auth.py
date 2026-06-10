@@ -493,6 +493,10 @@ def test_non_loopback_trust_with_secret_boots_ok() -> None:
         os.environ['JWT_SECRET'] = 'a' * 64
         os.environ['TRUSTED_UPSTREAM_IPS'] = '10.0.0.5'
         os.environ['UPSTREAM_AUTH_SHARED_SECRET'] = 'shhh'
+        # Non-mock boot also passes the stub-IdP guard (review P2-5):
+        # private stub secrets so only the upstream-trust guard is under test.
+        os.environ['OIDC_STUB_SIGNING_SECRET'] = 'private-test-oidc-secret'
+        os.environ['SAML_STUB_SIGNING_SECRET'] = 'private-test-saml-secret'
         import sys
         for mod in [m for m in list(sys.modules) if m.startswith('backend.')]:
             del sys.modules[mod]

@@ -146,6 +146,12 @@ class Settings:
     # Label reported as `model_used` in response metadata when LLM_MODE=dify
     # (the actual model is configured inside the Dify workflow's LLM nodes).
     DIFY_MODEL_LABEL: str = os.getenv("DIFY_MODEL_LABEL", "dify/qwen2.5:7b")
+    # Q15 defense-in-depth: operator's explicit claim that the Dify workflow's
+    # LLM nodes point at a LOCAL provider (our deployment: Ollama on this
+    # host). Flip to false if the workflow is repointed at a cloud model --
+    # confidential (-CONF) cases will then hard-fail in llm_client instead of
+    # silently egressing (review P2-1; mirrors the anthropic-path guard).
+    DIFY_EGRESS_LOCAL: bool = os.getenv("DIFY_EGRESS_LOCAL", "true").lower() in ("1", "true", "yes")
 
     # Cache (Q9)
     CACHE_BACKEND: str = os.getenv("CACHE_BACKEND", "memory")  # memory | redis
@@ -609,6 +615,41 @@ def _validate_upstream_trust_config() -> None:
 
 
 _validate_upstream_trust_config()
+
+
+# --- Boot-time guardrail: stub IdP providers outside mock/test (review P2-5) -
+# The stub OIDC/SAML providers HMAC-verify against secrets whose DEFAULTS are
+# published in this file ("...-do-not-ship"). With OIDC_PROVIDER=stub and the
+# default secret, anyone can mint a valid authorization code. Same posture as
+# the JWT-placeholder guard: refuse the deployment shape, allow mock/test.
+def _validate_stub_idp_config() -> None:
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return  # test fixtures exercise the stub providers by design
+    if settings.LLM_MODE == "mock":
+        return  # POC / demo mode -- IdP login is not the demo's front door
+    problems = []
+    if (
+        settings.OIDC_ENABLED
+        and settings.OIDC_PROVIDER == "stub"
+        and settings.OIDC_STUB_SIGNING_SECRET == "oidc-stub-shared-secret-do-not-ship"
+    ):
+        problems.append("OIDC_PROVIDER=stub with the published default OIDC_STUB_SIGNING_SECRET")
+    if (
+        settings.SAML_ENABLED
+        and settings.SAML_PROVIDER == "stub"
+        and settings.SAML_STUB_SIGNING_SECRET == "saml-stub-shared-secret-do-not-ship"
+    ):
+        problems.append("SAML_PROVIDER=stub with the published default SAML_STUB_SIGNING_SECRET")
+    if problems:
+        raise RuntimeError(
+            "Refusing to boot outside mock/test mode: " + "; ".join(problems) + ". "
+            "Anyone who reads the public repo can mint valid IdP assertions. "
+            "Either disable the stub (OIDC_ENABLED=false / SAML_ENABLED=false), "
+            "switch to a real provider, or set a private stub secret for staging."
+        )
+
+
+_validate_stub_idp_config()
 
 
 # ---------------------------------------------------------------------------

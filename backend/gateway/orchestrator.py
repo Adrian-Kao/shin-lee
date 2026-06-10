@@ -139,7 +139,17 @@ class AIEngineClient:
         # leave the gateway we scan the whole payload for raw PII that should
         # have been redacted upstream. Fail closed if redaction escaped.
         _assert_no_raw_pii(path, payload)
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        # P1-2: the timeout must outlive the slowest downstream LLM path.
+        # LLM_MODE=dify budgets DIFY_TIMEOUT_SEC (default 300s — qwen2.5:7b
+        # on local Ollama can take 60-120s per zh-TW draft); a flat 60s here
+        # aborted the gateway side mid-inference and surfaced a 502 even
+        # though the Dify workflow was still running. +30s headroom so the
+        # AI Engine's own timeout (and its degrade-to-mock path) fires first
+        # and the gateway relays a structured answer instead of timing out.
+        timeout = 60.0
+        if settings.LLM_MODE == "dify":
+            timeout = max(timeout, float(settings.DIFY_TIMEOUT_SEC) + 30.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             # Security Chunk A — C-2. AI Engine's middleware refuses any
             # non-`/v1/health` request that lacks X-Internal-Token. The
             # token is server-side only; the SPA never sees it.

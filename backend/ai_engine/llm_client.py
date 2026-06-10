@@ -1885,9 +1885,24 @@ def chat(
             return _mock.chat(hardened_system, user, intent, model)
 
     if settings.LLM_MODE == "dify":
-        # Dify workflow app → local Ollama. Safe for confidential (no cloud
-        # egress); DifyLLM internally degrades to MockLLM on any Dify failure
-        # with a loud ERROR log + "-DEGRADED-mock" model label.
+        # Dify workflow app → local Ollama. DifyLLM internally degrades to
+        # MockLLM on any Dify failure with a loud ERROR log + "-DEGRADED-mock"
+        # model label.
+        #
+        # Q15 defense-in-depth (review P2-1): locality of the Dify hop is a
+        # DEPLOYMENT claim — an operator can repoint the workflow's LLM node
+        # at a cloud provider in the Dify console and no code would notice.
+        # DIFY_EGRESS_LOCAL is that claim made explicit in config: it defaults
+        # true (our compose runs Ollama on this host), and an operator who
+        # moves the workflow to a cloud model MUST flip it false — at which
+        # point confidential cases hard-fail here instead of silently
+        # egressing. Same posture as the anthropic guard below.
+        if not settings.DIFY_EGRESS_LOCAL and security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS:
+            raise RuntimeError(
+                f"Refusing Dify LLM call for security_level={security_level!r}: "
+                "DIFY_EGRESS_LOCAL=false declares the Dify workflow's model is "
+                "NOT local. Confidential cases MUST route to LLM_MODEL_LOCAL (Q15)."
+            )
         return _get_dify_llm().chat(hardened_system, user, intent, model)
 
     if settings.LLM_MODE == "anthropic":

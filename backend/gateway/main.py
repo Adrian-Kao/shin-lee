@@ -665,14 +665,46 @@ def oidc_begin(request: Request):
     if not settings.OIDC_ENABLED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "OIDC is not enabled")
     client_ip = request.client.host if request.client else ""
-    rate_limit.check_login_rpm(client_ip)
-    state, nonce = begin_oidc_login()
-    authorize_url = (
-        f"{settings.OIDC_ISSUER}/authorize"
-        f"?response_type=code&client_id={settings.OIDC_CLIENT_ID}"
-        f"&state={state}&nonce={nonce}&scope=openid"
-    )
-    return OIDCBeginResponse(state=state, nonce=nonce, authorize_url=authorize_url)
+    error: Optional[BaseException] = None
+    minted_state: Optional[str] = None
+    try:
+        rate_limit.check_login_rpm(client_ip)
+        state, nonce = begin_oidc_login()
+        minted_state = state
+        authorize_url = (
+            f"{settings.OIDC_ISSUER}/authorize"
+            f"?response_type=code&client_id={settings.OIDC_CLIENT_ID}"
+            f"&state={state}&nonce={nonce}&scope=openid"
+        )
+        return OIDCBeginResponse(state=state, nonce=nonce, authorize_url=authorize_url)
+    except BaseException as exc:  # noqa: BLE001 — must reach the finally
+        error = exc
+        raise
+    finally:
+        # Invariant #4 (review P2-4): this endpoint mutates server state (it
+        # mints + stores an OIDC `state`), so it writes an audit row like its
+        # sibling /callback — previously it was the one IdP endpoint without
+        # one. Never the state value pre-redemption shape concerns: state is
+        # single-use CSRF, logging it is a correlation handle like magic_jti.
+        if error is not None:
+            response_payload: dict = _error_response_payload(error)
+            outcome = "error"
+        else:
+            outcome = "state_minted"
+            response_payload = {"outcome": outcome}
+        _safe_audit_write(
+            user=_audit_placeholder_user("_oidc_begin_"),
+            case_id=None,
+            endpoint="/v1/auth/oidc/begin",
+            request_payload={"client_ip": client_ip},
+            response_payload=response_payload,
+            masked_rules=[],
+            model_used=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            latency_ms=0,
+            policy_decisions={"outcome": outcome, "oidc_state": minted_state},
+        )
 
 
 class OIDCCallbackBody(BaseModel):
@@ -922,6 +954,8 @@ async def analyze_oa(
     cached_payload: Optional[dict] = None
     obs: dict = {}
     error: Optional[BaseException] = None
+    reserved_quota_tokens = 0
+    quota_reservation_settled = False
     try:
         # 0a. Confused-deputy guard: if BOTH the X-Case-Id header AND the
         # body.case_id are present, they MUST agree. Otherwise an attacker
@@ -954,8 +988,15 @@ async def analyze_oa(
         estimated_tokens = max(1, len(body.oa_text) // 3)
         rate_limit.check_request_size(estimated_tokens)
 
-        # 3. Quota
-        rate_limit.check_quotas(user, estimated_tokens)
+        # 3. Quota — ATOMIC reserve (13I contract): check_quotas() already
+        # incremented the counters by `estimated_tokens`. Every exit path
+        # below MUST settle the reservation exactly once:
+        #   - cache hit   -> release in full (no LLM work happened)
+        #   - success     -> record_usage(..., reserved_tokens=...) adjusts
+        #                    counters by (actual - reserved)
+        #   - error       -> release in full (except-block below)
+        reserved_quota_tokens = rate_limit.check_quotas(user, estimated_tokens)
+        quota_reservation_settled = False
         policy_decisions["quota_passed"] = True
 
         # 4. Cache (Q9) — M-7 fix: hash POST-redaction text, not raw input.
@@ -985,6 +1026,13 @@ async def analyze_oa(
         if cached:
             cached_payload = cached
             response = AnalysisResponse(**cached)
+            # Cache hit does no LLM work — release the quota reservation in
+            # full (delta = 0 - reserved), otherwise every hit silently burns
+            # the user's daily quota.
+            rate_limit.record_usage(
+                user, 0, 0, 0.0, reserved_tokens=reserved_quota_tokens
+            )
+            quota_reservation_settled = True
             return response
 
         # 5. Circuit breaker
@@ -1000,13 +1048,16 @@ async def analyze_oa(
             user, body, circuit_open=policy_decisions.get("circuit_open", False)
         )
 
-        # 7. Record usage
+        # 7. Record usage — reconcile against the step-3 reservation so the
+        # counters reflect TRUE spend, not reservation + actual (P1-1).
         rate_limit.record_usage(
             user,
             prompt_tokens=obs["prompt_tokens"],
             completion_tokens=obs["completion_tokens"],
             cost_usd=obs["estimated_cost_usd"],
+            reserved_tokens=reserved_quota_tokens,
         )
+        quota_reservation_settled = True
 
         # 8. Cache write
         cache.set_response(user.tenant_id, user.user_id, body.case_id, prompt_hash, response.model_dump(mode="json"))
@@ -1015,6 +1066,17 @@ async def analyze_oa(
     except BaseException as exc:  # noqa: BLE001 — must reach the finally
         error = exc
         policy_decisions["error"] = True
+        # A failed request must not strand its quota reservation (P1-1):
+        # release in full so quota doesn't silently drain on errors. Wrapped
+        # defensively — releasing must never mask the original exception.
+        if reserved_quota_tokens and not quota_reservation_settled:
+            try:
+                rate_limit.record_usage(
+                    user, 0, 0, 0.0, reserved_tokens=reserved_quota_tokens
+                )
+                quota_reservation_settled = True
+            except Exception:  # noqa: BLE001
+                logger.exception("quota reservation release failed")
         raise
     finally:
         elapsed = time.monotonic() - started

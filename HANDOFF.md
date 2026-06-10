@@ -885,3 +885,20 @@ agent merge 都發生在 worktree 的同名 ref 上。
 - 8010 偶見「Pulse API」(D:\pulse) dev server 搶佔 — 殺前先 `Get-CimInstance` 確認
   CommandLine 含 `backend.gateway.main:app` 才是我們的
 - zh-TW Windows: subprocess 一律 encoding="utf-8"，否則 cp950 吃 em-dash 會炸
+
+## 24. Day 14 後半（review fixes + 優化衝刺, 2026-06-11 03:00-04:30）
+
+- `c12ee3d` 14E **review fixes（reviewer agent 審 651ea31..HEAD，verdict: ship-with-fixes）**:
+  - P1-1（最重要）: main.py 沒接 13I 的 atomic-reserve 契約 → 每次 analyze 燒 ~1.9x 配額、
+    cache hit 白燒配額、錯誤路徑漏額度。已修 + 3 個回歸測試。
+  - P1-2: orchestrator 60s timeout < Dify 300s → dify 模式長推論 502。已改 DIFY_TIMEOUT_SEC+30。
+  - P2-1: `DIFY_EGRESS_LOCAL` knob — Dify hop 在地性變成顯式聲明，false 時 -CONF 硬拒。
+  - P2-4: oidc/begin 補 audit row。P2-5: stub IdP 預設 secret boot guard + start_demo 自動產生。
+- `afc967c` 14F: DEGRADED-mock 結果顯示醒目 amber 警示橫幅（role=alert, 雙語）。
+- `8c901bc` 14G: 實機預演截圖（`frontend/real_stack_shots.mjs` 可重跑）— 真 qwen 結果、
+  audit 模型欄 dify/qwen2.5:7b、四燈全綠。
+- `9824ee3` 14H: 簡報第 5 章改「實機落地」+ 2 張實機證明投影片（23 張）。
+- `f2742b0`: README 架構圖含 digiRunner/Dify 實機層。
+- **最終驗證: pytest 1232/0、e2e 73/0、經 digiRunner 的 Dify 全鏈路 28s。**
+- **Push 已修好**（credential 已在 Windows credential manager）— `feature/patentmind-poc`
+  與 `rescue/working-tree-20260611` 都已推上 origin。

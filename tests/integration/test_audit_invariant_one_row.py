@@ -20,6 +20,7 @@ These are the load-bearing counters: a regression that double-writes on cache
 hits (or skips the row entirely) silently corrupts the auditor's request count,
 which is the data used to detect abuse.
 """
+
 from __future__ import annotations
 
 _ALICE_CASE = "CASE-2025-001"  # alice has ACL
@@ -43,16 +44,10 @@ def _recent(client, token, limit=300) -> list[dict]:
 
 
 def _analyze_rows(rows: list[dict], case_id: str) -> list[dict]:
-    return [
-        r
-        for r in rows
-        if r["endpoint"] == "/v1/oa/analyze" and r["case_id"] == case_id
-    ]
+    return [r for r in rows if r["endpoint"] == "/v1/oa/analyze" and r["case_id"] == case_id]
 
 
-def test_single_success_writes_exactly_one_row(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_single_success_writes_exactly_one_row(gateway_client, alice_token, patched_ai_engine):
     auditor = _login_auditor(gateway_client)
     case = "CASE-2025-001"
     before = len(_analyze_rows(_recent(gateway_client, auditor), case))
@@ -113,9 +108,7 @@ def test_cache_hit_writes_exactly_one_row_tagged_cache_hit(
     assert miss_row["policy_decisions"].get("cache_hit") is False, miss_row
 
 
-def test_cache_hit_row_has_no_error_flag(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_cache_hit_row_has_no_error_flag(gateway_client, alice_token, patched_ai_engine):
     """A cache hit is a SUCCESS, not an error — its audit row must not carry
     policy_decisions.error (which the auditor uses to filter failures)."""
     auditor = _login_auditor(gateway_client)

@@ -18,6 +18,7 @@ Fails with a clear, actionable message (not a stack trace) when Qdrant is
 configured but unreachable, or when bge-m3 is configured but its deps are
 missing. Exit code 0 on success, non-zero on a configuration/infra failure.
 """
+
 from __future__ import annotations
 
 import os
@@ -38,7 +39,7 @@ if str(_REPO_ROOT) not in sys.path:
 # selects is the entire point of this script.
 os.environ.setdefault("JWT_SECRET", "rag-smoke-no-jwt-issued-here-32bytes-placeholder")
 
-from backend.shared.config import settings
+from backend.shared.config import settings  # noqa: E402
 
 
 def _preflight() -> None:
@@ -55,7 +56,7 @@ def _preflight() -> None:
                 "  pip install qdrant-client",
                 file=sys.stderr,
             )
-            raise SystemExit(2)
+            raise SystemExit(2) from exc
         try:
             client = QdrantClient(url=settings.QDRANT_URL, timeout=5.0)
             client.get_collections()  # forces a real round-trip
@@ -69,7 +70,7 @@ def _preflight() -> None:
                 "or point QDRANT_URL at your running instance.",
                 file=sys.stderr,
             )
-            raise SystemExit(3)
+            raise SystemExit(3) from exc
 
     # --- bge-m3 importability ------------------------------------------------
     if settings.EMBEDDING_BACKEND == "bge-m3":
@@ -84,7 +85,7 @@ def _preflight() -> None:
                 "    python scripts/prefetch_bge_m3.py",
                 file=sys.stderr,
             )
-            raise SystemExit(4)
+            raise SystemExit(4) from exc
 
 
 def main() -> int:
@@ -101,8 +102,7 @@ def main() -> int:
     # Import AFTER preflight so the eager Embedder()/_make_store() construction
     # in rag.py (which would raise on a missing model / unreachable Qdrant)
     # happens with our friendly guards already passed.
-    from backend.ai_engine import rag
-    from backend.ai_engine import retrieval_eval
+    from backend.ai_engine import rag, retrieval_eval
 
     # Index the demo corpus into the eval tenant via the public RAG API, then
     # score. evaluate() does the indexing itself, so just call it.
@@ -121,8 +121,7 @@ def main() -> int:
     for pc in report["per_case"]:
         mark = " " if pc["hit"] else "x"
         tops = ",".join(pc["top_patent_nos"][:3])
-        print(f"{mark} {pc['id']:<30} recall@5={pc['recall@k']:.3f} "
-              f"mrr={pc['mrr']:.3f}  {tops}")
+        print(f"{mark} {pc['id']:<30} recall@5={pc['recall@k']:.3f} mrr={pc['mrr']:.3f}  {tops}")
     print("-" * 72)
 
     if report["embedding_backend"] == "mock":
@@ -133,8 +132,10 @@ def main() -> int:
     else:
         target = retrieval_eval.PROD_TARGET_RECALL_AT_5
         verdict = "MET" if report["recall@k"] >= target else "BELOW TARGET"
-        print(f"REAL backend: recall@5 {report['recall@k']:.3f} vs Q6 target "
-              f"{target:.2f} -> {verdict}")
+        print(
+            f"REAL backend: recall@5 {report['recall@k']:.3f} vs Q6 target "
+            f"{target:.2f} -> {verdict}"
+        )
     print("=" * 72)
     return 0
 

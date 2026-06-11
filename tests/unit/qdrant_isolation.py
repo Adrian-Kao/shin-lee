@@ -19,6 +19,7 @@ token, and delete exactly the collections this run created on teardown. The
 wrapper satisfies the same 4-method VectorStore contract the tests exercise,
 so assertions are unchanged and the production code path is fully exercised.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -57,8 +58,6 @@ class TenantNamespacedStore:
         """Delete only the collections this run created. Never touches demo data."""
         for tenant in self._tenants:
             try:
-                self._inner._client.delete_collection(
-                    collection_name=self._inner._coll(tenant)
-                )
+                self._inner._client.delete_collection(collection_name=self._inner._coll(tenant))
             except Exception:
                 pass

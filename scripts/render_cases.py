@@ -9,6 +9,7 @@ Reads CASES from data/cases/synthetic_cases.py and writes:
     data/cases/<CASE_ID>/reexam.txt     (only when case has reexam)
     data/cases/manifest.json            (compact index of all cases)
 """
+
 from __future__ import annotations
 
 import json

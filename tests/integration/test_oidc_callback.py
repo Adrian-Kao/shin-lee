@@ -19,6 +19,7 @@ Threat model under test:
   * a known demo user's role/tenant come from _USERS, never the IdP hint.
   * exactly one audit row; the raw code is never stored.
 """
+
 from __future__ import annotations
 
 import time
@@ -66,9 +67,7 @@ def _mint_code(*, sub, nonce, iss=None, aud=None, exp=None, tenant=None, role=No
 
 
 def _callback(client, code, state):
-    return client.post(
-        "/v1/auth/oidc/callback", json={"code": code, "state": state}
-    )
+    return client.post("/v1/auth/oidc/callback", json={"code": code, "state": state})
 
 
 # ---------------------------------------------------------------------------
@@ -86,9 +85,7 @@ def test_oidc_happy_path_known_user_yields_working_session(gateway_client):
     assert body["tenant_id"] == "tenant_a"
     session_jwt = body["token"]
     # The session JWT works on a protected endpoint.
-    resp = gateway_client.get(
-        "/v1/quota", headers={"Authorization": f"Bearer {session_jwt}"}
-    )
+    resp = gateway_client.get("/v1/quota", headers={"Authorization": f"Bearer {session_jwt}"})
     assert resp.status_code == 200, resp.text
 
 
@@ -103,9 +100,7 @@ def test_oidc_federated_unknown_user_gets_least_privilege_session(gateway_client
     assert body["role"] == "attorney"
     assert body["tenant_id"] == "tenant_partner"
     # The federated session JWT must round-trip through verify_token.
-    resp = gateway_client.get(
-        "/v1/quota", headers={"Authorization": f"Bearer {body['token']}"}
-    )
+    resp = gateway_client.get("/v1/quota", headers={"Authorization": f"Bearer {body['token']}"})
     assert resp.status_code == 200, resp.text
 
 
@@ -211,9 +206,7 @@ def test_oidc_unknown_user_cannot_claim_auditor(gateway_client):
     # the audit log with the issued token.
     assert r.json()["role"] == "paralegal", r.text
     token = r.json()["token"]
-    audit = gateway_client.get(
-        "/v1/audit/recent", headers={"Authorization": f"Bearer {token}"}
-    )
+    audit = gateway_client.get("/v1/audit/recent", headers={"Authorization": f"Bearer {token}"})
     assert audit.status_code == 403, audit.text
 
 

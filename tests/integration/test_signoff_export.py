@@ -20,12 +20,13 @@ Demo users (backend/gateway/auth.py:_USERS):
   * bob        → PARALEGAL (tenant_a, ACL: CASE-2025-001/002)
   * audit_dave → AUDITOR   (tenant_a, ACL: '*')  — used to read the audit log
 """
+
 from __future__ import annotations
 
 import hashlib
 
-_ALICE_CASE = "CASE-2025-001"     # alice (and bob) have ACL
-_FOREIGN_CASE = "CASE-DEMO-099"   # alice has NO ACL on this
+_ALICE_CASE = "CASE-2025-001"  # alice (and bob) have ACL
+_FOREIGN_CASE = "CASE-DEMO-099"  # alice has NO ACL on this
 
 
 def _login(client, user_id: str) -> str:
@@ -52,16 +53,36 @@ def _segments():
     attorney_edited, 1 attorney_added — one of the ai_generated is rejected
     so the assembled doc must omit it."""
     return [
-        {"segment_id": "s1", "text": "AI sentence one.",
-         "source": "ai_generated", "accepted": True},
-        {"segment_id": "s2", "text": "AI sentence two REJECTED.",
-         "source": "ai_generated", "accepted": False},
-        {"segment_id": "s3", "text": "AI sentence three.",
-         "source": "ai_generated", "accepted": True},
-        {"segment_id": "s4", "text": "Attorney rewrote this one.",
-         "source": "attorney_edited", "accepted": True},
-        {"segment_id": "s5", "text": "Attorney wrote this from scratch.",
-         "source": "attorney_added", "accepted": True},
+        {
+            "segment_id": "s1",
+            "text": "AI sentence one.",
+            "source": "ai_generated",
+            "accepted": True,
+        },
+        {
+            "segment_id": "s2",
+            "text": "AI sentence two REJECTED.",
+            "source": "ai_generated",
+            "accepted": False,
+        },
+        {
+            "segment_id": "s3",
+            "text": "AI sentence three.",
+            "source": "ai_generated",
+            "accepted": True,
+        },
+        {
+            "segment_id": "s4",
+            "text": "Attorney rewrote this one.",
+            "source": "attorney_edited",
+            "accepted": True,
+        },
+        {
+            "segment_id": "s5",
+            "text": "Attorney wrote this from scratch.",
+            "source": "attorney_added",
+            "accepted": True,
+        },
     ]
 
 
@@ -180,12 +201,24 @@ def test_export_counts_paralegal_provenance(gateway_client):
     alice_token = _login(gateway_client, "alice")
     segments = [
         {"segment_id": "s1", "text": "AI sentence.", "source": "ai_generated", "accepted": True},
-        {"segment_id": "s2", "text": "Paralegal rewrote this.",
-         "source": "paralegal_edited", "accepted": True},
-        {"segment_id": "s3", "text": "Paralegal drafted this.",
-         "source": "paralegal_added", "accepted": True},
-        {"segment_id": "s4", "text": "Attorney rewrote this.",
-         "source": "attorney_edited", "accepted": True},
+        {
+            "segment_id": "s2",
+            "text": "Paralegal rewrote this.",
+            "source": "paralegal_edited",
+            "accepted": True,
+        },
+        {
+            "segment_id": "s3",
+            "text": "Paralegal drafted this.",
+            "source": "paralegal_added",
+            "accepted": True,
+        },
+        {
+            "segment_id": "s4",
+            "text": "Attorney rewrote this.",
+            "source": "attorney_edited",
+            "accepted": True,
+        },
     ]
     resp = gateway_client.post(
         "/v1/oa/export",
@@ -241,21 +274,15 @@ def test_export_audit_row_has_no_raw_text(gateway_client):
     assert secret_sentence in resp.json()["document"]
 
     # ...but the audit DB must not. Inspect every column of the latest row.
-    cur = audit_mod.writer._conn.execute(
-        "SELECT * FROM audit ORDER BY rowid DESC LIMIT 1"
-    )
+    cur = audit_mod.writer._conn.execute("SELECT * FROM audit ORDER BY rowid DESC LIMIT 1")
     cols = [c[0] for c in cur.description]
-    row = dict(zip(cols, cur.fetchone()))
+    row = dict(zip(cols, cur.fetchone(), strict=True))
     assert row["endpoint"] == "/v1/oa/export", row
     serialised = " ".join(str(v) for v in row.values())
-    assert secret_sentence not in serialised, (
-        "raw draft text leaked into the audit row"
-    )
+    assert secret_sentence not in serialised, "raw draft text leaked into the audit row"
     # The content hash should be present (proves WHICH doc was signed) and is
     # NOT the plaintext.
-    expected_hash = hashlib.sha256(
-        resp.json()["document"].encode("utf-8")
-    ).hexdigest()
+    expected_hash = hashlib.sha256(resp.json()["document"].encode("utf-8")).hexdigest()
     # response_hash is a hash OF our response_payload (which itself contains the
     # content hash), so it won't equal expected_hash directly; the content hash
     # is surfaced on the response and in response_payload, not as a column. The

@@ -15,6 +15,7 @@ Public surface:
 File bytes never touch disk: PyMuPDF and python-docx are both happy with
 in-memory byte streams.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +27,6 @@ import fitz  # PyMuPDF
 
 from backend.ai_engine import llm_client, ocr_local
 from backend.shared.config import settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -62,9 +62,7 @@ def _resolve_ocr_backend(security_level: str) -> str:
     return backend
 
 
-async def _ocr_page(
-    png_bytes: bytes, *, security_level: str
-) -> tuple[str, dict]:
+async def _ocr_page(png_bytes: bytes, *, security_level: str) -> tuple[str, dict]:
     """Route one rendered page through the configured OCR backend.
 
     - tesseract → on-prem Tesseract (threadpool; cost-free).
@@ -93,10 +91,11 @@ class PageQuality(TypedDict):
     OCR nearly empty — the classic "the attorney scanned a crooked / blank
     page" failure — without the parser having to make the decision itself.
     """
-    page: int                   # 0-indexed page number
-    source: str                 # "text" (born-digital) | "ocr" (scanned)
-    char_count: int             # characters extracted for this page
-    low_text: bool              # True ⇒ suspiciously little text for the source
+
+    page: int  # 0-indexed page number
+    source: str  # "text" (born-digital) | "ocr" (scanned)
+    char_count: int  # characters extracted for this page
+    low_text: bool  # True ⇒ suspiciously little text for the source
     # Coarse 0..1 confidence heuristic. Text-layer pages are 1.0 (PyMuPDF
     # extraction is exact); OCR pages get a length-derived proxy until a real
     # OCR engine returns per-word confidence (tesseract image_to_data / Vision).
@@ -104,9 +103,9 @@ class PageQuality(TypedDict):
 
 
 class ExtractResult(TypedDict):
-    pages: list[str]            # extracted text per page (0-indexed)
+    pages: list[str]  # extracted text per page (0-indexed)
     page_count: int
-    ocr_pages: list[int]        # 0-indexed pages that were routed through OCR
+    ocr_pages: list[int]  # 0-indexed pages that were routed through OCR
     warnings: list[str]
     char_count: int
     # Aggregate OCR usage so the gateway can record cost in the audit row.
@@ -177,9 +176,7 @@ async def extract_pdf_text(
 
     with doc:
         if doc.needs_pass:
-            raise PermissionError(
-                "PDF is password-protected. Decrypt before uploading."
-            )
+            raise PermissionError("PDF is password-protected. Decrypt before uploading.")
 
         total_pages = doc.page_count
 
@@ -204,9 +201,7 @@ async def extract_pdf_text(
             )
 
         if total_pages > max_pages:
-            warnings.append(
-                f"PDF has {total_pages} pages; truncated to first {max_pages}."
-            )
+            warnings.append(f"PDF has {total_pages} pages; truncated to first {max_pages}.")
             effective_pages = max_pages
         else:
             effective_pages = total_pages
@@ -220,9 +215,7 @@ async def extract_pdf_text(
                 page = doc.load_page(page_idx)
                 text = page.get_text() or ""
             except Exception as exc:
-                raise RuntimeError(
-                    f"failed to parse page {page_idx} of PDF: {exc}"
-                ) from exc
+                raise RuntimeError(f"failed to parse page {page_idx} of PDF: {exc}") from exc
 
             text = text.strip()
             if len(text) >= settings.MIN_CHARS_PER_PAGE_FOR_TEXT:
@@ -238,9 +231,7 @@ async def extract_pdf_text(
                 pix = page.get_pixmap(dpi=200, alpha=False)
                 png_bytes = pix.tobytes("png")
             except Exception as exc:
-                raise RuntimeError(
-                    f"failed to render page {page_idx} for OCR: {exc}"
-                ) from exc
+                raise RuntimeError(f"failed to render page {page_idx} for OCR: {exc}") from exc
             pages_text.append("")  # placeholder, filled in below
             page_sources.append("ocr")
             ocr_jobs.append((page_idx, png_bytes))
@@ -254,9 +245,7 @@ async def extract_pdf_text(
 
             async def _ocr_one(page_idx: int, png: bytes) -> tuple[int, str, dict]:
                 async with sem:
-                    text, usage = await _ocr_page(
-                        png, security_level=security_level
-                    )
+                    text, usage = await _ocr_page(png, security_level=security_level)
                     return page_idx, text, usage
 
             results = await asyncio.gather(
@@ -290,10 +279,7 @@ async def extract_pdf_text(
                 "may be degraded."
             )
     if low_text_pages:
-        warnings.append(
-            f"low-text pages detected (possible bad/blank scan): "
-            f"{low_text_pages}"
-        )
+        warnings.append(f"low-text pages detected (possible bad/blank scan): {low_text_pages}")
 
     return ExtractResult(
         pages=pages_text,
@@ -331,8 +317,7 @@ async def extract_docx_text(docx_bytes: bytes) -> ExtractResult:
         from docx import Document
     except ImportError as exc:  # pragma: no cover — listed in requirements
         raise RuntimeError(
-            "python-docx not installed. Add `python-docx==1.1.2` to "
-            "backend/requirements.txt."
+            "python-docx not installed. Add `python-docx==1.1.2` to backend/requirements.txt."
         ) from exc
 
     try:
@@ -356,9 +341,7 @@ async def extract_docx_text(docx_bytes: bytes) -> ExtractResult:
     char_count = sum(len(p) for p in paragraphs)
 
     # Every DOCX "page" is a text paragraph (source="text"); OCR never runs.
-    page_quality, low_text_pages = _build_quality(
-        paragraphs, ["text"] * len(paragraphs)
-    )
+    page_quality, low_text_pages = _build_quality(paragraphs, ["text"] * len(paragraphs))
 
     return ExtractResult(
         pages=paragraphs,
@@ -400,9 +383,7 @@ def _safe_element_table(pages: list[str]) -> dict[int, str]:
 # ---------- Q8 per-page quality signals ------------------------------------
 
 
-def _build_quality(
-    pages: list[str], sources: list[str]
-) -> tuple[list["PageQuality"], list[int]]:
+def _build_quality(pages: list[str], sources: list[str]) -> tuple[list[PageQuality], list[int]]:
     """Compute the per-page quality signal + the low-text-page index list.
 
     `sources[i]` is "text" (born-digital text layer) or "ocr" (scanned page
@@ -428,7 +409,7 @@ def _build_quality(
     quality: list[PageQuality] = []
     low_text_pages: list[int] = []
 
-    for idx, (text, source) in enumerate(zip(pages, sources)):
+    for idx, (text, source) in enumerate(zip(pages, sources, strict=True)):
         n = len(text)
         if source == "ocr":
             low = n < warn_chars

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Three flow diagrams for the deck (same visual language as make_diagram.py):
 
   flow_user.png  - 操作流程: swimlanes 使用者操作 / 系統處理 / 產出
@@ -6,7 +5,8 @@
   flow_ai.png    - AI 任務:  提示組裝 -> 判斷 -> 呼叫工具 -> 草擬 -> 驗證 -> 回傳
 """
 import os
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")
@@ -233,8 +233,8 @@ def make_ai_flow():
              f_box, tcol, anchor="mm")
         if sub:
             lines = sub.split("\n")
-            for j, l in enumerate(lines):
-                text(d, (cx, cy + 30 + j * 32), l, f_sub, GRAY, anchor="mm")
+            for j, line in enumerate(lines):
+                text(d, (cx, cy + 30 + j * 32), line, f_sub, GRAY, anchor="mm")
         return b
 
     # top row: 1 -> 2 -> 3 ; bottom row: 4 -> 5 -> 6 (snake)

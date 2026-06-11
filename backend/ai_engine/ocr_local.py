@@ -23,6 +23,7 @@ Lazy import
 import lazily and raise a clear RuntimeError if either is missing, rather than
 failing at module import and turning every test red.
 """
+
 from __future__ import annotations
 
 import io

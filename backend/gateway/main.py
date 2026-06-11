@@ -8,16 +8,27 @@ Boots a FastAPI service on :8000. Layers, in request order:
     5. Orchestration                         — Q1 / Follow-up
     6. Audit log                             — Q13
 """
+
 from __future__ import annotations
 
 import base64
 import hmac
 import logging
 import time
-from typing import Any, Optional
+from typing import Any
 
 import httpx
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -42,6 +53,7 @@ from backend.gateway.auth import (
     revoke_token,
 )
 from backend.gateway.orchestrator import orchestrate_analysis
+from backend.shared import metrics
 from backend.shared.config import settings
 from backend.shared.models import (
     AnalysisRequest,
@@ -51,7 +63,6 @@ from backend.shared.models import (
     User,
     UserRole,
 )
-from backend.shared import metrics
 from backend.shared.observability import (
     REQUEST_ID_HEADER,
     bind_request_id,
@@ -123,15 +134,14 @@ def _error_response_payload(error: BaseException) -> dict:
         "status_code": getattr(error, "status_code", 500),
     }
 
+
 # Day 5: init Sentry before FastAPI() so import-time exceptions are caught.
 _SENTRY_ACTIVE = init_sentry("gateway")
 
 
 # Day 2 upload: allowed content types. Anything else → 415.
 _UPLOAD_PDF_MIME = "application/pdf"
-_UPLOAD_DOCX_MIME = (
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-)
+_UPLOAD_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _ALLOWED_UPLOAD_MIMES = {_UPLOAD_PDF_MIME, _UPLOAD_DOCX_MIME}
 
 # Page-break separator used to join multi-page extracted text. Picked so it
@@ -247,9 +257,7 @@ _SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Permissions-Policy": (
-        "geolocation=(), camera=(), microphone=(), payment=()"
-    ),
+    "Permissions-Policy": ("geolocation=(), camera=(), microphone=(), payment=()"),
 }
 
 
@@ -310,6 +318,7 @@ app.add_middleware(
 
 # ---------- Login (POC simplified) ----------
 
+
 class LoginRequest(BaseModel):
     # H-2: forbid unknown fields and cap each string at a sensible upper
     # bound. user_id is in _USERS (max ~10 chars in the demo set); password
@@ -317,11 +326,13 @@ class LoginRequest(BaseModel):
     # credential without admitting a multi-MB body.
     model_config = {"extra": "forbid"}
 
-    user_id: str = Field(..., max_length=64)  # POC: pass user_id directly. Production: IdP redirect.
+    user_id: str = Field(
+        ..., max_length=64
+    )  # POC: pass user_id directly. Production: IdP redirect.
     # Required unless an X-Demo-Secret header is supplied AND matches
     # settings.DEMO_LOGIN_SECRET. Default demo password is `demo-{user_id}`
     # (documented in .env.example).
-    password: Optional[str] = Field(default=None, max_length=256)
+    password: str | None = Field(default=None, max_length=256)
 
 
 class LoginResponse(BaseModel):
@@ -336,7 +347,7 @@ class LoginResponse(BaseModel):
 def login(
     req: LoginRequest,
     request: Request,
-    x_demo_secret: Optional[str] = Header(default=None, alias="X-Demo-Secret"),
+    x_demo_secret: str | None = Header(default=None, alias="X-Demo-Secret"),
 ):
     """Issue a JWT after validating credentials (Security Chunk A — C-1, H-8).
 
@@ -392,9 +403,7 @@ def login(
     # oracle). We pass a dummy hash for the unknown-user case so the sha256
     # round still happens.
     candidate_hash = stored_hash or _DUMMY_HASH_FOR_TIMING
-    password_ok = bool(
-        req.password and _verify_password(req.password, candidate_hash)
-    )
+    password_ok = bool(req.password and _verify_password(req.password, candidate_hash))
 
     # `user is not None` is required for BOTH paths: the demo-secret header
     # is a credential, not an identity selector, so it cannot conjure a
@@ -452,7 +461,7 @@ class MagicRequestResponse(BaseModel):
     # ONLY because this is a POC — production emails a link and returns no
     # token at all (see the DEMO-ONLY warning on the endpoint).
     message: str
-    magic_token: Optional[str] = None
+    magic_token: str | None = None
 
 
 class MagicConsumeBody(BaseModel):
@@ -466,9 +475,7 @@ class MagicConsumeBody(BaseModel):
 # Generic message returned by /v1/auth/magic/request for BOTH known and
 # unknown users — the heart of the user-enumeration defence. Same string,
 # same status, same response model for every input.
-_MAGIC_REQUEST_GENERIC_MESSAGE = (
-    "If that account exists, a magic sign-in link has been sent."
-)
+_MAGIC_REQUEST_GENERIC_MESSAGE = "If that account exists, a magic sign-in link has been sent."
 
 
 def _audit_placeholder_user(user_id: str) -> User:
@@ -513,8 +520,8 @@ def magic_request(req: MagicRequestBody, request: Request):
     be used to brute-force the user roster or to flood token issuance.
     """
     client_ip = request.client.host if request.client else ""
-    error: Optional[BaseException] = None
-    issued_jti: Optional[str] = None
+    error: BaseException | None = None
+    issued_jti: str | None = None
     user_known = False
     try:
         # Pre-auth brute-force / enumeration-flood defence — same bucket as
@@ -522,7 +529,7 @@ def magic_request(req: MagicRequestBody, request: Request):
         # two pre-auth doors.
         rate_limit.check_login_rpm(client_ip)
 
-        token: Optional[str] = None
+        token: str | None = None
         try:
             token = issue_magic_token(req.user_id)
             user_known = True
@@ -582,8 +589,8 @@ def magic_consume(req: MagicConsumeBody, request: Request):
     is never stored — only its jti + outcome.
     """
     client_ip = request.client.host if request.client else ""
-    error: Optional[BaseException] = None
-    consumed_user_id: Optional[str] = None
+    error: BaseException | None = None
+    consumed_user_id: str | None = None
     # jti for the audit row — derived WITHOUT trusting signature/expiry, purely
     # a correlation handle. Never the raw token.
     jti = magic_token_jti(req.token)
@@ -594,9 +601,7 @@ def magic_consume(req: MagicConsumeBody, request: Request):
         if user is None:
             # consume_magic_token already guarantees a known user, but be
             # defensive — collapse to the same 401 rather than 500.
-            raise HTTPException(
-                status.HTTP_401_UNAUTHORIZED, "invalid or expired magic link"
-            )
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid or expired magic link")
         return LoginResponse(
             token=issue_token(user.user_id),
             user_id=user.user_id,
@@ -665,8 +670,8 @@ def oidc_begin(request: Request):
     if not settings.OIDC_ENABLED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "OIDC is not enabled")
     client_ip = request.client.host if request.client else ""
-    error: Optional[BaseException] = None
-    minted_state: Optional[str] = None
+    error: BaseException | None = None
+    minted_state: str | None = None
     try:
         rate_limit.check_login_rpm(client_ip)
         state, nonce = begin_oidc_login()
@@ -726,17 +731,15 @@ def oidc_callback(req: OIDCCallbackBody, request: Request):
     raw code is never stored.
     """
     client_ip = request.client.host if request.client else ""
-    error: Optional[BaseException] = None
-    user: Optional[User] = None
+    error: BaseException | None = None
+    user: User | None = None
     try:
         rate_limit.check_login_rpm(client_ip)
         try:
             user = authenticate_oidc_callback(req.code, req.state)
         except IdpError as exc:
             logger.warning("oidc/callback rejected: %s", exc)
-            raise HTTPException(
-                status.HTTP_401_UNAUTHORIZED, "OIDC authentication failed"
-            )
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "OIDC authentication failed") from exc
         # authenticate_oidc_callback already registered a federated user (if
         # not in _USERS) so issue_token can resolve them.
         return LoginResponse(
@@ -785,17 +788,15 @@ def saml_acs(req: SAMLACSBody, request: Request):
     shape as /v1/auth/login; on ANY failure a uniform 401. Exactly one audit row.
     """
     client_ip = request.client.host if request.client else ""
-    error: Optional[BaseException] = None
-    user: Optional[User] = None
+    error: BaseException | None = None
+    user: User | None = None
     try:
         rate_limit.check_login_rpm(client_ip)
         try:
             user = authenticate_saml_acs(req.saml_response)
         except IdpError as exc:
             logger.warning("saml/acs rejected: %s", exc)
-            raise HTTPException(
-                status.HTTP_401_UNAUTHORIZED, "SAML authentication failed"
-            )
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "SAML authentication failed") from exc
         # authenticate_saml_acs already registered a federated user (if not in
         # _USERS) so issue_token can resolve them.
         return LoginResponse(
@@ -861,6 +862,7 @@ async def logout(request: Request, user: User = Depends(auth_dependency)):
 
 # ---------- Health / Quota dashboard (Q19) ----------
 
+
 @app.get("/v1/health")
 def health():
     return {
@@ -908,6 +910,7 @@ def quota(user: User = Depends(auth_dependency)):
 
 # ---------- Main analysis endpoint ----------
 
+
 @app.post("/v1/oa/analyze", response_model=AnalysisResponse)
 async def analyze_oa(
     body: AnalysisRequest,
@@ -950,10 +953,10 @@ async def analyze_oa(
         "quota_passed": False,
         "circuit_open": False,
     }
-    response: Optional[AnalysisResponse] = None
-    cached_payload: Optional[dict] = None
+    response: AnalysisResponse | None = None
+    cached_payload: dict | None = None
     obs: dict = {}
-    error: Optional[BaseException] = None
+    error: BaseException | None = None
     reserved_quota_tokens = 0
     quota_reservation_settled = False
     try:
@@ -964,9 +967,7 @@ async def analyze_oa(
         # only check when both are present — handlers that previously sent
         # only one or the other (the frontend always sends both with the
         # same value; smoke tests sometimes send only body) keep working.
-        header_case_id = (
-            request.headers.get("X-Case-Id") or request.query_params.get("case_id")
-        )
+        header_case_id = request.headers.get("X-Case-Id") or request.query_params.get("case_id")
         if header_case_id and header_case_id != body.case_id:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -1029,9 +1030,7 @@ async def analyze_oa(
             # Cache hit does no LLM work — release the quota reservation in
             # full (delta = 0 - reserved), otherwise every hit silently burns
             # the user's daily quota.
-            rate_limit.record_usage(
-                user, 0, 0, 0.0, reserved_tokens=reserved_quota_tokens
-            )
+            rate_limit.record_usage(user, 0, 0, 0.0, reserved_tokens=reserved_quota_tokens)
             quota_reservation_settled = True
             return response
 
@@ -1060,7 +1059,13 @@ async def analyze_oa(
         quota_reservation_settled = True
 
         # 8. Cache write
-        cache.set_response(user.tenant_id, user.user_id, body.case_id, prompt_hash, response.model_dump(mode="json"))
+        cache.set_response(
+            user.tenant_id,
+            user.user_id,
+            body.case_id,
+            prompt_hash,
+            response.model_dump(mode="json"),
+        )
 
         return response
     except BaseException as exc:  # noqa: BLE001 — must reach the finally
@@ -1071,9 +1076,7 @@ async def analyze_oa(
         # defensively — releasing must never mask the original exception.
         if reserved_quota_tokens and not quota_reservation_settled:
             try:
-                rate_limit.record_usage(
-                    user, 0, 0, 0.0, reserved_tokens=reserved_quota_tokens
-                )
+                rate_limit.record_usage(user, 0, 0, 0.0, reserved_tokens=reserved_quota_tokens)
                 quota_reservation_settled = True
             except Exception:  # noqa: BLE001
                 logger.exception("quota reservation release failed")
@@ -1137,6 +1140,7 @@ async def analyze_oa(
 
 # ---------- Day 2 upload endpoint ----------
 
+
 @app.post("/v1/oa/upload")
 async def upload_oa(
     request: Request,
@@ -1184,11 +1188,11 @@ async def upload_oa(
     # Pre-set audit shape so the finally block always has something coherent
     # to write — even if we error out before reading the file body.
     response_payload: Any = None
-    model_used: Optional[str] = None
+    model_used: str | None = None
     prompt_tokens = 0
     completion_tokens = 0
     file_size = 0
-    error: Optional[BaseException] = None
+    error: BaseException | None = None
     file_content_type = getattr(file, "content_type", None)
     file_name = getattr(file, "filename", None)
 
@@ -1272,7 +1276,7 @@ async def upload_oa(
                 raise HTTPException(
                     status.HTTP_502_BAD_GATEWAY,
                     f"AI engine unreachable: {exc}",
-                )
+                ) from exc
 
         if ai_resp.status_code >= 400:
             # Mirror the AI engine status when meaningful, otherwise 502.
@@ -1379,6 +1383,7 @@ async def upload_oa(
 
 # ---------- Audit query endpoints (for the Auditor role) ----------
 
+
 @app.get("/v1/audit/recent")
 def audit_recent(limit: int = 50, user: User = Depends(auth_dependency)):
     if user.role.value not in ("auditor", "it_admin"):
@@ -1420,6 +1425,7 @@ def audit_verify(
 
 # ---------- Redaction (first-class for digiRunner pre-LLM transform plugins) ----------
 
+
 class RedactionPreviewRequest(BaseModel):
     # H-2: same cap as AnalysisRequest.oa_text — redaction preview is what
     # the SPA shows BEFORE submitting the OA for analysis, so the upper
@@ -1448,8 +1454,8 @@ def _do_redact(req: RedactionPreviewRequest, user: User, request: Request, endpo
     }
     rules: list[str] = []
     redacted: str = ""
-    result_payload: Optional[dict] = None
-    error: Optional[BaseException] = None
+    result_payload: dict | None = None
+    error: BaseException | None = None
     try:
         if not case_id:
             raise HTTPException(
@@ -1542,6 +1548,7 @@ def redaction_preview(
 
 # ---------- Audit append (for digiRunner post-LLM hooks) ----------
 
+
 class AuditAppendRequest(BaseModel):
     """Body schema for POST /v1/audit/append.
 
@@ -1554,6 +1561,7 @@ class AuditAppendRequest(BaseModel):
     rather than silently dropped, so a future copy-paste error setting
     `extra="allow"` can't quietly turn this into audit forgery.
     """
+
     # `model_used` happens to start with "model_", which Pydantic v2 reserves
     # by default; explicitly disable the protected-namespace check so the
     # import doesn't emit a warning. `extra="forbid"` enforces the documented
@@ -1563,24 +1571,26 @@ class AuditAppendRequest(BaseModel):
     # Caps prevent unbounded strings from ballooning the hash-chained log.
     case_id: str = Field(..., max_length=256)
     endpoint: str = Field(..., max_length=256)
-    model_used: Optional[str] = Field(default=None, max_length=128)
+    model_used: str | None = Field(default=None, max_length=128)
     prompt_tokens: int = 0
     completion_tokens: int = 0
     latency_ms: int = 0
     masked_field_rules: list[str] = Field(default_factory=list)
     policy_decisions: dict[str, bool] = Field(default_factory=dict)
-    error: Optional[str] = Field(default=None, max_length=2048)
+    error: str | None = Field(default=None, max_length=2048)
 
 
 # Roles permitted to call /v1/audit/append. PARALEGAL is excluded — the audit
 # chain is auditor / it_admin territory; attorneys may need to record analysis
 # events for cases they handle. Phase 2.4 should add a dedicated SERVICE_ACCOUNT
 # role and tighten this further.
-_AUDIT_APPEND_ROLES: frozenset[UserRole] = frozenset({
-    UserRole.ATTORNEY,
-    UserRole.IT_ADMIN,
-    UserRole.AUDITOR,
-})
+_AUDIT_APPEND_ROLES: frozenset[UserRole] = frozenset(
+    {
+        UserRole.ATTORNEY,
+        UserRole.IT_ADMIN,
+        UserRole.AUDITOR,
+    }
+)
 
 
 @app.post("/v1/audit/append")
@@ -1612,7 +1622,7 @@ def audit_append(
     # so the finally block can emit it on success, or fall through to an
     # error row on failure. We never want to write TWO rows for a single
     # request — invariant #4 says "exactly one".
-    error: Optional[BaseException] = None
+    error: BaseException | None = None
     appended_ok = False
     try:
         if user.role not in _AUDIT_APPEND_ROLES:
@@ -1632,7 +1642,7 @@ def audit_append(
             policy_decisions["error"] = True
 
         _safe_audit_write(
-            user=user,                       # gateway-trusted; supplies user_id + tenant_id
+            user=user,  # gateway-trusted; supplies user_id + tenant_id
             case_id=req.case_id,
             endpoint=req.endpoint,
             request_payload={"source": "audit_append"},
@@ -1671,6 +1681,7 @@ def audit_append(
 
 
 # ---------- Q16 — mandatory sign-off export ----------
+
 
 @app.post("/v1/oa/export", response_model=ExportResponse)
 def export_draft(
@@ -1720,17 +1731,15 @@ def export_draft(
         "authz_passed": False,
         "signoff_passed": False,
     }
-    response: Optional[ExportResponse] = None
+    response: ExportResponse | None = None
     summary = None
-    doc_hash: Optional[str] = None
-    error: Optional[BaseException] = None
+    doc_hash: str | None = None
+    error: BaseException | None = None
     try:
         # 1. Confused-deputy guard + ACL re-check on the body case_id, mirroring
         #    /v1/oa/analyze. If both header and body case_id are present they
         #    must agree; then the body case_id is ACL-checked explicitly.
-        header_case_id = (
-            request.headers.get("X-Case-Id") or request.query_params.get("case_id")
-        )
+        header_case_id = request.headers.get("X-Case-Id") or request.query_params.get("case_id")
         if header_case_id and header_case_id != body.case_id:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -1855,8 +1864,14 @@ def export_draft(
 
 if __name__ == "__main__":
     import uvicorn
+
     # M-9: bind 127.0.0.1 by default (was 0.0.0.0 — exposed on every LAN
     # interface). Production runs behind digiRunner / nginx; the
     # reverse-proxy IS the public edge, not this process. Override via
     # `LISTEN_HOST=0.0.0.0` for a deployment where this binary IS the edge.
-    uvicorn.run("backend.gateway.main:app", host=settings.LISTEN_HOST, port=settings.GATEWAY_PORT, reload=False)
+    uvicorn.run(
+        "backend.gateway.main:app",
+        host=settings.LISTEN_HOST,
+        port=settings.GATEWAY_PORT,
+        reload=False,
+    )

@@ -12,6 +12,7 @@ Two concerns are covered here:
    tests/unit/test_vector_store_contract.py). Skips cleanly in CI where the
    engine is absent.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -21,7 +22,6 @@ import pytest
 
 from backend.ai_engine import ocr_local, pdf_parser
 from backend.shared.config import settings
-
 
 # ---------------------------------------------------------------------------
 # 1. OCR backend dispatch / confidential forcing (no tesseract needed)
@@ -65,9 +65,7 @@ def test_ocr_page_dispatches_to_tesseract(monkeypatch):
     monkeypatch.setattr(ocr_local, "ocr_image", _spy_local)
     monkeypatch.setattr(pdf_parser.llm_client, "vision_ocr", _spy_vision)
 
-    text, _usage = asyncio.run(
-        pdf_parser._ocr_page(b"png", security_level="public")
-    )
+    text, _usage = asyncio.run(pdf_parser._ocr_page(b"png", security_level="public"))
     assert text == "LOCAL"
     assert calls == {"local": 1, "vision": 0}
 
@@ -87,9 +85,7 @@ def test_ocr_page_dispatches_to_vision(monkeypatch):
     monkeypatch.setattr(ocr_local, "ocr_image", _spy_local)
     monkeypatch.setattr(pdf_parser.llm_client, "vision_ocr", _spy_vision)
 
-    text, _usage = asyncio.run(
-        pdf_parser._ocr_page(b"png", security_level="public")
-    )
+    text, _usage = asyncio.run(pdf_parser._ocr_page(b"png", security_level="public"))
     assert text == "VISION"
     assert calls == {"local": 0, "vision": 1}
 

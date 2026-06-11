@@ -14,6 +14,7 @@ What this proves:
     - draft_response yields >=1 draft.
     - deadline calculator stamps a non-empty statutory_deadline string.
 """
+
 from __future__ import annotations
 
 from pathlib import Path

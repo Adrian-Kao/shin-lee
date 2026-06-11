@@ -23,6 +23,7 @@ Fixtures come from ``tests/conftest.py`` (``gateway_client``). We reset the
 in-memory single-use store + login bucket in teardown so the session-scoped
 app doesn't leak state across tests — same pattern the existing auth tests use.
 """
+
 from __future__ import annotations
 
 import jwt
@@ -54,6 +55,7 @@ def _request_magic(client, user_id: str):
 # Happy path: request -> consume -> session JWT works on a protected endpoint.
 # ---------------------------------------------------------------------------
 
+
 def test_request_then_consume_yields_working_session_jwt(gateway_client):
     r = _request_magic(gateway_client, "alice")
     assert r.status_code == 200, r.text
@@ -74,9 +76,7 @@ def test_request_then_consume_yields_working_session_jwt(gateway_client):
     assert session_jwt
 
     # The session JWT must work on a protected endpoint.
-    resp = gateway_client.get(
-        "/v1/quota", headers={"Authorization": f"Bearer {session_jwt}"}
-    )
+    resp = gateway_client.get("/v1/quota", headers={"Authorization": f"Bearer {session_jwt}"})
     assert resp.status_code == 200, resp.text
 
 
@@ -84,9 +84,9 @@ def test_session_jwt_from_magic_is_a_real_session_not_magic_typ(gateway_client):
     """The minted session token must be a normal session JWT (no magic typ),
     so it round-trips through verify_token / auth_dependency."""
     token = _request_magic(gateway_client, "alice").json()["magic_token"]
-    session_jwt = gateway_client.post(
-        "/v1/auth/magic/consume", json={"token": token}
-    ).json()["token"]
+    session_jwt = gateway_client.post("/v1/auth/magic/consume", json={"token": token}).json()[
+        "token"
+    ]
     # The minted session token carries the H-5 issuer/audience claims, so it
     # must be decoded with them (a bare decode now raises InvalidAudienceError).
     payload = jwt.decode(
@@ -104,6 +104,7 @@ def test_session_jwt_from_magic_is_a_real_session_not_magic_typ(gateway_client):
 # Single-use / replay.
 # ---------------------------------------------------------------------------
 
+
 def test_consume_twice_replay_is_rejected(gateway_client):
     token = _request_magic(gateway_client, "alice").json()["magic_token"]
 
@@ -117,7 +118,7 @@ def test_consume_twice_replay_is_rejected(gateway_client):
 def test_a_magic_token_cannot_be_used_as_a_bearer_session_token(gateway_client):
     """typ separation: a magic token presented as a Bearer must NOT authenticate
     a protected endpoint (it has typ=magic; verify_token issues no typ)."""
-    token = _request_magic(gateway_client, "alice").json()["magic_token"]
+    _request_magic(gateway_client, "alice").json()["magic_token"]
     # Magic tokens still decode against the same secret, but auth_dependency /
     # verify_token accept it only because verify_token doesn't check typ today;
     # the load-bearing guarantee is the OTHER direction (a session token can't
@@ -128,15 +129,14 @@ def test_a_magic_token_cannot_be_used_as_a_bearer_session_token(gateway_client):
         "/v1/auth/login", json={"user_id": "alice", "password": "demo-alice"}
     )
     session_jwt = login.json()["token"]
-    bad = gateway_client.post(
-        "/v1/auth/magic/consume", json={"token": session_jwt}
-    )
+    bad = gateway_client.post("/v1/auth/magic/consume", json={"token": session_jwt})
     assert bad.status_code == 401, bad.text
 
 
 # ---------------------------------------------------------------------------
 # Expiry.
 # ---------------------------------------------------------------------------
+
 
 def test_expired_magic_token_is_rejected(gateway_client, monkeypatch):
     """A token issued with TTL=0 is already expired by the time it's consumed."""
@@ -172,6 +172,7 @@ def test_consume_handcrafted_expired_token_is_rejected(gateway_client):
 # Tamper.
 # ---------------------------------------------------------------------------
 
+
 def test_tampered_magic_token_is_rejected(gateway_client):
     token = _request_magic(gateway_client, "alice").json()["magic_token"]
     # Flip the FIRST char of the signature segment to break the HMAC.
@@ -199,6 +200,7 @@ def test_token_signed_with_wrong_secret_is_rejected(gateway_client):
 # ---------------------------------------------------------------------------
 # User enumeration: known vs unknown user must be status + shape identical.
 # ---------------------------------------------------------------------------
+
 
 def test_request_no_user_enumeration_oracle(gateway_client):
     known = _request_magic(gateway_client, "alice")
@@ -231,6 +233,7 @@ def test_unknown_user_forged_token_cannot_be_consumed(gateway_client):
 # Per-IP rate limit on /request.
 # ---------------------------------------------------------------------------
 
+
 def test_request_is_rate_limited_per_ip(gateway_client, monkeypatch):
     from backend.gateway import rate_limit as rl
 
@@ -259,15 +262,14 @@ def test_consume_is_rate_limited_per_ip(gateway_client, monkeypatch):
     first = gateway_client.post("/v1/auth/magic/consume", json={"token": token})
     # First consume passes the bucket (succeeds: 200).
     assert first.status_code == 200, first.text
-    second = gateway_client.post(
-        "/v1/auth/magic/consume", json={"token": "anything"}
-    )
+    second = gateway_client.post("/v1/auth/magic/consume", json={"token": "anything"})
     assert second.status_code == 429, second.text
 
 
 # ---------------------------------------------------------------------------
 # Audit: exactly one row per call, raw token never stored.
 # ---------------------------------------------------------------------------
+
 
 def auth_mod_audit_rows():
     from backend.gateway import audit as audit_mod
@@ -313,6 +315,6 @@ def test_audit_never_stores_raw_token(gateway_client):
     # The jti correlation handle should be present on the rows.
     jti = auth_mod.magic_token_jti(token)
     assert jti is not None
-    assert any(
-        row.get("policy_decisions", {}).get("magic_jti") == jti for row in rows
-    ), "expected jti correlation handle in audit policy_decisions"
+    assert any(row.get("policy_decisions", {}).get("magic_jti") == jti for row in rows), (
+        "expected jti correlation handle in audit policy_decisions"
+    )

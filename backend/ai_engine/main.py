@@ -11,14 +11,13 @@ Endpoints:
     POST /v1/deadline             → DeadlineInfo
     GET  /v1/health
 """
+
 from __future__ import annotations
 
+import base64
 import hmac
 import time
 from datetime import datetime
-from typing import Any, Optional
-
-import base64
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -153,6 +152,7 @@ async def _observability_middleware(request: Request, call_next):
 
 # ---------- Schemas ----------
 
+
 class ParseOARequest(BaseModel):
     oa_text: str
     tenant_id: str
@@ -163,7 +163,7 @@ class ParseOARequest(BaseModel):
 
 class RetrieveRequest(BaseModel):
     tenant_id: str
-    rejection: dict       # Rejection serialised
+    rejection: dict  # Rejection serialised
     target_patent_no: str
     top_k: int = 5
 
@@ -174,7 +174,7 @@ class DraftRequest(BaseModel):
     case_id: str
     rejection: dict
     grounded_set: list[dict]
-    user_hint: Optional[str] = None
+    user_hint: str | None = None
     security_level: str = "public"
     circuit_open: bool = False
 
@@ -198,6 +198,7 @@ class ClaimTreeRequest(BaseModel):
     flat-claims rendering, so callers don't have to special-case missing
     patents at the orchestrator layer.
     """
+
     tenant_id: str
     patent_no: str
 
@@ -213,6 +214,7 @@ class ExtractTextRequest(BaseModel):
 
 
 # ---------- Endpoints ----------
+
 
 @app.get("/v1/health")
 def health():
@@ -249,6 +251,7 @@ def metrics_endpoint():
 # to make both endpoints return 404 unconditionally.
 # ---------------------------------------------------------------------------
 
+
 @app.get("/v1/prompts")
 def list_prompts():
     """List all externalized prompt intents. Used by Dify import + sanity."""
@@ -264,8 +267,8 @@ def get_prompt(intent: str):
         raise HTTPException(status_code=404, detail="Not Found")
     try:
         return load_prompt(intent)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Unknown intent: {intent}")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown intent: {intent}") from exc
 
 
 @app.post("/v1/parse_oa")
@@ -296,8 +299,10 @@ def retrieve_prior_art(req: RetrieveRequest):
     hits = rag.retrieve(
         req.tenant_id, query, top_k=req.top_k, prefer_patent_no=req.target_patent_no
     )
-    return {"hits": [h.model_dump(mode="json") for h in hits],
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+    return {
+        "hits": [h.model_dump(mode="json") for h in hits],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0},
+    }
 
 
 @app.post("/v1/draft_response")
@@ -314,6 +319,7 @@ def draft_response_endpoint(req: DraftRequest):
 @app.post("/v1/verify_citations")
 def verify_citations_endpoint(req: VerifyRequest):
     from backend.shared.models import DraftResponse
+
     draft = DraftResponse(**req.draft)
     grounded = [RetrievalHit(**g) for g in req.grounded_set]
     result, meta = oa_analyzer.verify_citations(draft, grounded)
@@ -357,7 +363,7 @@ async def extract_text_endpoint(req: ExtractTextRequest):
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             f"file_bytes_b64 is not valid base64: {exc}",
-        )
+        ) from exc
 
     if req.content_type == _PDF_MIME:
         try:
@@ -367,17 +373,17 @@ async def extract_text_endpoint(req: ExtractTextRequest):
                 security_level=req.security_level,
             )
         except PermissionError as exc:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
         except ValueError as exc:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
         except RuntimeError as exc:
             # Cloud OCR refused (confidential), or a page failed mid-parse.
-            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc))
+            raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, str(exc)) from exc
     elif req.content_type == _DOCX_MIME:
         try:
             result = await pdf_parser.extract_docx_text(file_bytes)
         except ValueError as exc:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc))
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     else:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
@@ -410,6 +416,7 @@ async def extract_text_endpoint(req: ExtractTextRequest):
 
 # ---------- Index management (used by seed script) ----------
 
+
 class IndexPatentRequest(BaseModel):
     tenant_id: str
     patent_no: str
@@ -425,6 +432,7 @@ class IndexPatentRequest(BaseModel):
 @app.post("/v1/index/patent")
 def index_patent(req: IndexPatentRequest):
     from backend.shared.models import Patent
+
     p = Patent(
         patent_no=req.patent_no,
         title=req.title,
@@ -440,8 +448,14 @@ def index_patent(req: IndexPatentRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
     # M-9: bind 127.0.0.1 by default (was 0.0.0.0 — i.e. exposed on every
     # LAN interface). Set `LISTEN_HOST=0.0.0.0` only when this process is
     # intentionally the public edge; production should run behind a
     # reverse proxy bound to loopback.
-    uvicorn.run("backend.ai_engine.main:app", host=settings.LISTEN_HOST, port=settings.AI_ENGINE_PORT, reload=False)
+    uvicorn.run(
+        "backend.ai_engine.main:app",
+        host=settings.LISTEN_HOST,
+        port=settings.AI_ENGINE_PORT,
+        reload=False,
+    )

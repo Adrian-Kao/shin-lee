@@ -7,6 +7,7 @@ and asserts the outbound httpx POST carried BOTH the internal auth token (when
 set) AND the X-Request-ID — proving `request_id_headers(_internal_headers())`
 is wired, not a bare `_internal_headers()`.
 """
+
 from __future__ import annotations
 
 from unittest import mock

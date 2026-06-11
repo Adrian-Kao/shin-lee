@@ -5,6 +5,7 @@ holds the PUBLIC key, which cannot MINT tokens. Only the gateway holds the
 private key. These tests exercise issue_token / verify_token directly with an
 in-test RSA key pair, so no server or fixed key material is needed.
 """
+
 from __future__ import annotations
 
 import jwt
@@ -69,7 +70,10 @@ def test_public_key_alone_cannot_mint_tokens(monkeypatch):
     # The core asymmetric guarantee: a holder of only the PUBLIC key cannot sign.
     priv, pub = _gen_rsa_pem()
     _use_rs256(monkeypatch, pub, pub)  # signer mistakenly given the public key
-    with pytest.raises(Exception):
+    # The exact exception type is a cryptography/PyJWT implementation detail
+    # (ValueError vs TypeError vs AttributeError depending on version); the
+    # guarantee under test is only that signing with a public key FAILS.
+    with pytest.raises(Exception):  # noqa: B017
         auth_mod.issue_token("alice")
 
 

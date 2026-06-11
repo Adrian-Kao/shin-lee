@@ -35,6 +35,7 @@ A real implementation would also:
     - Hash PII with HMAC-tenant-key so the same email → same placeholder
       (lets LLM reason about co-occurrence without knowing identity)
 """
+
 from __future__ import annotations
 
 import base64
@@ -47,13 +48,13 @@ import threading
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Pattern
+from re import Pattern
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from backend.shared.config import settings, MAPPING_DB_PATH, TENANT_DICTS_DIR
+from backend.shared.config import MAPPING_DB_PATH, TENANT_DICTS_DIR, settings
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +99,7 @@ class MaskRule:
 #   U+200D ZERO WIDTH JOINER      U+200E/200F LEFT/RIGHT-TO-LEFT MARK
 #   U+202A-202E bidi embed/override   U+2060 WORD JOINER
 #   U+2061-2064 invisible math ops    U+FEFF ZWNBSP / BOM
-_ZERO_WIDTH_RE = re.compile(
-    "[­᠎​‌‍‎‏"
-    "‪‫‬‭‮"
-    "⁠⁡⁢⁣⁤﻿]"
-)
+_ZERO_WIDTH_RE = re.compile("[­᠎​‌‍‎‏‪‫‬‭‮⁠⁡⁢⁣⁤﻿]")
 
 
 def strip_zero_width(text: str) -> str:
@@ -125,26 +122,73 @@ def strip_zero_width(text: str) -> str:
 # the already-documented NFKC lossy round-trip).
 _CONFUSABLE_MAP: dict[str, str] = {
     # --- Cyrillic capitals that look like Latin capitals ---
-    "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H",
-    "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T",
-    "Х": "X", "І": "I", "Ј": "J", "Ѕ": "S", "Ї": "I",
+    "А": "A",
+    "В": "B",
+    "С": "C",
+    "Е": "E",
+    "Н": "H",
+    "К": "K",
+    "М": "M",
+    "О": "O",
+    "Р": "P",
+    "Т": "T",
+    "Х": "X",
+    "І": "I",
+    "Ј": "J",
+    "Ѕ": "S",
+    "Ї": "I",
     "Ү": "Y",
     # --- Cyrillic smalls that look like Latin smalls ---
-    "а": "a", "в": "v", "с": "c", "е": "e", "н": "h",
-    "к": "k", "м": "m", "о": "o", "р": "p", "т": "t",
-    "х": "x", "і": "i", "ј": "j", "ѕ": "s", "у": "y",
+    "а": "a",
+    "в": "v",
+    "с": "c",
+    "е": "e",
+    "н": "h",
+    "к": "k",
+    "м": "m",
+    "о": "o",
+    "р": "p",
+    "т": "t",
+    "х": "x",
+    "і": "i",
+    "ј": "j",
+    "ѕ": "s",
+    "у": "y",
     # --- Greek capitals that look like Latin capitals ---
-    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H",
-    "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N", "Ο": "O",
-    "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X",
+    "Α": "A",
+    "Β": "B",
+    "Ε": "E",
+    "Ζ": "Z",
+    "Η": "H",
+    "Ι": "I",
+    "Κ": "K",
+    "Μ": "M",
+    "Ν": "N",
+    "Ο": "O",
+    "Ρ": "P",
+    "Τ": "T",
+    "Υ": "Y",
+    "Χ": "X",
     # --- Greek smalls that look like Latin smalls ---
-    "α": "a", "ο": "o", "ρ": "p", "υ": "u", "ν": "v",
+    "α": "a",
+    "ο": "o",
+    "ρ": "p",
+    "υ": "u",
+    "ν": "v",
     "χ": "x",
     # --- Confusable punctuation used in emails / IDs ---
-    "＠": "@", "﹫": "@",
-    "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
-    "―": "-", "−": "-", "－": "-",
-    "․": ".", "．": ".",
+    "＠": "@",
+    "﹫": "@",
+    "‐": "-",
+    "‑": "-",
+    "‒": "-",
+    "–": "-",
+    "—": "-",
+    "―": "-",
+    "−": "-",
+    "－": "-",
+    "․": ".",
+    "．": ".",
 }
 
 # Single translation table compiled once (str.translate is C-fast).
@@ -581,6 +625,7 @@ def _tenant_fernet(tenant_id: str) -> Fernet:
 
 # --- Mapping table (LOCAL ONLY, never uploaded; `original` encrypted at rest) ---
 
+
 class MaskingStore:
     """Append-only local mapping table.  Reversible un-mask for inbound responses.
 
@@ -723,7 +768,10 @@ def redact(text: str, tenant_id: str) -> tuple[str, list[str]]:
     rules = list(PII_RULES) + get_tenant_rules(tenant_id)
 
     for rule in rules:
-        def _sub(match: re.Match) -> str:
+        # `rule=rule` binds the loop variable at definition time (B023). The
+        # closure is only ever invoked inside this iteration's `.sub(...)`
+        # call below, so behaviour is identical — this just makes it explicit.
+        def _sub(match: re.Match, rule=rule) -> str:
             original = match.group(0)
             sid = _stable_id(original, salt=tenant_id)
             placeholder = f"[{rule.placeholder_prefix}_{sid}]"

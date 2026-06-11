@@ -16,6 +16,7 @@ Three tiers, mirroring tests/unit/test_vector_store_contract.py's skip pattern:
 The live tiers need infra this CI box doesn't have, so they skip cleanly; the
 wiring tier proves the selection logic without any server or model.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -33,10 +34,10 @@ from backend.ai_engine.rag import (
 )
 from backend.shared.config import settings
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _chunk(chunk_id, patent_no, section, claim_no, text="t", jurisdiction="US", metadata=None):
     return Chunk(
@@ -117,12 +118,16 @@ def test_qdrant_round_trip_and_tenant_isolation():
     # Unique tenants per run so repeated runs against a persistent Qdrant don't
     # collide. (collection name = patentmind_<tenant_id>)
     import uuid
+
     suffix = uuid.uuid4().hex[:8]
     ta = f"rag_real_a_{suffix}"
     tb = f"rag_real_b_{suffix}"
     try:
-        store.upsert(ta, [_chunk("a1", "US1", "claim_1", 1),
-                          _chunk("a2", "US1", "abstract", None)], [_vec(1), _vec(2)])
+        store.upsert(
+            ta,
+            [_chunk("a1", "US1", "claim_1", 1), _chunk("a2", "US1", "abstract", None)],
+            [_vec(1), _vec(2)],
+        )
         store.upsert(tb, [_chunk("b1", "US2", "claim_1", 1)], [_vec(3)])
 
         a_hits = store.search(ta, _vec(1), top_k=5)
@@ -154,6 +159,7 @@ def test_qdrant_dim_drift_guard_live():
     hit the dim-drift guard (refuse by default)."""
     store = _qdrant_or_skip(DIM)
     import uuid
+
     t = f"rag_real_drift_{uuid.uuid4().hex[:8]}"
     try:
         store.upsert(t, [_chunk("c1", "US1", "claim_1", 1)], [_vec(1)])
@@ -161,8 +167,9 @@ def test_qdrant_dim_drift_guard_live():
         # guard when it tries to ensure the (now dim-mismatched) collection.
         other = QdrantVectorStore(url=settings.QDRANT_URL, dim=DIM + 4)
         with pytest.raises(RuntimeError) as exc:
-            other.upsert(t, [_chunk("c2", "US1", "claim_2", 2)],
-                         [list(np.zeros(DIM + 4, dtype=np.float32))])
+            other.upsert(
+                t, [_chunk("c2", "US1", "claim_2", 2)], [list(np.zeros(DIM + 4, dtype=np.float32))]
+            )
         assert "dim mismatch" in str(exc.value)
     finally:
         try:
@@ -174,6 +181,7 @@ def test_qdrant_dim_drift_guard_live():
 # ---------------------------------------------------------------------------
 # Tier 2 — bge-m3 embeddings (skips if sentence-transformers unimportable)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.skipif(
     not _sentence_transformers_available(),
@@ -203,6 +211,7 @@ def test_bge_m3_embedder_dim_and_distinctness(monkeypatch):
 # Tier 3 — backend SELECTION wiring (ALWAYS runs; no server / model needed)
 # ---------------------------------------------------------------------------
 
+
 class _StubQdrantClient:
     """Minimal stand-in for qdrant_client.QdrantClient — records the URL and
     answers the few calls _make_store()/__init__ make, so we can assert the
@@ -216,15 +225,17 @@ class _StubQdrantClient:
     def get_collections(self):  # pragma: no cover - not exercised here
         class _R:
             collections = []
+
         return _R()
 
 
 def test_make_store_selects_qdrant_when_configured(monkeypatch):
-    import backend.ai_engine.rag as rag
-
     # Stub the constructor the lazy import inside QdrantVectorStore.__init__
     # resolves: `from qdrant_client import QdrantClient`.
     import qdrant_client
+
+    import backend.ai_engine.rag as rag
+
     monkeypatch.setattr(qdrant_client, "QdrantClient", _StubQdrantClient)
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "qdrant")
 

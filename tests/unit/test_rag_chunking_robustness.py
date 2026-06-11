@@ -14,11 +14,10 @@ Covers the production edge cases the chunker/retriever must survive:
 Uses unique tenant ids so indexing into the shared module-level store does not
 contaminate other tests (the same pattern test_claim_tree_chunking.py uses).
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from backend.ai_engine import rag
 from backend.ai_engine.rag import _sliding_window, chunk_patent
@@ -31,7 +30,7 @@ def _patent(claims, patent_no, abstract="An abstract.", jurisdiction="US"):
         title="Test patent",
         abstract=abstract,
         claims=claims,
-        publication_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        publication_date=datetime(2024, 1, 1, tzinfo=UTC),
         jurisdiction=jurisdiction,
         is_local=False,
     )
@@ -93,8 +92,10 @@ def test_cjk_claims_and_spec_chunk_cleanly():
         "如請求項1所述之方法，其中該裝置資料包括最大可供電功率。",
     ]
     cjk_spec = "發明所屬之技術領域\n本發明關於電動車充電管理。\n\n先前技術\n習知技術採固定上限。"
-    chunks = chunk_patent(_patent(cjk_claims, "TW-CJK", abstract="一種充電管理方法。",
-                                  jurisdiction="TW"), spec_text=cjk_spec)
+    chunks = chunk_patent(
+        _patent(cjk_claims, "TW-CJK", abstract="一種充電管理方法。", jurisdiction="TW"),
+        spec_text=cjk_spec,
+    )
     by_sec = {c.section: c for c in chunks}
     # Abstract + claim text survive intact (no mojibake / truncation).
     assert by_sec["abstract"].text == "一種充電管理方法。"

@@ -10,9 +10,10 @@ budget dicts between tests, but these unit tests poke module state directly
 (bypassing the gateway), so each test that depends on a clean slate also calls
 ``_clear_budget_state()`` in arrange to be self-contained / order-independent.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -59,14 +60,19 @@ def _clean():
 def test_record_usage_attributes_cost_to_tenant_and_model():
     day = rl._today()
     month = rl._this_month()
-    rl.record_usage(_user(), prompt_tokens=100, completion_tokens=50,
-                    cost_usd=1.50, model="claude-sonnet-4-6")
+    rl.record_usage(
+        _user(), prompt_tokens=100, completion_tokens=50, cost_usd=1.50, model="claude-sonnet-4-6"
+    )
 
     assert rl._tenant_daily_cost[("tenant_a", day)] == pytest.approx(1.50)
     assert rl._tenant_monthly_cost[("tenant_a", month)] == pytest.approx(1.50)
     assert rl._model_daily_cost[("claude-sonnet-4-6", day)] == pytest.approx(1.50)
-    assert rl._tenant_model_daily_cost[("tenant_a", "claude-sonnet-4-6", day)] == pytest.approx(1.50)
-    assert rl._tenant_model_monthly_cost[("tenant_a", "claude-sonnet-4-6", month)] == pytest.approx(1.50)
+    assert rl._tenant_model_daily_cost[("tenant_a", "claude-sonnet-4-6", day)] == pytest.approx(
+        1.50
+    )
+    assert rl._tenant_model_monthly_cost[("tenant_a", "claude-sonnet-4-6", month)] == pytest.approx(
+        1.50
+    )
 
 
 def test_two_models_on_one_tenant_sum_correctly():
@@ -78,8 +84,12 @@ def test_two_models_on_one_tenant_sum_correctly():
     # tenant-level total is the sum across models
     assert rl._tenant_monthly_cost[("tenant_a", month)] == pytest.approx(2.50)
     # per-model buckets stay separate
-    assert rl._tenant_model_monthly_cost[("tenant_a", "claude-sonnet-4-6", month)] == pytest.approx(2.00)
-    assert rl._tenant_model_monthly_cost[("tenant_a", "claude-haiku-4-5-20251001", month)] == pytest.approx(0.50)
+    assert rl._tenant_model_monthly_cost[("tenant_a", "claude-sonnet-4-6", month)] == pytest.approx(
+        2.00
+    )
+    assert rl._tenant_model_monthly_cost[
+        ("tenant_a", "claude-haiku-4-5-20251001", month)
+    ] == pytest.approx(0.50)
 
     breakdown = rl.tenant_model_breakdown("tenant_a")
     assert len(breakdown) == 2
@@ -118,7 +128,7 @@ def test_projection_linear_run_rate():
     # -> run-rate projects $90 at month-end.
     month = "2026-06"
     rl._tenant_monthly_cost[("tenant_a", month)] = 30.0
-    now = datetime(2026, 6, 10, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 10, 12, 0, tzinfo=UTC)
 
     out = rl.project_month_end_cost("tenant_a", now=now)
     assert out["month_to_date_usd"] == pytest.approx(30.0)
@@ -130,7 +140,7 @@ def test_projection_linear_run_rate():
 def test_projection_day_one_no_divide_by_zero():
     month = "2026-06"
     rl._tenant_monthly_cost[("tenant_a", month)] = 5.0
-    now = datetime(2026, 6, 1, 0, 30, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 1, 0, 30, tzinfo=UTC)
 
     out = rl.project_month_end_cost("tenant_a", now=now)
     assert out["days_elapsed"] == 1
@@ -139,7 +149,7 @@ def test_projection_day_one_no_divide_by_zero():
 
 
 def test_projection_zero_spend():
-    now = datetime(2026, 6, 15, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 15, tzinfo=UTC)
     out = rl.project_month_end_cost("tenant_a", now=now)
     assert out["month_to_date_usd"] == pytest.approx(0.0)
     assert out["projected_month_end_usd"] == pytest.approx(0.0)
@@ -148,15 +158,19 @@ def test_projection_zero_spend():
 def test_projected_vs_cap_pct(monkeypatch):
     # Configure a USD month cap on tenant_a and check the percentage.
     from backend.shared.config import settings
+
     tenants = {
-        "tenant_a": {"name": "Apex", "monthly_token_cap": 50_000_000,
-                     "monthly_cost_cap_usd": 100.0},
+        "tenant_a": {
+            "name": "Apex",
+            "monthly_token_cap": 50_000_000,
+            "monthly_cost_cap_usd": 100.0,
+        },
     }
     monkeypatch.setattr(settings, "DEMO_TENANTS", tenants)
 
     month = "2026-06"
     rl._tenant_monthly_cost[("tenant_a", month)] = 30.0
-    now = datetime(2026, 6, 10, tzinfo=timezone.utc)  # projects $90
+    now = datetime(2026, 6, 10, tzinfo=UTC)  # projects $90
 
     out = rl.project_month_end_cost("tenant_a", now=now)
     assert out["tenant_monthly_cap_usd"] == pytest.approx(100.0)
@@ -168,7 +182,7 @@ def test_no_cap_configured_yields_none_pct():
     # tenant_a default config ships no monthly_cost_cap_usd.
     month = "2026-06"
     rl._tenant_monthly_cost[("tenant_a", month)] = 30.0
-    now = datetime(2026, 6, 10, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 10, tzinfo=UTC)
     out = rl.project_month_end_cost("tenant_a", now=now)
     assert out["tenant_monthly_cap_usd"] is None
     assert out["projected_vs_cap_pct"] is None
@@ -207,9 +221,12 @@ def test_snapshot_includes_budget_block():
     assert budget["per_model"][0]["month_to_date_usd"] == pytest.approx(2.00)
     assert "forecast" in budget
     assert set(budget["forecast"]) >= {
-        "month_to_date_usd", "projected_month_end_usd",
-        "days_elapsed", "days_in_month",
-        "tenant_monthly_cap_usd", "projected_vs_cap_pct",
+        "month_to_date_usd",
+        "projected_month_end_usd",
+        "days_elapsed",
+        "days_in_month",
+        "tenant_monthly_cap_usd",
+        "projected_vs_cap_pct",
     }
     # no USD cap configured by default -> status "no_cap"
     assert budget["status"] == "no_cap"
@@ -218,11 +235,17 @@ def test_snapshot_includes_budget_block():
 
 def test_snapshot_status_will_exceed(monkeypatch):
     from backend.shared.config import settings
+
     monkeypatch.setattr(
         settings,
         "DEMO_TENANTS",
-        {"tenant_a": {"name": "Apex", "monthly_token_cap": 50_000_000,
-                      "monthly_cost_cap_usd": 10.0}},
+        {
+            "tenant_a": {
+                "name": "Apex",
+                "monthly_token_cap": 50_000_000,
+                "monthly_cost_cap_usd": 10.0,
+            }
+        },
     )
     u = _user()
     # Big spend early in the month so the run-rate projection blows past $10.

@@ -6,6 +6,7 @@ service) can exercise the real wire path; this suite locks in the contract
 (JSON serialisation, miss → None, connection failure → graceful, stats
 counters).
 """
+
 from __future__ import annotations
 
 from unittest import mock
@@ -97,9 +98,7 @@ def test_connection_failure_returns_none_not_crash(patched_backend):
     """ConnectionError on GET/SET is swallowed; failure counter increments."""
     import redis as real_redis
 
-    patched_backend._client.get.side_effect = real_redis.exceptions.ConnectionError(
-        "Redis is down"
-    )
+    patched_backend._client.get.side_effect = real_redis.exceptions.ConnectionError("Redis is down")
     patched_backend._client.setex.side_effect = real_redis.exceptions.ConnectionError(
         "Redis is down"
     )

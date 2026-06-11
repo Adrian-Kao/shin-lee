@@ -15,6 +15,7 @@ Post-fix:
 
 These tests are the load-bearing assertions that close M-7 + M-8.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -31,6 +32,7 @@ def _isolate_cache(monkeypatch):
     `_reset_module_state` fixture in conftest only clears `_data` — it
     doesn't reset the per-tenant order index added by M-8."""
     from backend.gateway.cache import _MemoryCache
+
     fresh = _MemoryCache()
     monkeypatch.setattr(cache_mod, "_cache", fresh)
     yield

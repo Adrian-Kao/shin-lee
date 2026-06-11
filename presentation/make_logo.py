@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PatentMind logo generator (Pillow only).
 
 Concept: a navy shield (trust / on-prem security — the project's moat) holding
@@ -8,6 +7,7 @@ document lines that an amber "AI node" is reading. Produces:
   assets/logo_word_white.png    mark + wordmark in white (for navy bg)
 """
 import os
+
 from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -90,7 +90,7 @@ def make_mark(px=512):
     line_h = S * 0.026
     ys = [top + S * 0.085, top + S * 0.16, top + S * 0.235]
     widths = [0.66, 1.0, 0.82]   # last full-ish, ragged like text
-    for y, wfrac in zip(ys, widths):
+    for y, wfrac in zip(ys, widths, strict=True):
         x1 = lx + (rx - lx) * wfrac
         d.rounded_rectangle([lx, y, x1, y + line_h], radius=line_h / 2, fill=NAVY)
 

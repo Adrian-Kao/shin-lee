@@ -10,6 +10,7 @@ The fixtures intentionally mirror the on-disk shape eval_cases.py writes
 so any future schema change to summary.json breaks these tests and forces
 us to update both producer + consumer in the same PR.
 """
+
 from __future__ import annotations
 
 import json
@@ -65,13 +66,15 @@ def _make_case(
             "model": model,
         },
         "predicted": {
-            "rejections": [{
-                "rejection_type": rejection_type,
-                "affected_claims": pred_claims,
-                "cited_prior_art": ["US7654321"],
-                "confidence": 0.9,
-                "examiner_argument_preview": "...",
-            }],
+            "rejections": [
+                {
+                    "rejection_type": rejection_type,
+                    "affected_claims": pred_claims,
+                    "cited_prior_art": ["US7654321"],
+                    "confidence": 0.9,
+                    "examiner_argument_preview": "...",
+                }
+            ],
             "rejection_types": [rejection_type],
             "received_date": "2025-06-15",
             "statutory_deadline": "2025-08-14",
@@ -80,12 +83,14 @@ def _make_case(
             "deadline_warnings": [],
         },
         "expected": {
-            "rejections": [{
-                "rejection_type": rejection_type,
-                "affected_claims": exp_claims,
-                "cited_prior_art": ["US7654321"],
-                "statute": "35 USC 103",
-            }],
+            "rejections": [
+                {
+                    "rejection_type": rejection_type,
+                    "affected_claims": exp_claims,
+                    "cited_prior_art": ["US7654321"],
+                    "statute": "35 USC 103",
+                }
+            ],
             "rejection_types": [rejection_type],
             "received_date": "2025-06-15",
             "deadline_candidates": ["2025-08-14"],
@@ -125,16 +130,24 @@ def _make_summary(
     for r in ok:
         for er in r["expected"]["rejections"]:
             t = er["rejection_type"]
-            st = by_type.setdefault(t, {"count": 0, "pass": 0,
-                                        "mean_confidence": 0.9,
-                                        "mean_latency_ms": 50.0,
-                                        "total_input_tokens": 0,
-                                        "total_output_tokens": 0,
-                                        "total_cost_usd": 0.0})
+            st = by_type.setdefault(
+                t,
+                {
+                    "count": 0,
+                    "pass": 0,
+                    "mean_confidence": 0.9,
+                    "mean_latency_ms": 50.0,
+                    "total_input_tokens": 0,
+                    "total_output_tokens": 0,
+                    "total_cost_usd": 0.0,
+                },
+            )
             st["count"] += 1
-            if any(pr["rejection_type"] == t
-                   and set(pr["affected_claims"]) == set(er["affected_claims"])
-                   for pr in r["predicted"]["rejections"]):
+            if any(
+                pr["rejection_type"] == t
+                and set(pr["affected_claims"]) == set(er["affected_claims"])
+                for pr in r["predicted"]["rejections"]
+            ):
                 st["pass"] += 1
             st["total_input_tokens"] += r["cost_meta"]["prompt_tokens"]
             st["total_output_tokens"] += r["cost_meta"]["completion_tokens"]
@@ -192,8 +205,7 @@ def test_compare_identical_runs_reports_zero_delta(tmp_path: Path):
     """Comparing a run to itself: every delta is zero, no improvements, no regressions."""
     cases = [
         _make_case("CASE-DEMO-001", rejection_type="103_obviousness"),
-        _make_case("CASE-DEMO-002", rejection_type="102_novelty",
-                   pred_claims=[1], exp_claims=[1]),
+        _make_case("CASE-DEMO-002", rejection_type="102_novelty", pred_claims=[1], exp_claims=[1]),
     ]
     summary = _make_summary(cases)
     baseline = _write_eval_dir(tmp_path / "baseline", cases, summary)
@@ -226,25 +238,40 @@ def test_compare_identical_runs_reports_zero_delta(tmp_path: Path):
 def test_compare_detects_classification_regression(tmp_path: Path):
     """Candidate predicts wrong type on one case → that case is flagged as regression."""
     baseline_cases = [
-        _make_case("CASE-DEMO-001", rejection_type="103_obviousness",
-                   rejection_types_match=True),
-        _make_case("CASE-DEMO-002", rejection_type="102_novelty",
-                   rejection_types_match=True, pred_claims=[1, 2],
-                   exp_claims=[1, 2], claims_matches=1, claims_total=1),
+        _make_case("CASE-DEMO-001", rejection_type="103_obviousness", rejection_types_match=True),
+        _make_case(
+            "CASE-DEMO-002",
+            rejection_type="102_novelty",
+            rejection_types_match=True,
+            pred_claims=[1, 2],
+            exp_claims=[1, 2],
+            claims_matches=1,
+            claims_total=1,
+        ),
     ]
     # Candidate gets CASE-DEMO-001 wrong: predicts other but expected 103.
     candidate_cases = [
-        _make_case("CASE-DEMO-001", rejection_type="103_obviousness",
-                   rejection_types_match=False, claims_matches=0,
-                   claims_total=1),
-        _make_case("CASE-DEMO-002", rejection_type="102_novelty",
-                   rejection_types_match=True, pred_claims=[1, 2],
-                   exp_claims=[1, 2], claims_matches=1, claims_total=1),
+        _make_case(
+            "CASE-DEMO-001",
+            rejection_type="103_obviousness",
+            rejection_types_match=False,
+            claims_matches=0,
+            claims_total=1,
+        ),
+        _make_case(
+            "CASE-DEMO-002",
+            rejection_type="102_novelty",
+            rejection_types_match=True,
+            pred_claims=[1, 2],
+            exp_claims=[1, 2],
+            claims_matches=1,
+            claims_total=1,
+        ),
     ]
-    baseline = _write_eval_dir(tmp_path / "baseline", baseline_cases,
-                               _make_summary(baseline_cases))
-    candidate = _write_eval_dir(tmp_path / "candidate", candidate_cases,
-                                _make_summary(candidate_cases))
+    baseline = _write_eval_dir(tmp_path / "baseline", baseline_cases, _make_summary(baseline_cases))
+    candidate = _write_eval_dir(
+        tmp_path / "candidate", candidate_cases, _make_summary(candidate_cases)
+    )
 
     out = eval_compare.run_compare(baseline, candidate, output_root=tmp_path / "out")
     payload = json.loads((out / "per_case_delta.json").read_text(encoding="utf-8"))
@@ -282,10 +309,10 @@ def test_compare_handles_disjoint_case_sets(tmp_path: Path):
         _make_case("CASE-DEMO-003"),
         _make_case("CASE-DEMO-004"),
     ]
-    baseline = _write_eval_dir(tmp_path / "baseline", baseline_cases,
-                               _make_summary(baseline_cases))
-    candidate = _write_eval_dir(tmp_path / "candidate", candidate_cases,
-                                _make_summary(candidate_cases))
+    baseline = _write_eval_dir(tmp_path / "baseline", baseline_cases, _make_summary(baseline_cases))
+    candidate = _write_eval_dir(
+        tmp_path / "candidate", candidate_cases, _make_summary(candidate_cases)
+    )
 
     out = eval_compare.run_compare(baseline, candidate, output_root=tmp_path / "out")
     payload = json.loads((out / "per_case_delta.json").read_text(encoding="utf-8"))
@@ -307,9 +334,11 @@ def test_compare_handles_disjoint_case_sets(tmp_path: Path):
     # CASE-DEMO-002 / 004 must appear in the warning blurb but NOT as a
     # per-case table row. The per-case table rows start with '| CASE-' and
     # have rejection-type cells; the warning blurb mentions them in prose.
-    table_rows = [line for line in md.splitlines()
-                  if line.startswith("| CASE-DEMO-")
-                  and " | y |" in line or " | n |" in line]
+    table_rows = [
+        line
+        for line in md.splitlines()
+        if line.startswith("| CASE-DEMO-") and " | y |" in line or " | n |" in line
+    ]
     assert all("CASE-DEMO-002" not in row for row in table_rows)
     assert all("CASE-DEMO-004" not in row for row in table_rows)
 
@@ -317,7 +346,7 @@ def test_compare_handles_disjoint_case_sets(tmp_path: Path):
 def test_compare_cost_projection_math(tmp_path: Path):
     """Cost projection multiplies per-case cost × monthly volume × 12 for annual."""
     # 4 cases at $0.05 each → $0.20 total, $0.05/case → 1000 OAs = $50/month.
-    cases = [_make_case(f"CASE-DEMO-00{i+1}", cost_usd=0.05) for i in range(4)]
+    cases = [_make_case(f"CASE-DEMO-00{i + 1}", cost_usd=0.05) for i in range(4)]
     summary = _make_summary(cases, mode="anthropic", cost_provenance="exact")
     # Tweak provenance to exact so the projection note doesn't carry the
     # mock-mode WARNING (which would still pass this test but obscure intent).
@@ -339,8 +368,9 @@ def test_compare_cost_projection_math(tmp_path: Path):
 
     # Direct call to project_cost_per_month — sanity-check the math via a
     # different code path so the test isn't tautological.
-    direct = eval_compare.project_cost_per_month(summary, n_completed_for_cost=4,
-                                                 monthly_volume=2000)
+    direct = eval_compare.project_cost_per_month(
+        summary, n_completed_for_cost=4, monthly_volume=2000
+    )
     assert direct["per_case_cost_usd"] == pytest.approx(0.05, abs=1e-6)
     assert direct["projected_monthly_usd"] == pytest.approx(100.0, abs=1e-3)
     assert direct["annual_usd"] == pytest.approx(1200.0, abs=1e-3)
@@ -349,17 +379,29 @@ def test_compare_cost_projection_math(tmp_path: Path):
 def test_summary_json_round_trip(tmp_path: Path):
     """Summary written by build_summary deserialises back into the comparator unchanged."""
     cases = [
-        _make_case("CASE-DEMO-001", rejection_type="103_obviousness",
-                   claims_matches=1, claims_total=1),
-        _make_case("CASE-DEMO-002", rejection_type="102_novelty",
-                   pred_claims=[1, 2], exp_claims=[1, 2],
-                   claims_matches=1, claims_total=1),
-        _make_case("CASE-DEMO-003", rejection_type="antecedent_basis",
-                   pred_claims=[5], exp_claims=[5],
-                   claims_matches=1, claims_total=1),
+        _make_case(
+            "CASE-DEMO-001", rejection_type="103_obviousness", claims_matches=1, claims_total=1
+        ),
+        _make_case(
+            "CASE-DEMO-002",
+            rejection_type="102_novelty",
+            pred_claims=[1, 2],
+            exp_claims=[1, 2],
+            claims_matches=1,
+            claims_total=1,
+        ),
+        _make_case(
+            "CASE-DEMO-003",
+            rejection_type="antecedent_basis",
+            pred_claims=[5],
+            exp_claims=[5],
+            claims_matches=1,
+            claims_total=1,
+        ),
     ]
-    summary = _make_summary(cases, mode="anthropic", cost_provenance="exact",
-                            timestamp="20260605-120000")
+    summary = _make_summary(
+        cases, mode="anthropic", cost_provenance="exact", timestamp="20260605-120000"
+    )
     eval_dir = _write_eval_dir(tmp_path / "round_trip", cases, summary)
 
     # Load via the comparator's loader and assert key fields survive intact.
@@ -372,9 +414,7 @@ def test_summary_json_round_trip(tmp_path: Path):
     assert reloaded["affected_claims_correct"] == 3
     assert reloaded["affected_claims_total"] == 3
     # by_type breakdown survives.
-    assert set(reloaded["by_type"].keys()) == {
-        "103_obviousness", "102_novelty", "antecedent_basis"
-    }
+    assert set(reloaded["by_type"].keys()) == {"103_obviousness", "102_novelty", "antecedent_basis"}
     assert reloaded["schema_version"] == 1
 
     # Also test the per-case loader — case_id key matches the field, not the
@@ -405,17 +445,27 @@ def test_compare_fallback_when_summary_json_missing(tmp_path: Path):
 def test_compare_improvement_detection(tmp_path: Path):
     """Candidate gets a previously-failed case right → improved, not regressed."""
     baseline_cases = [
-        _make_case("CASE-DEMO-001", rejection_type="103_obviousness",
-                   rejection_types_match=False, claims_matches=0, claims_total=1),
+        _make_case(
+            "CASE-DEMO-001",
+            rejection_type="103_obviousness",
+            rejection_types_match=False,
+            claims_matches=0,
+            claims_total=1,
+        ),
     ]
     candidate_cases = [
-        _make_case("CASE-DEMO-001", rejection_type="103_obviousness",
-                   rejection_types_match=True, claims_matches=1, claims_total=1),
+        _make_case(
+            "CASE-DEMO-001",
+            rejection_type="103_obviousness",
+            rejection_types_match=True,
+            claims_matches=1,
+            claims_total=1,
+        ),
     ]
-    baseline = _write_eval_dir(tmp_path / "baseline", baseline_cases,
-                               _make_summary(baseline_cases))
-    candidate = _write_eval_dir(tmp_path / "candidate", candidate_cases,
-                                _make_summary(candidate_cases))
+    baseline = _write_eval_dir(tmp_path / "baseline", baseline_cases, _make_summary(baseline_cases))
+    candidate = _write_eval_dir(
+        tmp_path / "candidate", candidate_cases, _make_summary(candidate_cases)
+    )
 
     out = eval_compare.run_compare(baseline, candidate, output_root=tmp_path / "out")
     payload = json.loads((out / "per_case_delta.json").read_text(encoding="utf-8"))

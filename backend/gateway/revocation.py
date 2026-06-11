@@ -11,6 +11,7 @@ Backends (env ``REVOCATION_BACKEND``):
 
 The selection mirrors the cache backend pattern (``backend/gateway/cache.py``).
 """
+
 from __future__ import annotations
 
 import time

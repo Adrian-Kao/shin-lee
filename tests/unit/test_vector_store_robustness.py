@@ -17,6 +17,7 @@ shared contract must survive on EVERY backend:
 The memory backend is always exercised; Qdrant joins when reachable (skips
 cleanly otherwise — keeps CI green with no container).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -32,7 +33,6 @@ from backend.ai_engine.rag import (
 from backend.shared.config import settings
 from tests.unit.qdrant_isolation import TenantNamespacedStore
 
-
 DIM = 8
 
 
@@ -41,11 +41,22 @@ def _vec(seed: int, dim: int = DIM) -> list[float]:
     return rng.standard_normal(dim).astype(np.float32).tolist()
 
 
-def _chunk(chunk_id, patent_no="US1", section="claim_1", claim_no=1,
-           text="t", jurisdiction="US", metadata=None):
+def _chunk(
+    chunk_id,
+    patent_no="US1",
+    section="claim_1",
+    claim_no=1,
+    text="t",
+    jurisdiction="US",
+    metadata=None,
+):
     return Chunk(
-        chunk_id=chunk_id, patent_no=patent_no, section=section,
-        claim_no=claim_no, text=text, jurisdiction=jurisdiction,
+        chunk_id=chunk_id,
+        patent_no=patent_no,
+        section=section,
+        claim_no=claim_no,
+        text=text,
+        jurisdiction=jurisdiction,
         metadata=metadata or {},
     )
 
@@ -80,6 +91,7 @@ def store(request) -> VectorStore:
 # Empty-corpus / empty-batch behaviour
 # ---------------------------------------------------------------------------
 
+
 def test_empty_batch_upsert_is_noop(store):
     store.upsert("tenant_e", [], [])
     assert store.search("tenant_e", _vec(1), top_k=5) == []
@@ -95,6 +107,7 @@ def test_search_before_any_upsert_is_empty(store):
 # Duplicate chunk_id overwrites (idempotent re-index)
 # ---------------------------------------------------------------------------
 
+
 def test_duplicate_chunk_id_overwrites(store):
     store.upsert("tenant_dup", [_chunk("c1", text="first")], [_vec(3)])
     store.upsert("tenant_dup", [_chunk("c1", text="second")], [_vec(3)])
@@ -109,10 +122,10 @@ def test_duplicate_chunk_id_overwrites(store):
 # Unicode / CJK payload round-trips intact
 # ---------------------------------------------------------------------------
 
+
 def test_cjk_text_round_trips(store):
     cjk = "一種電動車充電站之充電管理方法，依據第一參考值判斷特定事件。"
-    store.upsert("tenant_cjk", [_chunk("z1", text=cjk, metadata={"族": "甲"})],
-                 [_vec(4)])
+    store.upsert("tenant_cjk", [_chunk("z1", text=cjk, metadata={"族": "甲"})], [_vec(4)])
     hits = store.search("tenant_cjk", _vec(4), top_k=5)
     assert hits[0][0].text == cjk
     assert hits[0][0].metadata.get("族") == "甲"
@@ -122,16 +135,17 @@ def test_cjk_text_round_trips(store):
 # Metadata filter with zero matches returns []
 # ---------------------------------------------------------------------------
 
+
 def test_metadata_filter_no_match_returns_empty(store):
     store.upsert("tenant_nf", [_chunk("a", jurisdiction="US")], [_vec(5)])
-    hits = store.search("tenant_nf", _vec(5), top_k=5,
-                        metadata_filter={"jurisdiction": "JP"})
+    hits = store.search("tenant_nf", _vec(5), top_k=5, metadata_filter={"jurisdiction": "JP"})
     assert hits == []
 
 
 # ---------------------------------------------------------------------------
 # Q5 RBAC — strongest isolation: identical query vector still cannot cross.
 # ---------------------------------------------------------------------------
+
 
 def test_identical_vector_cannot_cross_tenants(store):
     """Even when tenant_b queries with the EXACT vector of tenant_a's chunk,
@@ -165,6 +179,7 @@ def test_list_claim_chunks_is_tenant_scoped(store):
 #  is asserted on the memory backend specifically.)
 # ---------------------------------------------------------------------------
 
+
 def test_memory_upsert_dim_mismatch_raises():
     s = MemoryVectorStore()
     s.upsert("t", [_chunk("c1")], [_vec(1, dim=8)])
@@ -196,8 +211,7 @@ def test_memory_mixed_dim_within_one_batch_is_atomic():
     and NOTHING from the batch is indexed (atomic validation)."""
     s = MemoryVectorStore()
     with pytest.raises(VectorDimMismatch):
-        s.upsert("t", [_chunk("c1"), _chunk("c2")],
-                 [_vec(1, dim=8), _vec(2, dim=10)])
+        s.upsert("t", [_chunk("c1"), _chunk("c2")], [_vec(1, dim=8), _vec(2, dim=10)])
     # Nothing was written — the tenant is still empty.
     assert s.search("t", _vec(1, dim=8), top_k=5) == []
     assert s.stats()["total_chunks"] == 0

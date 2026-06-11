@@ -11,6 +11,7 @@ implementation, so a backend cannot silently drift from the shared contract.
 - The dim-drift guard is tested via the pure helper `_should_drop_for_dim`,
   needing no Qdrant at all.
 """
+
 from __future__ import annotations
 
 import abc
@@ -27,7 +28,6 @@ from backend.ai_engine.rag import (
 )
 from backend.shared.config import settings
 from tests.unit.qdrant_isolation import TenantNamespacedStore
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -91,6 +91,7 @@ def store(request) -> VectorStore:
 # ---------------------------------------------------------------------------
 # Shared contract suite — runs identically against every backend
 # ---------------------------------------------------------------------------
+
 
 def test_upsert_search_round_trip(store):
     chunks = [_chunk("c1", "US1", "claim_1", 1), _chunk("c2", "US1", "abstract", None)]
@@ -180,6 +181,7 @@ def test_list_claim_chunks_unindexed_patent_returns_empty(store):
 # ABC registration / instantiability
 # ---------------------------------------------------------------------------
 
+
 def test_concrete_classes_are_vectorstore_subclasses():
     assert issubclass(MemoryVectorStore, VectorStore)
     assert issubclass(QdrantVectorStore, VectorStore)
@@ -202,6 +204,7 @@ def test_partial_impl_cannot_instantiate():
     class Incomplete(VectorStore):
         def upsert(self, tenant_id, chunks, vectors):  # noqa: D401
             ...
+
         # search / stats / list_claim_chunks intentionally missing
 
     with pytest.raises(TypeError):
@@ -211,6 +214,7 @@ def test_partial_impl_cannot_instantiate():
 # ---------------------------------------------------------------------------
 # Dim-drift data-loss guard (Qdrant-free, via the pure helper)
 # ---------------------------------------------------------------------------
+
 
 def test_dim_guard_no_drop_when_dims_match():
     assert _should_drop_for_dim(384, 384, allow_reindex=False) is False

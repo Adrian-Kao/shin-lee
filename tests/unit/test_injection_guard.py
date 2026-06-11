@@ -9,11 +9,11 @@ Covers backend/ai_engine/injection_guard.py in isolation — no LLM, no FastAPI:
     - enforce()            : raises InjectionDetected on injection, returns a
                              clean verdict otherwise
 """
+
 from __future__ import annotations
 
 import pytest
 
-from backend.ai_engine import injection_guard
 from backend.ai_engine.injection_guard import (
     InjectionDetected,
     InjectionVerdict,
@@ -23,17 +23,17 @@ from backend.ai_engine.injection_guard import (
     scan_response,
 )
 
-
 # ---------------------------------------------------------------------------
 # make_canary
 # ---------------------------------------------------------------------------
+
 
 def test_make_canary_shape_and_prefix():
     c = make_canary()
     assert c.startswith("CANARY-")
     # uuid4 hex => 32 hex chars after the prefix.
     assert len(c) == len("CANARY-") + 32
-    assert c[len("CANARY-"):].isalnum()
+    assert c[len("CANARY-") :].isalnum()
 
 
 def test_make_canary_is_unique_per_call():
@@ -44,6 +44,7 @@ def test_make_canary_is_unique_per_call():
 # ---------------------------------------------------------------------------
 # harden_system_prompt
 # ---------------------------------------------------------------------------
+
 
 def test_harden_appends_canary_and_clause():
     base = "You are a patent analyst. Return JSON."
@@ -63,6 +64,7 @@ def test_harden_appends_canary_and_clause():
 # ---------------------------------------------------------------------------
 # scan_response — positive (injection) cases
 # ---------------------------------------------------------------------------
+
 
 def test_scan_flags_canary_leak():
     canary = make_canary()
@@ -102,10 +104,7 @@ def test_scan_flags_bulk_grounded_ref_dump():
 
 def test_scan_reports_multiple_signals():
     canary = make_canary()
-    text = (
-        f"{canary} <untrusted_input> "
-        + " ".join(f"[GROUNDED_REF_{i}]" for i in range(1, 9))
-    )
+    text = f"{canary} <untrusted_input> " + " ".join(f"[GROUNDED_REF_{i}]" for i in range(1, 9))
     verdict = scan_response(text, canary)
     assert verdict.injected is True
     # canary + tag + dump should all fire.
@@ -117,6 +116,7 @@ def test_scan_reports_multiple_signals():
 # ---------------------------------------------------------------------------
 # scan_response — negative (clean) cases
 # ---------------------------------------------------------------------------
+
 
 def test_scan_passes_clean_draft():
     canary = make_canary()
@@ -153,6 +153,7 @@ def test_scan_empty_canary_does_not_match_everything():
 # ---------------------------------------------------------------------------
 # enforce
 # ---------------------------------------------------------------------------
+
 
 def test_enforce_raises_on_injection():
     canary = make_canary()

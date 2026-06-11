@@ -9,7 +9,10 @@ The demo ACL (backend/gateway/auth.py:_CASE_ACL):
   * alice (attorney, tenant_a): CASE-2025-001/002/003
   * bob   (paralegal, tenant_a): CASE-2025-001/002
 """
+
 from __future__ import annotations
+
+from datetime import UTC
 
 import pytest
 
@@ -20,9 +23,7 @@ _ALICE_CASE = "CASE-2025-001"
 
 
 def _login(client, user_id: str) -> str:
-    resp = client.post(
-        "/v1/auth/login", json={"user_id": user_id, "password": f"demo-{user_id}"}
-    )
+    resp = client.post("/v1/auth/login", json={"user_id": user_id, "password": f"demo-{user_id}"})
     assert resp.status_code == 200, resp.text
     return resp.json()["token"]
 
@@ -43,14 +44,14 @@ def _alice() -> User:
 @pytest.mark.parametrize(
     "evil_case",
     [
-        "CASE-2025-001/../CASE-2025-099",   # path traversal
-        "CASE-2025-001\x00CASE-2025-099",   # null-byte smuggling
-        "CASE-2025-001 ",                    # trailing whitespace
-        " CASE-2025-001",                    # leading whitespace
-        "case-2025-001",                     # case-folded
-        "CASE-2025-001%00",                  # url-encoded null
-        "CASE-2025-00*",                     # glob-ish
-        "*",                                 # the auditor wildcard, claimed by alice
+        "CASE-2025-001/../CASE-2025-099",  # path traversal
+        "CASE-2025-001\x00CASE-2025-099",  # null-byte smuggling
+        "CASE-2025-001 ",  # trailing whitespace
+        " CASE-2025-001",  # leading whitespace
+        "case-2025-001",  # case-folded
+        "CASE-2025-001%00",  # url-encoded null
+        "CASE-2025-00*",  # glob-ish
+        "*",  # the auditor wildcard, claimed by alice
     ],
 )
 def test_authorize_case_access_is_exact_match_only(evil_case):
@@ -118,12 +119,13 @@ def test_role_claim_in_jwt_does_not_escalate(gateway_client):
     """bob forges a JWT claiming role=it_admin. verify_token resolves the role
     from _USERS (paralegal), so the audit endpoint (auditor/it_admin only)
     still 403s and analyze (attorney/paralegal) still works."""
+    from datetime import datetime, timedelta
+
     import jwt
-    from datetime import datetime, timedelta, timezone
 
     from backend.shared.config import settings
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     forged = jwt.encode(
         {
             "sub": "bob",
@@ -140,7 +142,5 @@ def test_role_claim_in_jwt_does_not_escalate(gateway_client):
     )
     # The audit endpoint is auditor/it_admin only — bob's forged it_admin claim
     # must NOT get him in (role resolved from _USERS = paralegal).
-    resp = gateway_client.get(
-        "/v1/audit/recent", headers={"Authorization": f"Bearer {forged}"}
-    )
+    resp = gateway_client.get("/v1/audit/recent", headers={"Authorization": f"Bearer {forged}"})
     assert resp.status_code == 403, resp.text

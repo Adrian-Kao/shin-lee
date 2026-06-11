@@ -6,6 +6,7 @@ in Python string constants" — but the file is named broadly so more
 invariants (D1: gateway never calls LLM directly, D2: AI engine writes
 no business state, etc.) can be added next to it.
 """
+
 from __future__ import annotations
 
 import ast
@@ -21,7 +22,9 @@ _LLM_CLIENT = _REPO / "backend" / "ai_engine" / "llm_client.py"
 _PROMPT_CHAR_THRESHOLD = 500
 
 
-def _find_long_string_constants(source: str, min_chars: int = _PROMPT_CHAR_THRESHOLD) -> list[tuple[str, int]]:
+def _find_long_string_constants(
+    source: str, min_chars: int = _PROMPT_CHAR_THRESHOLD
+) -> list[tuple[str, int]]:
     """Return (name, length) for every top-level / class-level module
     assignment of a plain string literal whose body is ≥ min_chars.
 
@@ -65,8 +68,7 @@ def test_no_long_prompt_constants_in_oa_analyzer():
     assert not matches, (
         f"Found {len(matches)} long string constants in oa_analyzer.py — "
         "move to backend/ai_engine/prompts/*.yaml per the Compat Refactor 1 "
-        "invariant. Offenders: "
-        + ", ".join(f"{name} ({n} chars)" for name, n in matches)
+        "invariant. Offenders: " + ", ".join(f"{name} ({n} chars)" for name, n in matches)
     )
 
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Build the PatentMind presentation (Traditional Chinese, 16:9).
 
 Editorial style: big type, accent bars, generous whitespace, custom artwork.
@@ -6,14 +5,15 @@ Deliberately avoids the "grid of boxes" look. Embeds the logo, a custom
 architecture diagram, and four real frontend screenshots with annotations.
 """
 import os
+
 from PIL import Image as PILImage
 from pptx import Presentation
-from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.oxml.ns import qn
+from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.oxml import parse_xml
+from pptx.oxml.ns import qn
+from pptx.util import Inches, Pt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")
@@ -54,8 +54,8 @@ def set_font(run, name=CJK):
         el = rPr.find(qn(tag))
         if el is None:
             el = parse_xml(
-                '<a:%s xmlns:a="http://schemas.openxmlformats.org/'
-                'drawingml/2006/main" typeface="%s"/>' % (tag.split(":")[1], name))
+                f'<a:{tag.split(":")[1]} xmlns:a="http://schemas.openxmlformats.org/'
+                f'drawingml/2006/main" typeface="{name}"/>')
             rPr.append(el)
         else:
             el.set("typeface", name)
@@ -155,7 +155,7 @@ def footer(s, dark=False):
     c = LGRAY if not dark else RGBColor(0x8D, 0x9C, 0xC4)
     txt(s, 0.9, 7.06, 9, 0.3,
         one("PatentMind AI　·　NCCU GDGoC × Computex 2026", 10, c))
-    txt(s, SW - 1.7, 7.06, 0.8, 0.3, one("%02d" % _page, 10, c),
+    txt(s, SW - 1.7, 7.06, 0.8, 0.3, one(f"{_page:02d}", 10, c),
         align=PP_ALIGN.RIGHT)
 
 
@@ -163,7 +163,7 @@ def kicker(s, num, label):
     """small amber square + '03 · 動機' kicker line."""
     rect(s, 0.9, 0.72, 0.16, 0.16, AMBER)
     txt(s, 1.18, 0.62, 9, 0.4,
-        [[("%s " % num, 14, AMBER, True), ("· " + label, 14, GRAY, False)]])
+        [[(f"{num} ", 14, AMBER, True), ("· " + label, 14, GRAY, False)]])
 
 
 def title(s, text, y=1.0):
@@ -195,7 +195,7 @@ def bullets(s, x, y, w, items, gap=0.10, size=16, lead_size=None):
         para = [(text, sz, col, bold)]
         if qtag:
             para.append(("　" + qtag, sz - 3, AMBER, True))
-        tb = txt(s, tx, cur, w - (tx - x), 0.8, [para], leading=1.1, space_after=0)
+        txt(s, tx, cur, w - (tx - x), 0.8, [para], leading=1.1, space_after=0)
         # estimate height for next line
         import math
         approx_chars = max(1, int((w - (tx - x)) / (sz / 72 * 1.0)))
@@ -276,9 +276,9 @@ def s_topic():
         rect(s, x, y0, cw, ch, PALE if i < 4 else GHOST)
         rect(s, x, y0, cw, 0.10, AMBER if i < 4 else NAVY)
         txt(s, x + 0.16, y0 + 0.24, cw - 0.3, 0.45,
-            [[("%d " % (i + 1), 16, AMBER, True), (h, 16, NAVY, True)]])
+            [[(f"{i + 1} ", 16, AMBER, True), (h, 16, NAVY, True)]])
         txt(s, x + 0.16, y0 + 0.82, cw - 0.3, 0.85,
-            [para(l, 12, GRAY) for l in blines], leading=1.15, space_after=2)
+            [para(line, 12, GRAY) for line in blines], leading=1.15, space_after=2)
         if i < 4:
             txt(s, x + cw - 0.02, y0 + 0.66, gp + 0.06, 0.5,
                 one("→", 15, LGRAY, True), align=PP_ALIGN.CENTER)
@@ -386,12 +386,20 @@ def s_shot(num_label, kick, ttl, shot, notes, base=None):
     for i, (head_, body_) in enumerate(notes):
         d = s.shapes.add_shape(MSO_SHAPE.OVAL, Inches(nx), Inches(y),
                                Inches(0.34), Inches(0.34))
-        d.fill.solid(); d.fill.fore_color.rgb = AMBER; d.line.fill.background()
+        d.fill.solid()
+        d.fill.fore_color.rgb = AMBER
+        d.line.fill.background()
         d.shadow.inherit = False
-        tf = d.text_frame; tf.margin_top = 0; tf.margin_bottom = 0
-        r = tf.paragraphs[0].add_run(); r.text = str(i + 1)
-        r.font.size = Pt(14); r.font.bold = True; r.font.color.rgb = WHITE
-        set_font(r); tf.paragraphs[0].alignment = PP_ALIGN.CENTER
+        tf = d.text_frame
+        tf.margin_top = 0
+        tf.margin_bottom = 0
+        r = tf.paragraphs[0].add_run()
+        r.text = str(i + 1)
+        r.font.size = Pt(14)
+        r.font.bold = True
+        r.font.color.rgb = WHITE
+        set_font(r)
+        tf.paragraphs[0].alignment = PP_ALIGN.CENTER
         txt(s, nx + 0.5, y - 0.04, nw - 0.5, 0.4, one(head_, 15.5, NAVY, True))
         txt(s, nx + 0.5, y + 0.33, nw - 0.5, 0.8, one(body_, 12.5, GRAY),
             leading=1.16)

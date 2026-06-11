@@ -1,4 +1,5 @@
 """Unit tests for metrics.record_llm_usage (Q19 LLM token/route/error bridge)."""
+
 from __future__ import annotations
 
 from backend.shared import metrics
@@ -21,9 +22,7 @@ def test_record_llm_usage_counts_tokens_and_route():
 
 def test_record_llm_usage_flat_token_keys():
     # Some metas carry token counts at the root rather than under `usage`.
-    metrics.record_llm_usage(
-        {"model": "llama-local", "prompt_tokens": 5, "completion_tokens": 7}
-    )
+    metrics.record_llm_usage({"model": "llama-local", "prompt_tokens": 5, "completion_tokens": 7})
     assert metrics.LLM_TOKENS.get({"model": "llama-local", "kind": "prompt"}) == 5.0
     assert metrics.LLM_ROUTE.get({"model": "llama-local"}) == 1.0
 
@@ -44,8 +43,8 @@ def test_record_llm_usage_no_model_no_route_inflation():
 
 
 def test_record_llm_usage_none_and_garbage_are_noops():
-    metrics.record_llm_usage(None)          # type: ignore[arg-type]
-    metrics.record_llm_usage({})            # empty
+    metrics.record_llm_usage(None)  # type: ignore[arg-type]
+    metrics.record_llm_usage({})  # empty
     metrics.record_llm_usage("not a dict")  # type: ignore[arg-type]
     # Nothing recorded, nothing raised.
     assert metrics.LLM_ROUTE.get({"model": "unknown"}) == 0.0

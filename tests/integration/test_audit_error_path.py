@@ -18,12 +18,13 @@ so the audit row is written even on error. The row carries
 This module covers the four most-load-bearing error paths plus a
 safety-net test for the audit writer itself failing.
 """
+
 from __future__ import annotations
 
 import pytest
 
-_FOREIGN_CASE = "CASE-DEMO-099"   # alice has no ACL on this
-_ALICE_CASE = "CASE-2025-001"     # alice has ACL
+_FOREIGN_CASE = "CASE-DEMO-099"  # alice has no ACL on this
+_ALICE_CASE = "CASE-2025-001"  # alice has ACL
 
 
 def _login_auditor(client) -> str:
@@ -125,7 +126,7 @@ def test_analyze_rate_limit_exceeded_writes_audit_row(
     assert err_row["endpoint"] == "/v1/oa/analyze", err_row
     pd = err_row["policy_decisions"]
     assert pd.get("error") is True, pd
-    assert pd.get("authz_passed") is True, pd       # ACL passed
+    assert pd.get("authz_passed") is True, pd  # ACL passed
     assert pd.get("rate_limit_passed") is False, pd  # this is the failure
 
 

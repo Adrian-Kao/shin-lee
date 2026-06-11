@@ -31,6 +31,7 @@ Usage
 Dependencies: PyMuPDF (fitz) — already required by the PDF upload tests.
 Exit code 0 on success, non-zero if any PDF failed to write.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,10 +49,10 @@ OUT_DIR = SAMPLES_DIR / "pdf"
 # so mixed zh-TW + English Office Actions render without shipping a font file.
 _FONT = "china-t"
 _FONTSIZE = 11
-_LINE_H = 16          # point height per rendered line
-_MARGIN = 56          # ~2cm margins
+_LINE_H = 16  # point height per rendered line
+_MARGIN = 56  # ~2cm margins
 _PAGE = fitz.paper_rect("a4")
-_WRAP = 46            # max display-width units per line (CJK counts as 2)
+_WRAP = 46  # max display-width units per line (CJK counts as 2)
 
 
 def _disp_width(s: str) -> int:
@@ -105,9 +106,7 @@ def text_to_pdf(text: str, dest: Path, *, force: bool) -> bool:
         y = _MARGIN
         for line in page_lines:
             if line:
-                page.insert_text(
-                    (_MARGIN, y), line, fontname=_FONT, fontsize=_FONTSIZE
-                )
+                page.insert_text((_MARGIN, y), line, fontname=_FONT, fontsize=_FONTSIZE)
             y += _LINE_H
     doc.set_metadata({"title": dest.stem, "producer": "patentmind generate_oa_pdfs"})
     doc.save(str(dest), deflate=True)
@@ -134,7 +133,9 @@ def empty_pdf(dest: Path, *, force: bool) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
-        "--cases", type=int, default=10,
+        "--cases",
+        type=int,
+        default=10,
         help="how many CASE-DEMO-* oa.txt files to convert (default 10, max 80)",
     )
     ap.add_argument("--force", action="store_true", help="overwrite existing PDFs")
@@ -156,12 +157,15 @@ def main() -> int:
     print("Generating Office Action PDFs → data/oa_samples/pdf/")
 
     # 1. The two curated samples.
-    for stem, src in (("oa_us_sample", "sample_oa_us.txt"),
-                      ("oa_tw_sample", "sample_oa_tw.txt")):
+    for stem, src in (("oa_us_sample", "sample_oa_us.txt"), ("oa_tw_sample", "sample_oa_tw.txt")):
         p = SAMPLES_DIR / src
         if p.exists():
-            _try(text_to_pdf, p.read_text(encoding="utf-8"),
-                 OUT_DIR / f"{stem}.pdf", force=args.force)
+            _try(
+                text_to_pdf,
+                p.read_text(encoding="utf-8"),
+                OUT_DIR / f"{stem}.pdf",
+                force=args.force,
+            )
 
     # 2. CASE-DEMO oa.txt → one PDF each (aligned with seeded patents).
     case_dirs = sorted(CASES_DIR.glob("CASE-DEMO-*"))[: max(0, args.cases)]
@@ -176,11 +180,15 @@ def main() -> int:
 
     # 3. Edge cases.
     if long_blob:
-        _try(text_to_pdf, "\n\n".join(long_blob),
-             OUT_DIR / "oa_multipage_long.pdf", force=args.force)
-    _try(text_to_pdf,
-         "Office Action (minimal).\nClaim 1 is rejected under 35 U.S.C. § 103.",
-         OUT_DIR / "oa_minimal.pdf", force=args.force)
+        _try(
+            text_to_pdf, "\n\n".join(long_blob), OUT_DIR / "oa_multipage_long.pdf", force=args.force
+        )
+    _try(
+        text_to_pdf,
+        "Office Action (minimal).\nClaim 1 is rejected under 35 U.S.C. § 103.",
+        OUT_DIR / "oa_minimal.pdf",
+        force=args.force,
+    )
     _try(empty_pdf, OUT_DIR / "oa_empty.pdf", force=args.force)
 
     print(f"\nDone. {written} written, {failures} failed.")

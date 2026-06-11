@@ -6,13 +6,13 @@ helper in isolation. They complement test_jwt_lifecycle.py with the attack
 shapes a real reviewer probes: alg-confusion (alg=none, HS-vs-RS), forged
 iss/aud, expired, revoked, and the "not-before" claim.
 """
+
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
-import pytest
 
 from backend.gateway import auth as auth_mod
 from backend.shared.config import settings
@@ -23,7 +23,7 @@ def _auth(token: str) -> dict:
 
 
 def _base_claims(**overrides) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     claims = {
         "sub": "alice",
         "tenant_id": "tenant_a",
@@ -69,10 +69,14 @@ def test_hs256_token_rejected_when_server_is_rs256(gateway_client, monkeypatch):
     from cryptography.hazmat.primitives.asymmetric import rsa
 
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    pub_pem = key.public_key().public_bytes(
-        serialization.Encoding.PEM,
-        serialization.PublicFormat.SubjectPublicKeyInfo,
-    ).decode()
+    pub_pem = (
+        key.public_key()
+        .public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        )
+        .decode()
+    )
     priv_pem = key.private_bytes(
         serialization.Encoding.PEM,
         serialization.PrivateFormat.PKCS8,
@@ -102,9 +106,7 @@ def test_hs256_token_rejected_when_server_is_rs256(gateway_client, monkeypatch):
 def test_token_with_future_nbf_is_rejected(gateway_client):
     """A not-before in the future must be refused (PyJWT enforces nbf)."""
     future = int(time.time()) + 3600
-    token = jwt.encode(
-        _base_claims(nbf=future), settings.JWT_SECRET, algorithm=settings.JWT_ALGO
-    )
+    token = jwt.encode(_base_claims(nbf=future), settings.JWT_SECRET, algorithm=settings.JWT_ALGO)
     r = gateway_client.get("/v1/quota", headers=_auth(token))
     assert r.status_code == 401, r.text
 

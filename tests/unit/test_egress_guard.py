@@ -9,6 +9,7 @@ an error-level alert and raises `EgressGuardError` (fail closed).
 These tests exercise the pure scan/assert helpers directly (no network) plus
 the async `call` path with a stubbed httpx layer, so they stay hermetic.
 """
+
 from __future__ import annotations
 
 import logging

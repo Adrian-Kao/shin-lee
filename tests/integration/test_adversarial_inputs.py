@@ -21,6 +21,7 @@ The fixture directory layout is documented in
 ``data/cases/README.md``. Binary fixtures (PDFs) are regenerated via
 ``python scripts/generate_test_data.py`` — see that script's docstring.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -41,10 +42,7 @@ def _masking_src() -> str:
     Used to drive xfail/skip decisions without hard-coding a branch name.
     Read-only: never imports masking, so import order is unaffected.
     """
-    mask_path = (
-        Path(__file__).resolve().parents[2]
-        / "backend" / "gateway" / "masking.py"
-    )
+    mask_path = Path(__file__).resolve().parents[2] / "backend" / "gateway" / "masking.py"
     try:
         return mask_path.read_text(encoding="utf-8")
     except OSError:
@@ -194,9 +192,7 @@ def test_oversized_oa_5mb_accepted(gateway_client, alice_token, patched_ai_engin
     # care about. 200 (full pipeline ran) or 413 (downstream
     # prompt-too-large) are both acceptable — the input validator did
     # its job.
-    assert resp.status_code != 422, (
-        f"5 MiB OA rejected by Pydantic Field cap: {resp.text[:300]}"
-    )
+    assert resp.status_code != 422, f"5 MiB OA rejected by Pydantic Field cap: {resp.text[:300]}"
     assert resp.status_code in (200, 413), resp.text
 
 
@@ -227,9 +223,7 @@ def test_oversized_oa_6mb_rejected_422(gateway_client, alice_token):
 # ---------------------------------------------------------------------------
 # 5. Cyrillic homoglyph attack — must not crash
 # ---------------------------------------------------------------------------
-def test_cyrillic_homoglyph_classified_safely(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_cyrillic_homoglyph_classified_safely(gateway_client, alice_token, patched_ai_engine):
     """Сlaims with Cyrillic С should classify safely (graceful degradation).
 
     Either:
@@ -253,8 +247,7 @@ def test_cyrillic_homoglyph_classified_safely(
         },
     )
     assert resp.status_code < 500, (
-        f"Cyrillic homoglyph caused server error: {resp.status_code} "
-        f"{resp.text[:300]}"
+        f"Cyrillic homoglyph caused server error: {resp.status_code} {resp.text[:300]}"
     )
     # If it succeeded, the response shape should be valid (well-formed JSON).
     if resp.status_code == 200:
@@ -335,9 +328,7 @@ def test_confidential_case_upload_rejected_403(
 # ---------------------------------------------------------------------------
 # 8. Password-protected PDF — 422
 # ---------------------------------------------------------------------------
-def test_password_protected_pdf_returns_422(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_password_protected_pdf_returns_422(gateway_client, alice_token, patched_ai_engine):
     """An AES-encrypted PDF cannot be opened; gateway should 422, not 500."""
     pdf_bytes = _load_fixture_bytes("pdf_password_protected.pdf")
     resp = gateway_client.post(
@@ -356,9 +347,7 @@ def test_password_protected_pdf_returns_422(
 # ---------------------------------------------------------------------------
 # 9. Scan-only PDF — Vision OCR mock fallback
 # ---------------------------------------------------------------------------
-def test_scan_only_pdf_triggers_vision_ocr_mock(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_scan_only_pdf_triggers_vision_ocr_mock(gateway_client, alice_token, patched_ai_engine):
     """A PDF with no text layer must trigger Vision OCR for every page."""
     pdf_bytes = _load_fixture_bytes("pdf_scan_only_no_text.pdf")
     resp = gateway_client.post(

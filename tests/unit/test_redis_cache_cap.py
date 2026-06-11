@@ -10,6 +10,7 @@ logic is re-implemented in a tiny fake so we can prove:
     matching the in-memory backend's behaviour.
   * `set(..., tenant=None)` (embeddings) stays on the uncapped plain path.
 """
+
 from __future__ import annotations
 
 from unittest import mock

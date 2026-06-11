@@ -17,17 +17,16 @@ What is proven here:
 
 No network: every HTTP interaction uses httpx.MockTransport.
 """
+
 from __future__ import annotations
 
 import json
 
 import httpx
-import pytest
 
 from backend.ai_engine import llm_client
 from backend.ai_engine.llm_client import DifyLLM, LLMResponse
 from backend.shared.config import settings
-
 
 API_URL = "http://dify.test:8088"
 API_KEY = "app-unit-test-key"
@@ -57,21 +56,26 @@ def _dify(handler) -> DifyLLM:
     return DifyLLM(api_url=API_URL, api_key=API_KEY, client=client)
 
 
-PARSE_JSON = json.dumps({
-    "rejections": [{
-        "rejection_id": "rej-1",
-        "rejection_type": "103_obviousness",
-        "affected_claims": [1, 2, 3],
-        "cited_prior_art": ["TW202131234"],
-        "examiner_argument": "不具進步性",
-        "confidence": 0.9,
-    }]
-})
+PARSE_JSON = json.dumps(
+    {
+        "rejections": [
+            {
+                "rejection_id": "rej-1",
+                "rejection_type": "103_obviousness",
+                "affected_claims": [1, 2, 3],
+                "cited_prior_art": ["TW202131234"],
+                "examiner_argument": "不具進步性",
+                "confidence": 0.9,
+            }
+        ]
+    }
+)
 
 
 # ---------------------------------------------------------------------------
 # 1. Request shape
 # ---------------------------------------------------------------------------
+
 
 def test_request_shape_parse_oa():
     seen = {}
@@ -110,6 +114,7 @@ def test_token_accounting_from_total_tokens():
 # 2. JSON extraction (qwen loves markdown fences)
 # ---------------------------------------------------------------------------
 
+
 def test_json_extracted_from_markdown_fence():
     fenced = f"Here you go:\n```json\n{PARSE_JSON}\n```\nHope that helps!"
 
@@ -142,6 +147,7 @@ def test_non_json_output_passes_through_unchanged():
 # ---------------------------------------------------------------------------
 # 3. Degrade paths — every failure mode falls back to MockLLM, loudly
 # ---------------------------------------------------------------------------
+
 
 def _assert_degraded_but_usable(resp: LLMResponse):
     assert "DEGRADED" in resp.model
@@ -202,6 +208,7 @@ def test_degrade_when_api_key_missing():
 # 4. Verifier stays local — Q14 hard wall is OUR code, not the Dify model
 # ---------------------------------------------------------------------------
 
+
 def test_verify_citations_never_hits_dify():
     called = {"n": 0}
 
@@ -226,6 +233,7 @@ def test_verify_citations_never_hits_dify():
 # 5. Router wiring (LLM_MODE=dify)
 # ---------------------------------------------------------------------------
 
+
 def test_chat_router_dispatches_to_dify(monkeypatch):
     seen = {"n": 0}
 
@@ -234,12 +242,12 @@ def test_chat_router_dispatches_to_dify(monkeypatch):
         return httpx.Response(200, json=_workflow_ok(PARSE_JSON))
 
     monkeypatch.setattr(settings, "LLM_MODE", "dify")
-    monkeypatch.setattr(
-        llm_client, "_dify_singleton", _dify(handler), raising=True
-    )
+    monkeypatch.setattr(llm_client, "_dify_singleton", _dify(handler), raising=True)
     try:
         resp = llm_client.chat(
-            system="S", user="請求項1不具進步性", intent="parse_oa",
+            system="S",
+            user="請求項1不具進步性",
+            intent="parse_oa",
             security_level="public",
         )
         assert seen["n"] == 1
@@ -252,6 +260,7 @@ def test_chat_router_dify_confidential_stays_local_path(monkeypatch):
     """Invariant #7: confidential under LLM_MODE=dify is allowed because the
     Dify workflow's LLM nodes run on local Ollama — no cloud egress exists.
     The call must succeed (NOT raise the anthropic cloud-refusal)."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_workflow_ok(PARSE_JSON))
 
@@ -259,7 +268,9 @@ def test_chat_router_dify_confidential_stays_local_path(monkeypatch):
     monkeypatch.setattr(llm_client, "_dify_singleton", _dify(handler), raising=True)
     try:
         resp = llm_client.chat(
-            system="S", user="機密 OA", intent="parse_oa",
+            system="S",
+            user="機密 OA",
+            intent="parse_oa",
             security_level="confidential",
         )
         assert "rejections" in json.loads(resp.text)
@@ -269,7 +280,5 @@ def test_chat_router_dify_confidential_stays_local_path(monkeypatch):
 
 def test_route_model_reports_dify_label(monkeypatch):
     monkeypatch.setattr(settings, "LLM_MODE", "dify")
-    model = llm_client.route_model(
-        intent="parse_oa", security_level="public", circuit_open=False
-    )
+    model = llm_client.route_model(intent="parse_oa", security_level="public", circuit_open=False)
     assert model == settings.DIFY_MODEL_LABEL

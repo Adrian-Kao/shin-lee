@@ -24,6 +24,7 @@ Usage:
 
 Exit code 0 on success, non-zero if any fixture failed to write.
 """
+
 from __future__ import annotations
 
 import io
@@ -93,7 +94,7 @@ def _make_scan_only_pdf(out_path: Path) -> None:
         try:
             # Try a default TT font if available; fall back to PIL default.
             font = ImageFont.truetype("arial.ttf", 28)
-        except (OSError, IOError):
+        except OSError:
             font = ImageFont.load_default()
         draw.text((50, 50), body, fill="black", font=font)
         draw.text(

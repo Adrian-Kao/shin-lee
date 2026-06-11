@@ -19,6 +19,7 @@ Fixtures provided:
                              session-scoped FastAPI apps don't leak across
                              tests.
 """
+
 from __future__ import annotations
 
 import os
@@ -103,12 +104,14 @@ from fastapi.testclient import TestClient  # noqa: E402
 @pytest.fixture(scope="session")
 def gateway_app():
     from backend.gateway.main import app  # noqa: WPS433 (local import is intentional)
+
     return app
 
 
 @pytest.fixture(scope="session")
 def ai_engine_app():
     from backend.ai_engine.main import app  # noqa: WPS433
+
     return app
 
 
@@ -184,6 +187,7 @@ def _reset_module_state():
     yield
     try:
         from backend.gateway import rate_limit as _rl
+
         # Names verified against backend/gateway/rate_limit.py.
         _rl._user_rpm.clear()
         _rl._user_daily_tokens.clear()
@@ -214,6 +218,7 @@ def _reset_module_state():
         # session-scoped app just like the rate-limit dicts. Reset so a test
         # asserting on absolute metric values isn't polluted by earlier tests.
         from backend.shared import metrics as _metrics_mod
+
         _metrics_mod.REGISTRY.reset()
     except (ImportError, AttributeError):
         pass
@@ -221,11 +226,13 @@ def _reset_module_state():
         # H-5: clear the in-memory session-token revocation store so a logout
         # in one test can't reject a (coincidentally same-jti) token in another.
         from backend.gateway import revocation as _revocation_mod
+
         _revocation_mod.clear()
     except (ImportError, AttributeError):
         pass
     try:
         from backend.gateway import cache as _cache_mod
+
         # The cache module exposes a private `_MemoryCache` instance bound to
         # `_cache`; clearing its internal `_data` dict is the canonical reset.
         cache_obj = getattr(_cache_mod, "_cache", None)

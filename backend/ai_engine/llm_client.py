@@ -18,6 +18,7 @@ Supports five LLM_MODE values:
                     local verifier (the Q14 hard wall lives in OUR code).
     - "openai"    → reserved; not implemented in POC.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -29,10 +30,10 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Optional
+from datetime import UTC
+from typing import Any
 
 from backend.shared.config import settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class LLMResponse:
 
 # ---------- Tokeniser stub (POC) ----------
 
+
 def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 3)
 
@@ -64,6 +66,7 @@ CANARY_TOKEN = "PMAI-CANARY-7B3F9C2E"
 
 
 # ---------- Mock backend ----------
+
 
 class MockLLM:
     """Deterministic mock — returns plausible JSON for each intent.
@@ -207,102 +210,111 @@ class MockLLM:
             else:
                 m_claim = re.search(r"請求項\s*(\d+)", user)
                 affected = [int(m_claim.group(1))] if m_claim else [9]
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "antecedent_basis",
-                "affected_claims": affected,
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    f"審查官指出請求項{affected[0]}之用語於所依附之請求項及本項之"
-                    "技術內容中並未見其先行詞，致申請專利範圍不明確，"
-                    "不符專利法第26條第2項之規定。"
-                ),
-                "confidence": 0.93,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "antecedent_basis",
+                    "affected_claims": affected,
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        f"審查官指出請求項{affected[0]}之用語於所依附之請求項及本項之"
+                        "技術內容中並未見其先行詞，致申請專利範圍不明確，"
+                        "不符專利法第26條第2項之規定。"
+                    ),
+                    "confidence": 0.93,
+                }
+            )
 
         # ----- TW §22-2 進步性 ----------------------------------------------
         if "進步性" in user or "第22條第2項" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "103_obviousness",
-                "affected_claims": _claims_or([1, 2, 3]),
-                "cited_prior_art": cited[:2] or ["TW202131234"],
-                "examiner_argument": (
-                    "審查官認為所列請求項不具進步性，"
-                    "依專利法第22條第2項規定核駁。"
-                ),
-                "confidence": 0.88,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "103_obviousness",
+                    "affected_claims": _claims_or([1, 2, 3]),
+                    "cited_prior_art": cited[:2] or ["TW202131234"],
+                    "examiner_argument": (
+                        "審查官認為所列請求項不具進步性，依專利法第22條第2項規定核駁。"
+                    ),
+                    "confidence": 0.88,
+                }
+            )
 
         # ----- TW §22-1 新穎性 ----------------------------------------------
         if "新穎性" in user or "喪失新穎性" in user or "第22條第1項" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "102_novelty",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": cited[:1] or ["TW202131234"],
-                "examiner_argument": (
-                    "審查官認為所列請求項相對於引證案不具新穎性，"
-                    "依專利法第22條第1項規定核駁。"
-                ),
-                "confidence": 0.90,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "102_novelty",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": cited[:1] or ["TW202131234"],
+                    "examiner_argument": (
+                        "審查官認為所列請求項相對於引證案不具新穎性，依專利法第22條第1項規定核駁。"
+                    ),
+                    "confidence": 0.90,
+                }
+            )
 
         # ----- TW §26-1 揭露不充分 ------------------------------------------
         if "未充分揭露" in user or "揭露不充分" in user or "第26條第1項" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "other",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "審查官指出說明書未充分揭露所請技術內容，"
-                    "致該技術領域者無法據以實現，不符專利法第26條第1項。"
-                ),
-                "confidence": 0.85,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "other",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "審查官指出說明書未充分揭露所請技術內容，"
+                        "致該技術領域者無法據以實現，不符專利法第26條第1項。"
+                    ),
+                    "confidence": 0.85,
+                }
+            )
 
         # ----- TW §26-4 支持要件 --------------------------------------------
         if "支持" in user and ("第26條第4項" in user or "支持要件" in user):
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "other",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "審查官指出申請專利範圍未為說明書所支持，"
-                    "不符專利法第26條第4項規定。"
-                ),
-                "confidence": 0.84,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "other",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "審查官指出申請專利範圍未為說明書所支持，不符專利法第26條第4項規定。"
+                    ),
+                    "confidence": 0.84,
+                }
+            )
 
         # ----- TW §24 法定不予 ----------------------------------------------
         if "第24條" in user or "法定不予" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "101_subject_matter",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "審查官認為所請發明屬專利法第24條所列法定不予專利之事項，"
-                    "不得給予專利保護。"
-                ),
-                "confidence": 0.86,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "101_subject_matter",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "審查官認為所請發明屬專利法第24條所列法定不予專利之事項，不得給予專利保護。"
+                    ),
+                    "confidence": 0.86,
+                }
+            )
 
         # ----- TW §32 一案兩請 ----------------------------------------------
         if "第32條" in user or "一案兩請" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "other",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "審查官指出本案與同申請人之新型專利屬一案兩請，"
-                    "依專利法第32條應擇一聲明。"
-                ),
-                "confidence": 0.83,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "other",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "審查官指出本案與同申請人之新型專利屬一案兩請，依專利法第32條應擇一聲明。"
+                    ),
+                    "confidence": 0.83,
+                }
+            )
 
         # ----- EP (EPO) — Art. NN EPC -------------------------------------
         # English-language communications. Use the canonical "Art. NN EPC"
@@ -318,55 +330,66 @@ class MockLLM:
             rf"\bArt(?:icle|\.)?\s*{n}\b[^\n]{{0,12}}?\bEPC\b", user, re.IGNORECASE
         )
         if _art(56) or "inventive step" in user_l:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "103_obviousness",
-                "affected_claims": _claims_or([1, 2, 3]),
-                "cited_prior_art": cited[:2] or ["EP3210987"],
-                "examiner_argument": (
-                    "The subject-matter of the claims does not involve an inventive "
-                    "step within the meaning of Art. 56 EPC, being obvious to the "
-                    "skilled person in view of the cited documents D1 and D2."
-                ),
-                "confidence": 0.88,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "103_obviousness",
+                    "affected_claims": _claims_or([1, 2, 3]),
+                    "cited_prior_art": cited[:2] or ["EP3210987"],
+                    "examiner_argument": (
+                        "The subject-matter of the claims does not involve an inventive "
+                        "step within the meaning of Art. 56 EPC, being obvious to the "
+                        "skilled person in view of the cited documents D1 and D2."
+                    ),
+                    "confidence": 0.88,
+                }
+            )
         if _art(54) or "lacks novelty" in user_l or "not novel" in user_l:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "102_novelty",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": cited[:1] or ["EP3210987"],
-                "examiner_argument": (
-                    "The subject-matter of the claims lacks novelty under Art. 54 EPC, "
-                    "all features being directly and unambiguously disclosed in D1."
-                ),
-                "confidence": 0.90,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "102_novelty",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": cited[:1] or ["EP3210987"],
+                    "examiner_argument": (
+                        "The subject-matter of the claims lacks novelty under Art. 54 EPC, "
+                        "all features being directly and unambiguously disclosed in D1."
+                    ),
+                    "confidence": 0.90,
+                }
+            )
         if _art(84) or "lack of clarity" in user_l:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "other",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "The claims do not meet the requirements of Art. 84 EPC as they "
-                    "are not clear and are not supported by the description."
-                ),
-                "confidence": 0.84,
-            })
-        if re.search(r"\bArt(?:icle|\.)?\s*123\s*\(?\s*2\s*\)?", user, re.IGNORECASE) \
-                or "added subject-matter" in user_l or "added subject matter" in user_l:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "other",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "The amendment introduces subject-matter extending beyond the "
-                    "content of the application as filed, contrary to Art. 123(2) EPC."
-                ),
-                "confidence": 0.85,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "other",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "The claims do not meet the requirements of Art. 84 EPC as they "
+                        "are not clear and are not supported by the description."
+                    ),
+                    "confidence": 0.84,
+                }
+            )
+        if (
+            re.search(r"\bArt(?:icle|\.)?\s*123\s*\(?\s*2\s*\)?", user, re.IGNORECASE)
+            or "added subject-matter" in user_l
+            or "added subject matter" in user_l
+        ):
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "other",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "The amendment introduces subject-matter extending beyond the "
+                        "content of the application as filed, contrary to Art. 123(2) EPC."
+                    ),
+                    "confidence": 0.85,
+                }
+            )
 
         # ----- CN (CNIPA) — 专利法第N条第M款 (简体) ------------------------
         # 简体 cues (创造性/新颖性/权利要求/说明书) and 条/款 markers are
@@ -376,53 +399,61 @@ class MockLLM:
         #   第22条第2款 新颖性 (novelty)        → 102_novelty
         #   第26条第3款/第4款 (充分公开/支持)   → other
         if "创造性" in user or "第22条第3款" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "103_obviousness",
-                "affected_claims": _claims_or([1, 2, 3]),
-                "cited_prior_art": cited[:2] or ["CN101234567"],
-                "examiner_argument": (
-                    "审查员认为所述权利要求相对于对比文件不具备创造性，"
-                    "不符合专利法第22条第3款的规定。"
-                ),
-                "confidence": 0.88,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "103_obviousness",
+                    "affected_claims": _claims_or([1, 2, 3]),
+                    "cited_prior_art": cited[:2] or ["CN101234567"],
+                    "examiner_argument": (
+                        "审查员认为所述权利要求相对于对比文件不具备创造性，"
+                        "不符合专利法第22条第3款的规定。"
+                    ),
+                    "confidence": 0.88,
+                }
+            )
         if "新颖性" in user or "第22条第2款" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "102_novelty",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": cited[:1] or ["CN101234567"],
-                "examiner_argument": (
-                    "审查员认为所述权利要求相对于对比文件不具备新颖性，"
-                    "不符合专利法第22条第2款的规定。"
-                ),
-                "confidence": 0.90,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "102_novelty",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": cited[:1] or ["CN101234567"],
+                    "examiner_argument": (
+                        "审查员认为所述权利要求相对于对比文件不具备新颖性，"
+                        "不符合专利法第22条第2款的规定。"
+                    ),
+                    "confidence": 0.90,
+                }
+            )
         if "第26条第3款" in user or "充分公开" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "other",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "审查员指出说明书未对所述技术方案作出清楚、完整的说明，"
-                    "致使所属技术领域的技术人员不能实现，不符合专利法第26条第3款。"
-                ),
-                "confidence": 0.84,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "other",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "审查员指出说明书未对所述技术方案作出清楚、完整的说明，"
+                        "致使所属技术领域的技术人员不能实现，不符合专利法第26条第3款。"
+                    ),
+                    "confidence": 0.84,
+                }
+            )
         if "第26条第4款" in user or ("权利要求" in user and "得到说明书的支持" in user):
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "other",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "审查员指出权利要求未以说明书为依据，未得到说明书的支持，"
-                    "不符合专利法第26条第4款的规定。"
-                ),
-                "confidence": 0.83,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "other",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "审查员指出权利要求未以说明书为依据，未得到说明书的支持，"
+                        "不符合专利法第26条第4款的规定。"
+                    ),
+                    "confidence": 0.83,
+                }
+            )
 
         # ----- KR (KIPO) — 특허법 제N조제M항 (한글) ------------------------
         # 한글 cues (진보성/신규성/청구항/거절이유) are a distinct script
@@ -431,41 +462,47 @@ class MockLLM:
         #   제29조제1항 신규성 (novelty)        → 102_novelty
         #   제42조 기재불비 (명세서)            → other
         if "진보성" in user or "제29조제2항" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "103_obviousness",
-                "affected_claims": _claims_or([1, 2, 3]),
-                "cited_prior_art": cited[:2] or ["KR1020210012345"],
-                "examiner_argument": (
-                    "심사관은 청구항이 인용발명에 비하여 진보성이 없다고 판단하며, "
-                    "특허법 제29조제2항의 규정에 의하여 거절이유를 통지합니다。"
-                ),
-                "confidence": 0.88,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "103_obviousness",
+                    "affected_claims": _claims_or([1, 2, 3]),
+                    "cited_prior_art": cited[:2] or ["KR1020210012345"],
+                    "examiner_argument": (
+                        "심사관은 청구항이 인용발명에 비하여 진보성이 없다고 판단하며, "
+                        "특허법 제29조제2항의 규정에 의하여 거절이유를 통지합니다。"
+                    ),
+                    "confidence": 0.88,
+                }
+            )
         if "신규성" in user or "제29조제1항" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "102_novelty",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": cited[:1] or ["KR1020210012345"],
-                "examiner_argument": (
-                    "심사관은 청구항이 인용발명에 의하여 신규성이 없다고 판단하며, "
-                    "특허법 제29조제1항의 규정에 의하여 거절이유를 통지합니다。"
-                ),
-                "confidence": 0.90,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "102_novelty",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": cited[:1] or ["KR1020210012345"],
+                    "examiner_argument": (
+                        "심사관은 청구항이 인용발명에 의하여 신규성이 없다고 판단하며, "
+                        "특허법 제29조제1항의 규정에 의하여 거절이유를 통지합니다。"
+                    ),
+                    "confidence": 0.90,
+                }
+            )
         if "제42조" in user or "기재불비" in user:
-            rejections.append({
-                "rejection_id": _next_id(),
-                "rejection_type": "other",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": [],
-                "examiner_argument": (
-                    "심사관은 명세서의 기재가 특허법 제42조의 요건을 충족하지 못하는 "
-                    "기재불비에 해당한다고 판단합니다。"
-                ),
-                "confidence": 0.83,
-            })
+            rejections.append(
+                {
+                    "rejection_id": _next_id(),
+                    "rejection_type": "other",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": [],
+                    "examiner_argument": (
+                        "심사관은 명세서의 기재가 특허법 제42조의 요건을 충족하지 못하는 "
+                        "기재불비에 해당한다고 판단합니다。"
+                    ),
+                    "confidence": 0.83,
+                }
+            )
 
         # ----- US §103 / §102 (only when no TW rejection has matched) -------
         # 數字 102/103 在 TW OA 很容易誤觸；用 §-prefix 或英文 keywords 區分。
@@ -474,40 +511,50 @@ class MockLLM:
                 cited = ["US7654321"]
             is_us = bool(re.search(r"\b35\s*U\.?S\.?C\.?", user))
             if "obvious" in user_l or (is_us and re.search(r"§\s*103", user)):
-                rejections.append({
-                    "rejection_id": _next_id(),
-                    "rejection_type": "103_obviousness",
-                    "affected_claims": _claims_or([1, 2, 3]),
-                    "cited_prior_art": cited[:2],
-                    "examiner_argument": (
-                        "Examiner alleges the claims are obvious in view of the cited "
-                        "references. The combination of features is asserted to be a "
-                        "predictable result of routine engineering."
-                    ),
-                    "confidence": 0.88,
-                })
-            if "anticipat" in user_l or "lack novelty" in user_l or (is_us and re.search(r"§\s*102", user)):
-                rejections.append({
-                    "rejection_id": _next_id(),
-                    "rejection_type": "102_novelty",
-                    "affected_claims": _claims_or([4, 5]),
-                    "cited_prior_art": cited[:1],
-                    "examiner_argument": (
-                        "Examiner alleges the claims lack novelty over the primary "
-                        "reference, asserting that all elements are disclosed therein."
-                    ),
-                    "confidence": 0.91,
-                })
+                rejections.append(
+                    {
+                        "rejection_id": _next_id(),
+                        "rejection_type": "103_obviousness",
+                        "affected_claims": _claims_or([1, 2, 3]),
+                        "cited_prior_art": cited[:2],
+                        "examiner_argument": (
+                            "Examiner alleges the claims are obvious in view of the cited "
+                            "references. The combination of features is asserted to be a "
+                            "predictable result of routine engineering."
+                        ),
+                        "confidence": 0.88,
+                    }
+                )
+            if (
+                "anticipat" in user_l
+                or "lack novelty" in user_l
+                or (is_us and re.search(r"§\s*102", user))
+            ):
+                rejections.append(
+                    {
+                        "rejection_id": _next_id(),
+                        "rejection_type": "102_novelty",
+                        "affected_claims": _claims_or([4, 5]),
+                        "cited_prior_art": cited[:1],
+                        "examiner_argument": (
+                            "Examiner alleges the claims lack novelty over the primary "
+                            "reference, asserting that all elements are disclosed therein."
+                        ),
+                        "confidence": 0.91,
+                    }
+                )
 
         if not rejections:
-            rejections.append({
-                "rejection_id": "rej-1",
-                "rejection_type": "103_obviousness",
-                "affected_claims": _claims_or([1]),
-                "cited_prior_art": cited or ["US7654321"],
-                "examiner_argument": "Generic rejection synthesised from OA text.",
-                "confidence": 0.70,
-            })
+            rejections.append(
+                {
+                    "rejection_id": "rej-1",
+                    "rejection_type": "103_obviousness",
+                    "affected_claims": _claims_or([1]),
+                    "cited_prior_art": cited or ["US7654321"],
+                    "examiner_argument": "Generic rejection synthesised from OA text.",
+                    "confidence": 0.70,
+                }
+            )
         return json.dumps({"rejections": rejections})
 
     @staticmethod
@@ -546,12 +593,14 @@ class MockLLM:
         load-bearing, verifier-accepted citation.
         """
         user_l = user.lower()
-        is_novelty = '"102_novelty"' in user or "102_novelty" in user
-        is_clarity = '"other"' in user or "other" in user.split("examiner_argument", 1)[0]
 
         # ----- CN (CNIPA) — 简体 意见陈述书 / 答复 ------------------------
-        if ("创造性" in user or "新颖性" in user or "审查员" in user
-                or re.search(r"专利法第\d+条", user)):
+        if (
+            "创造性" in user
+            or "新颖性" in user
+            or "审查员" in user
+            or re.search(r"专利法第\d+条", user)
+        ):
             if "新颖性" in user:
                 rejection_word, statute = "新颖性", "专利法第22条第2款"
                 body = (
@@ -560,8 +609,11 @@ class MockLLM:
                     f"区别技术特征，故对比文件并未完整公开权利要求的全部技术特征，"
                     f"权利要求相对于对比文件具备新颖性，符合{statute}的规定。"
                 )
-            elif "充分公开" in user or "得到说明书的支持" in user or (
-                    "创造性" not in user and "新颖性" not in user):
+            elif (
+                "充分公开" in user
+                or "得到说明书的支持" in user
+                or ("创造性" not in user and "新颖性" not in user)
+            ):
                 rejection_word, statute = "说明书记载", "专利法第26条"
                 body = (
                     f"审查员就说明书记载提出异议。申请人认为，结合 {ref} 所记载的"
@@ -593,8 +645,14 @@ class MockLLM:
             }
 
         # ----- KR (KIPO) — 한글 의견서 ------------------------------------
-        if ("진보성" in user or "신규성" in user or "심사관" in user
-                or "거절이유" in user or "제29조" in user or "제42조" in user):
+        if (
+            "진보성" in user
+            or "신규성" in user
+            or "심사관" in user
+            or "거절이유" in user
+            or "제29조" in user
+            or "제42조" in user
+        ):
             if "신규성" in user:
                 rejection_word, statute = "신규성", "특허법 제29조제1항"
                 body = (
@@ -604,8 +662,11 @@ class MockLLM:
                     f"아니한 구성요소를 포함하므로 인용발명과 동일하지 아니하며, "
                     f"따라서 {statute}에 규정된 신규성을 구비합니다."
                 )
-            elif "기재불비" in user or "제42조" in user or (
-                    "진보성" not in user and "신규성" not in user):
+            elif (
+                "기재불비" in user
+                or "제42조" in user
+                or ("진보성" not in user and "신규성" not in user)
+            ):
                 rejection_word, statute = "명세서 기재", "특허법 제42조"
                 body = (
                     f"심사관님께서 지적하신 명세서 기재와 관련하여, 본원 명세서"
@@ -640,10 +701,12 @@ class MockLLM:
             }
 
         # ----- EP (EPO) — English EPC response ----------------------------
-        if (re.search(r"\bArt(?:icle|\.)?\s*\d+\b[^\n]{0,12}?\bEPC\b", user, re.I)
-                or "inventive step" in user_l
-                or "lacks novelty" in user_l
-                or re.search(r"\bEPC\b", user)):
+        if (
+            re.search(r"\bArt(?:icle|\.)?\s*\d+\b[^\n]{0,12}?\bEPC\b", user, re.I)
+            or "inventive step" in user_l
+            or "lacks novelty" in user_l
+            or re.search(r"\bEPC\b", user)
+        ):
             if "novelty" in user_l or "lacks novelty" in user_l or "art. 54" in user_l:
                 rejection_word, article = "novelty", "Art. 54 EPC"
                 body = (
@@ -655,8 +718,12 @@ class MockLLM:
                     f"features of the claim in combination, and the subject-matter of "
                     f"the claims is novel within the meaning of {article}."
                 )
-            elif "clarity" in user_l or "art. 84" in user_l or "art. 123" in user_l \
-                    or "added subject" in user_l:
+            elif (
+                "clarity" in user_l
+                or "art. 84" in user_l
+                or "art. 123" in user_l
+                or "added subject" in user_l
+            ):
                 rejection_word, article = "clarity / support", "Art. 84 EPC"
                 body = (
                     f"The objection under {article} is respectfully traversed. As "
@@ -695,8 +762,12 @@ class MockLLM:
             }
 
         # ----- TW (TIPO) 繁體 進步性/新穎性 申復書 (non-antecedent) --------
-        if ("進步性" in user or "新穎性" in user or "審查官" in user
-                or re.search(r"專利法第\d+條", user)):
+        if (
+            "進步性" in user
+            or "新穎性" in user
+            or "審查官" in user
+            or re.search(r"專利法第\d+條", user)
+        ):
             if "新穎性" in user:
                 rejection_word, statute = "新穎性", "專利法第22條第1項"
                 body = (
@@ -728,8 +799,7 @@ class MockLLM:
             }
 
         # ----- JP (JPO) 日本語 意見書 -------------------------------------
-        if ("進歩性" in user or "拒絶理由" in user or "特許法第" in user
-                or "審査官" in user):
+        if "進歩性" in user or "拒絶理由" in user or "特許法第" in user or "審査官" in user:
             rejection_word, statute = "進歩性", "特許法第29条第2項"
             body = (
                 f"審査官殿は、本願請求項が引用文献に基づき進歩性を欠くと判断されました"
@@ -761,28 +831,30 @@ class MockLLM:
     def _mock_draft(user: str) -> str:
         # Route TW antecedent_basis rejections to a TIPO申復書 mock draft.
         if "antecedent_basis" in user or "先行詞" in user:
-            return json.dumps({
-                "strategy": (
-                    "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。"
-                    "本案擬以將該用語改為「一第一電動車」之方式建立先行詞，"
-                    "並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，"
-                    "兼顧明確性與技術完整性。"
-                ),
-                "draft_text": (
-                    "申請人謹依鈞局民國114年5月29日（114）智專一（作）05150字第11420571970號審查意見通知函辦理，"
-                    "茲就請求項9之記載修正如下：\n\n"
-                    "原請求項9：「如請求項1所述之充電管理方法，其中當該特定事件發生時，該伺服器另向"
-                    "『該第一電動車』發送一充電終止通知，以暫停『該第一電動車』之充電。」\n\n"
-                    "修正後請求項9：「如請求項1所述之充電管理方法，其中當該特定事件發生時，該伺服器另向"
-                    "『一第一電動車』發送一充電終止通知，以暫停該第一電動車之充電；其中該第一電動車係執行"
-                    "該第一充電作業之電動車。」\n\n"
-                    "上揭修正之依據可見於本案說明書 [GROUNDED_REF_1]，其中明確記載第一特定電動車充電站102_1"
-                    "與相應電動車間透過第一充電作業進行通訊；該修正未引入新事項，符合專利法第43條第2項規定。\n\n"
-                    "綜上，請求項9之記載已臻明確，已克服 專利法第26條第2項 所指之先行詞瑕疵，懇請鈞局准予再審。"
-                ),
-                "grounded_citations": ["[GROUNDED_REF_1]", "專利法第26條第2項"],
-                "confidence": 0.86,
-            })
+            return json.dumps(
+                {
+                    "strategy": (
+                        "請求項9之「該第一電動車」缺先行詞，係屬專利法第26條第2項之記載瑕疵。"
+                        "本案擬以將該用語改為「一第一電動車」之方式建立先行詞，"
+                        "並補充技術內容說明特定事件發生時伺服器與第一電動車間之通訊關係，"
+                        "兼顧明確性與技術完整性。"
+                    ),
+                    "draft_text": (
+                        "申請人謹依鈞局民國114年5月29日（114）智專一（作）05150字第11420571970號審查意見通知函辦理，"
+                        "茲就請求項9之記載修正如下：\n\n"
+                        "原請求項9：「如請求項1所述之充電管理方法，其中當該特定事件發生時，該伺服器另向"
+                        "『該第一電動車』發送一充電終止通知，以暫停『該第一電動車』之充電。」\n\n"
+                        "修正後請求項9：「如請求項1所述之充電管理方法，其中當該特定事件發生時，該伺服器另向"
+                        "『一第一電動車』發送一充電終止通知，以暫停該第一電動車之充電；其中該第一電動車係執行"
+                        "該第一充電作業之電動車。」\n\n"
+                        "上揭修正之依據可見於本案說明書 [GROUNDED_REF_1]，其中明確記載第一特定電動車充電站102_1"
+                        "與相應電動車間透過第一充電作業進行通訊；該修正未引入新事項，符合專利法第43條第2項規定。\n\n"
+                        "綜上，請求項9之記載已臻明確，已克服 專利法第26條第2項 所指之先行詞瑕疵，懇請鈞局准予再審。"
+                    ),
+                    "grounded_citations": ["[GROUNDED_REF_1]", "專利法第26條第2項"],
+                    "confidence": 0.86,
+                }
+            )
 
         # ---- Jurisdiction-aware response drafts (CN/KR/EP/JP/TW) ----------
         # The `user` message carries the rejection JSON (rejection_type +
@@ -804,21 +876,23 @@ class MockLLM:
         if draft is not None:
             return json.dumps(draft)
 
-        return json.dumps({
-            "strategy": (
-                "Argue non-obviousness by demonstrating an unexpected technical effect "
-                "of the claimed combination beyond what the cited references teach."
-            ),
-            "draft_text": (
-                "Applicant respectfully traverses the rejection. As shown in Spec ¶ [0024], "
-                "the claimed cooling channel arrangement produces a 32% thermal-resistance "
-                "reduction unattainable by either reference alone. See Patent No. [GROUNDED_REF_1]. "
-                "Furthermore, the cited [GROUNDED_REF_2] explicitly teaches away from the claimed "
-                "structure by recommending solid heat sinks (col. 4, ll. 12-18)."
-            ),
-            "grounded_citations": ["[GROUNDED_REF_1]", "[GROUNDED_REF_2]"],
-            "confidence": 0.82,
-        })
+        return json.dumps(
+            {
+                "strategy": (
+                    "Argue non-obviousness by demonstrating an unexpected technical effect "
+                    "of the claimed combination beyond what the cited references teach."
+                ),
+                "draft_text": (
+                    "Applicant respectfully traverses the rejection. As shown in Spec ¶ [0024], "
+                    "the claimed cooling channel arrangement produces a 32% thermal-resistance "
+                    "reduction unattainable by either reference alone. See Patent No. [GROUNDED_REF_1]. "
+                    "Furthermore, the cited [GROUNDED_REF_2] explicitly teaches away from the claimed "
+                    "structure by recommending solid heat sinks (col. 4, ll. 12-18)."
+                ),
+                "grounded_citations": ["[GROUNDED_REF_1]", "[GROUNDED_REF_2]"],
+                "confidence": 0.82,
+            }
+        )
 
     # Statute / regulatory refs that come from the OA itself and are publicly
     # verifiable — mirrors oa_analyzer._STATUTE_WHITELIST. Kept local (not
@@ -892,13 +966,15 @@ class MockLLM:
         # Confidence: high when clean; drops sharply once any fabrication is seen.
         confidence = 0.92 if is_valid else max(0.2, 0.92 - 0.25 * len(invalid))
 
-        return json.dumps({
-            "valid": is_valid,
-            "valid_citations": valid,
-            "invalid_citations": invalid,
-            "verifier_confidence": round(confidence, 2),
-            "cleaned_draft_text": None,  # filler — oa_analyzer owns the cleaned text
-        })
+        return json.dumps(
+            {
+                "valid": is_valid,
+                "valid_citations": valid,
+                "invalid_citations": invalid,
+                "verifier_confidence": round(confidence, 2),
+                "cleaned_draft_text": None,  # filler — oa_analyzer owns the cleaned text
+            }
+        )
 
     @staticmethod
     def _parse_grounded_keys(user: str) -> set[str]:
@@ -921,9 +997,7 @@ class MockLLM:
         Falls back to everything before the 'GROUNDED_SET keys:' line so we never
         accidentally scan the key list itself for citations.
         """
-        m = re.search(
-            r"<untrusted_input>\s*(.*?)\s*</untrusted_input>", user, re.DOTALL
-        )
+        m = re.search(r"<untrusted_input>\s*(.*?)\s*</untrusted_input>", user, re.DOTALL)
         if m:
             return m.group(1)
         return user.split("GROUNDED_SET keys:", 1)[0]
@@ -941,9 +1015,7 @@ class MockLLM:
                 seen.add(c)
         return out
 
-    async def vision_ocr(
-        self, image_bytes: bytes, mime: str = "image/png"
-    ) -> tuple[str, dict]:
+    async def vision_ocr(self, image_bytes: bytes, mime: str = "image/png") -> tuple[str, dict]:
         """Mock OCR — deterministic placeholder keyed on input size.
 
         Returns the same shape (text, usage_dict) as AnthropicLLM.vision_ocr
@@ -1018,7 +1090,7 @@ _DEFAULT_MAX_TOKENS = 2048
 
 # Temperatures tuned per intent: lower = more deterministic.
 _TEMPERATURE = {
-    "parse_oa": 0.2,        # structured extraction — keep deterministic
+    "parse_oa": 0.2,  # structured extraction — keep deterministic
     "draft_response": 0.4,  # some prose variation acceptable
     "verify_citations": 0.0,  # strict yes/no comparison
     "classify_security": 0.0,
@@ -1034,7 +1106,7 @@ class AnthropicLLM:
     time rather than producing a confusing 401 from the first request.
     """
 
-    def __init__(self, *, api_key: Optional[str] = None) -> None:
+    def __init__(self, *, api_key: str | None = None) -> None:
         key = api_key or os.getenv("ANTHROPIC_API_KEY") or os.getenv("LLM_API_KEY")
         if not key:
             raise RuntimeError(
@@ -1054,6 +1126,7 @@ class AnthropicLLM:
             ) from exc
 
         import anthropic
+
         self._sdk = anthropic
         # max_retries=0: our own _call_with_retry owns the retry policy (so we
         # control jitter + which error classes are transient). Leaving the SDK
@@ -1138,11 +1211,13 @@ class AnthropicLLM:
         # every OA in a tenant — the cache discount is the single biggest
         # cost lever for this workload. `ephemeral` cache TTL is 5 min,
         # which fits the bursty "attorney works through 5 OAs" pattern.
-        system_blocks = [{
-            "type": "text",
-            "text": system,
-            "cache_control": {"type": "ephemeral"},
-        }]
+        system_blocks = [
+            {
+                "type": "text",
+                "text": system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
 
         started = time.monotonic()
         try:
@@ -1206,12 +1281,16 @@ class AnthropicLLM:
         # avoids ai_engine ↔ gateway import cycles at module load time.
         try:
             from backend.gateway.rate_limit import estimate_cost
-            cost = estimate_cost(model_hint, {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "cache_read_input_tokens": cache_read,
-                "cache_creation_input_tokens": cache_create,
-            })
+
+            cost = estimate_cost(
+                model_hint,
+                {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "cache_read_input_tokens": cache_read,
+                    "cache_creation_input_tokens": cache_create,
+                },
+            )
         except Exception:  # pragma: no cover — pricing must never break a call
             cost = 0.0
 
@@ -1278,29 +1357,31 @@ class AnthropicLLM:
                 model=model,
                 max_tokens=4096,
                 temperature=0.0,
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": mime,
-                                "data": base64_data,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": mime,
+                                    "data": base64_data,
+                                },
                             },
-                        },
-                        {
-                            "type": "text",
-                            "text": (
-                                "Extract all text from this image, preserving "
-                                "paragraph and table structure. Use the same script "
-                                "as appears in the image (Traditional Chinese / "
-                                "English / Japanese). Output only the extracted "
-                                "text — no commentary, no markdown."
-                            ),
-                        },
-                    ],
-                }],
+                            {
+                                "type": "text",
+                                "text": (
+                                    "Extract all text from this image, preserving "
+                                    "paragraph and table structure. Use the same script "
+                                    "as appears in the image (Traditional Chinese / "
+                                    "English / Japanese). Output only the extracted "
+                                    "text — no commentary, no markdown."
+                                ),
+                            },
+                        ],
+                    }
+                ],
             )
         except Exception:
             with _session_usage_lock:
@@ -1327,12 +1408,16 @@ class AnthropicLLM:
 
         try:
             from backend.gateway.rate_limit import estimate_cost
-            cost = estimate_cost(model, {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "cache_read_input_tokens": cache_read,
-                "cache_creation_input_tokens": cache_create,
-            })
+
+            cost = estimate_cost(
+                model,
+                {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "cache_read_input_tokens": cache_read,
+                    "cache_creation_input_tokens": cache_create,
+                },
+            )
         except Exception:  # pragma: no cover — pricing must never break a call
             cost = 0.0
 
@@ -1361,7 +1446,7 @@ class AnthropicLLM:
 
 # Singleton — instantiated lazily on first use so importing this module never
 # fails just because the operator hasn't exported ANTHROPIC_API_KEY yet.
-_anthropic_singleton: Optional[AnthropicLLM] = None
+_anthropic_singleton: AnthropicLLM | None = None
 
 
 def _get_anthropic_llm() -> AnthropicLLM:
@@ -1386,6 +1471,7 @@ def reset_anthropic_singleton() -> None:
 
 # ---------- Retry helper -----------------------------------------------------
 
+
 def _parse_retry_after(hdr: str | None, default: float | None) -> float | None:
     """Parse the HTTP Retry-After header per RFC 7231.
 
@@ -1402,13 +1488,14 @@ def _parse_retry_after(hdr: str | None, default: float | None) -> float | None:
         return float(hdr)
     except ValueError:
         try:
+            from datetime import datetime
             from email.utils import parsedate_to_datetime
-            from datetime import datetime, timezone
+
             dt = parsedate_to_datetime(hdr)
             if dt is None:
                 logger.warning("Could not parse Retry-After header: %r", hdr)
                 return default
-            delta = (dt - datetime.now(timezone.utc)).total_seconds()
+            delta = (dt - datetime.now(UTC)).total_seconds()
             return max(0.0, delta)
         except (TypeError, ValueError):
             logger.warning("Could not parse Retry-After header: %r", hdr)
@@ -1429,11 +1516,13 @@ def _backoff_seconds(attempt: int, *, retry_after: float | None = None) -> float
     """
     import random
 
-    base = retry_after if retry_after is not None else (
-        settings.LLM_RETRY_BASE_SEC * (2 ** attempt)
-    )
+    base = retry_after if retry_after is not None else (settings.LLM_RETRY_BASE_SEC * (2**attempt))
     base = min(base, settings.LLM_RETRY_MAX_SLEEP_SEC)
-    jitter = random.uniform(0.0, settings.LLM_RETRY_JITTER_SEC) if settings.LLM_RETRY_JITTER_SEC > 0 else 0.0
+    jitter = (
+        random.uniform(0.0, settings.LLM_RETRY_JITTER_SEC)
+        if settings.LLM_RETRY_JITTER_SEC > 0
+        else 0.0
+    )
     return base + jitter
 
 
@@ -1482,7 +1571,9 @@ async def _call_with_retry(client: Any, *, max_retries: int | None = None, **kwa
             wait = _backoff_seconds(attempt, retry_after=retry_after)
             logger.warning(
                 "anthropic rate_limit (429) attempt %d/%d, sleeping %.2fs",
-                attempt + 1, max_retries + 1, wait,
+                attempt + 1,
+                max_retries + 1,
+                wait,
             )
             await asyncio.sleep(wait)
         except anthropic.APITimeoutError as exc:
@@ -1491,7 +1582,10 @@ async def _call_with_retry(client: Any, *, max_retries: int | None = None, **kwa
             wait = _backoff_seconds(attempt)
             logger.warning(
                 "anthropic timeout attempt %d/%d, sleeping %.2fs: %s",
-                attempt + 1, max_retries + 1, wait, exc,
+                attempt + 1,
+                max_retries + 1,
+                wait,
+                exc,
             )
             await asyncio.sleep(wait)
         except anthropic.APIConnectionError as exc:
@@ -1500,7 +1594,10 @@ async def _call_with_retry(client: Any, *, max_retries: int | None = None, **kwa
             wait = _backoff_seconds(attempt)
             logger.warning(
                 "anthropic connection error attempt %d/%d, sleeping %.2fs: %s",
-                attempt + 1, max_retries + 1, wait, exc,
+                attempt + 1,
+                max_retries + 1,
+                wait,
+                exc,
             )
             await asyncio.sleep(wait)
         except anthropic.APIStatusError as exc:
@@ -1512,7 +1609,10 @@ async def _call_with_retry(client: Any, *, max_retries: int | None = None, **kwa
             wait = _backoff_seconds(attempt)
             logger.warning(
                 "anthropic server error (%s) attempt %d/%d, sleeping %.2fs",
-                status, attempt + 1, max_retries + 1, wait,
+                status,
+                attempt + 1,
+                max_retries + 1,
+                wait,
             )
             await asyncio.sleep(wait)
 
@@ -1524,6 +1624,7 @@ async def _call_with_retry(client: Any, *, max_retries: int | None = None, **kwa
 
 
 # ---------- Dify backend (Phase 3 — digiRunner + Dify landing stack) ----------
+
 
 class DifyLLM:
     """Route LLM intents through a self-hosted Dify CE *workflow* app.
@@ -1576,6 +1677,7 @@ class DifyLLM:
     def _http_client(self):
         if self._client is None:
             import httpx
+
             self._client = httpx.Client(timeout=settings.DIFY_TIMEOUT_SEC)
         return self._client
 
@@ -1650,13 +1752,16 @@ class DifyLLM:
             return outputs
         return json.dumps(outputs) if outputs is not None else ""
 
-    def _degrade(self, system: str, user: str, intent: str, model_hint: str,
-                 reason: str) -> LLMResponse:
+    def _degrade(
+        self, system: str, user: str, intent: str, model_hint: str, reason: str
+    ) -> LLMResponse:
         logger.error(
             "DIFY DEGRADE: falling back to MockLLM for intent=%s — %s "
             "(check Dify at %s, DIFY_API_KEY_ANALYZE, and the "
             "patentmind-analyze-oa workflow app)",
-            intent, reason, self._api_url,
+            intent,
+            reason,
+            self._api_url,
         )
         resp = _mock.chat(system, user, intent, model_hint)
         # Loud, greppable marker in response metadata / audit rows.
@@ -1684,8 +1789,9 @@ class DifyLLM:
             )
 
         if not self._api_key:
-            return self._degrade(system, user, intent, model_hint,
-                                 "DIFY_API_KEY_ANALYZE is not set")
+            return self._degrade(
+                system, user, intent, model_hint, "DIFY_API_KEY_ANALYZE is not set"
+            )
 
         import httpx
 
@@ -1711,7 +1817,10 @@ class DifyLLM:
         status = data.get("status")
         if status != "succeeded":
             return self._degrade(
-                system, user, intent, model_hint,
+                system,
+                user,
+                intent,
+                model_hint,
                 f"workflow status={status!r} error={data.get('error')!r}",
             )
 
@@ -1726,12 +1835,18 @@ class DifyLLM:
         latency = int((time.monotonic() - started) * 1000)
         total_tokens = int(data.get("total_tokens") or 0)
         completion_tokens = estimate_tokens(text)
-        prompt_tokens = max(1, total_tokens - completion_tokens) if total_tokens \
+        prompt_tokens = (
+            max(1, total_tokens - completion_tokens)
+            if total_tokens
             else estimate_tokens(system + user)
+        )
 
         logger.info(
             "dify call: intent=%s workflow_run=%s total_tokens=%d latency=%dms",
-            intent, payload.get("workflow_run_id"), total_tokens, latency,
+            intent,
+            payload.get("workflow_run_id"),
+            total_tokens,
+            latency,
         )
         return LLMResponse(
             text=text,
@@ -1742,7 +1857,7 @@ class DifyLLM:
         )
 
 
-_dify_singleton: Optional[DifyLLM] = None
+_dify_singleton: DifyLLM | None = None
 
 
 def _get_dify_llm() -> DifyLLM:
@@ -1759,6 +1874,7 @@ def reset_dify_singleton() -> None:
 
 
 # ---------- Public router API ----------
+
 
 def route_model(*, intent: str, security_level: str, circuit_open: bool) -> str:
     """Q15: choose a model name.
@@ -1831,12 +1947,8 @@ def assert_verifier_independence() -> None:
     """
     if settings.LLM_MODE != "anthropic":
         return
-    verifier = route_model(
-        intent="verify_citations", security_level="public", circuit_open=False
-    )
-    drafter = route_model(
-        intent="draft_response", security_level="public", circuit_open=False
-    )
+    verifier = route_model(intent="verify_citations", security_level="public", circuit_open=False)
+    drafter = route_model(intent="draft_response", security_level="public", circuit_open=False)
     if verifier == drafter:
         raise VerifierIndependenceError(
             f"Q14 verifier independence violated: verifier model {verifier!r} "
@@ -1878,6 +1990,7 @@ def chat(
         except Exception as e:
             # 印 stderr 以便 debug；fallback 到 mock 保證 demo 不掛
             import sys
+
             print(
                 f"[llm_client] Ollama call failed, falling back to mock: {e}",
                 file=sys.stderr,
@@ -1897,7 +2010,10 @@ def chat(
         # moves the workflow to a cloud model MUST flip it false — at which
         # point confidential cases hard-fail here instead of silently
         # egressing. Same posture as the anthropic guard below.
-        if not settings.DIFY_EGRESS_LOCAL and security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS:
+        if (
+            not settings.DIFY_EGRESS_LOCAL
+            and security_level in settings.LOCAL_LLM_FOR_SECURITY_LEVELS
+        ):
             raise RuntimeError(
                 f"Refusing Dify LLM call for security_level={security_level!r}: "
                 "DIFY_EGRESS_LOCAL=false declares the Dify workflow's model is "

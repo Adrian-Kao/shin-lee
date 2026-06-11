@@ -33,12 +33,13 @@ Design choices
   (callable returns the same ``None`` it would for a real miss) without
   polluting a long-lived process with a duplicate store.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import threading
-from typing import Any, Optional
+from typing import Any
 
 from backend.shared.config import settings
 
@@ -111,7 +112,7 @@ class RedisCacheBackend:
     # ------------------------------------------------------------------
     # Public API (matches _MemoryCache)
     # ------------------------------------------------------------------
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         try:
             raw = self._client.get(key)
         except RedisConnectionError as exc:
@@ -139,7 +140,7 @@ class RedisCacheBackend:
             log.warning("redis_cache: corrupt value at %s, dropping: %s", key, exc)
             return None
 
-    def set(self, key: str, value: Any, ttl_sec: int = 0, tenant: Optional[str] = None) -> None:
+    def set(self, key: str, value: Any, ttl_sec: int = 0, tenant: str | None = None) -> None:
         """Set a cache entry, optionally tracked under a per-tenant FIFO cap.
 
         ``tenant`` mirrors the in-memory backend's M-8 cap kwarg: when given
@@ -165,8 +166,13 @@ class RedisCacheBackend:
             if tenant is not None and cap > 0:
                 order_key = self._tenant_order_key(tenant)
                 self._client.eval(
-                    _SET_WITH_CAP_LUA, 2, key, order_key, payload,
-                    ttl_sec if ttl_sec and ttl_sec > 0 else 0, cap,
+                    _SET_WITH_CAP_LUA,
+                    2,
+                    key,
+                    order_key,
+                    payload,
+                    ttl_sec if ttl_sec and ttl_sec > 0 else 0,
+                    cap,
                 )
             elif ttl_sec and ttl_sec > 0:
                 self._client.setex(key, ttl_sec, payload)

@@ -7,6 +7,7 @@ a tiny in-memory fake `eval` so we prove the contract "reserve fits ⇒ 1 +
 counter incremented; reserve breaks cap ⇒ 0 + counter unchanged" without a
 real redis server.
 """
+
 from __future__ import annotations
 
 from unittest import mock
@@ -20,9 +21,13 @@ from backend.shared.models import User, UserRole
 
 
 def _user(user_id="alice", tenant_id="tenant_a", quota=1_000) -> User:
-    return User(user_id=user_id, tenant_id=tenant_id,
-                role=UserRole.ATTORNEY, display_name=user_id,
-                daily_token_quota=quota)
+    return User(
+        user_id=user_id,
+        tenant_id=tenant_id,
+        role=UserRole.ATTORNEY,
+        display_name=user_id,
+        daily_token_quota=quota,
+    )
 
 
 class _FakeRedis:

@@ -37,6 +37,7 @@ Design choices that map onto production
 * **CLI** mirrors ``audit_archive.py`` / ``deadline.py``: a thin library that an
   ops cron calls. Deliberately NO HTTP endpoint (kept off ``main.py``).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -46,9 +47,9 @@ import shutil
 import sqlite3
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Backup-set format version, recorded in every manifest. Bump if the layout or
 # the hashing scheme ever changes so an old backup can be recognised + handled.
@@ -82,7 +83,7 @@ def _mapping_db_path() -> Path:
     return Path(_cfg().MAPPING_DB_PATH)
 
 
-def _patent_db_path() -> Optional[Path]:
+def _patent_db_path() -> Path | None:
     """PATENT_DB_PATH may not exist in a fresh checkout (RAG is in-memory in the
     POC). Returns the configured path regardless; the snapshot skips it when the
     file is absent."""
@@ -133,7 +134,7 @@ def _sqlite_online_backup(src: Path, dst: Path) -> None:
 # ---------------------------------------------------------------------------
 # Snapshot.
 # ---------------------------------------------------------------------------
-def _timestamp_id(now_iso: Optional[str]) -> tuple[str, str]:
+def _timestamp_id(now_iso: str | None) -> tuple[str, str]:
     """Return ``(backup_id, created_at_iso)``.
 
     The backup_id is a filesystem-safe, lexically-sortable form of the
@@ -141,7 +142,7 @@ def _timestamp_id(now_iso: Optional[str]) -> tuple[str, str]:
     is injectable so tests can pin a deterministic id.
     """
     if now_iso is None:
-        dt = datetime.now(timezone.utc)
+        dt = datetime.now(UTC)
         created_at = dt.isoformat()
     else:
         created_at = now_iso
@@ -149,13 +150,13 @@ def _timestamp_id(now_iso: Optional[str]) -> tuple[str, str]:
         try:
             dt = datetime.fromisoformat(now_iso)
         except ValueError:
-            dt = datetime.now(timezone.utc)
+            dt = datetime.now(UTC)
     # 2026-06-08T12:34:56.789+00:00 -> 20260608T123456 (drop sub-seconds/tz)
     backup_id = dt.strftime("%Y%m%dT%H%M%S")
     return backup_id, created_at
 
 
-def snapshot(now_iso: Optional[str] = None, prune_keep: Optional[int] = None) -> dict:
+def snapshot(now_iso: str | None = None, prune_keep: int | None = None) -> dict:
     """Back up every stateful store into a timestamped backup set.
 
     Stores captured:
@@ -327,9 +328,7 @@ def _load_manifest(backup_id: str) -> tuple[dict, Path]:
     backup_root = _backup_dir() / backup_id
     manifest_path = backup_root / _MANIFEST_FILENAME
     if not manifest_path.exists():
-        raise FileNotFoundError(
-            f"backup {backup_id!r} not found (no manifest at {manifest_path})"
-        )
+        raise FileNotFoundError(f"backup {backup_id!r} not found (no manifest at {manifest_path})")
     with manifest_path.open("r", encoding="utf-8") as fh:
         manifest = json.load(fh)
     return manifest, backup_root
@@ -358,9 +357,7 @@ def restore(backup_id: str, target_dir: str | Path) -> dict:
         expected = entry["sha256"]
         src = backup_root / rel
         if not src.exists():
-            anomalies.append(
-                {"type": "missing_backup_file", "path": rel, "source": str(src)}
-            )
+            anomalies.append({"type": "missing_backup_file", "path": rel, "source": str(src)})
             continue
         dst = target / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -391,12 +388,12 @@ def restore(backup_id: str, target_dir: str | Path) -> dict:
 # ---------------------------------------------------------------------------
 # DR drill — the headline feature.
 # ---------------------------------------------------------------------------
-def _restored_audit_db(target: Path) -> Optional[Path]:
+def _restored_audit_db(target: Path) -> Path | None:
     p = target / "audit.db"
     return p if p.exists() else None
 
 
-def drill(now_iso: Optional[str] = None) -> dict:
+def drill(now_iso: str | None = None) -> dict:
     """Quarterly DR drill: snapshot live stores → restore → verify.
 
     Two independent proofs:
@@ -460,14 +457,12 @@ def drill(now_iso: Optional[str] = None) -> dict:
         shutil.rmtree(tmp_root, ignore_errors=True)
 
     # RPO estimate: how stale is this recovery point right now?
-    rpo_seconds: Optional[float] = None
+    rpo_seconds: float | None = None
     try:
         created = datetime.fromisoformat(snap["created_at"])
         if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        rpo_seconds = max(
-            0.0, (datetime.now(timezone.utc) - created).total_seconds()
-        )
+            created = created.replace(tzinfo=UTC)
+        rpo_seconds = max(0.0, (datetime.now(UTC) - created).total_seconds())
     except (ValueError, KeyError):
         rpo_seconds = None
 
@@ -500,9 +495,7 @@ def _count_audit_rows_for_user(user_id: str) -> int:
     uri = f"file:{path.as_posix()}?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     try:
-        cur = conn.execute(
-            "SELECT COUNT(*) FROM audit WHERE user_id = ?", (user_id,)
-        )
+        cur = conn.execute("SELECT COUNT(*) FROM audit WHERE user_id = ?", (user_id,))
         return int(cur.fetchone()[0])
     except sqlite3.OperationalError:
         # audit table not created yet
@@ -573,9 +566,7 @@ def erase_user(user_id: str, *, dry_run: bool = False) -> dict:
         # by policy).
         conn = sqlite3.connect(path)
         try:
-            cur = conn.execute(
-                "DELETE FROM mappings WHERE tenant_id = ?", (user_id,)
-            )
+            cur = conn.execute("DELETE FROM mappings WHERE tenant_id = ?", (user_id,))
             conn.commit()
             erased = cur.rowcount if cur.rowcount is not None else len(targeted)
         finally:
@@ -618,7 +609,7 @@ def _main(argv: list[str]) -> int:
     cmd = argv[1] if len(argv) > 1 else "drill"
     if cmd == "snapshot":
         # Optional retention: `snapshot --keep N` snapshots then sweeps.
-        keep: Optional[int] = None
+        keep: int | None = None
         if "--keep" in argv:
             i = argv.index("--keep")
             if i + 1 < len(argv):

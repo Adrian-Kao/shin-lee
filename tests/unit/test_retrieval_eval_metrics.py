@@ -12,6 +12,7 @@ embeddings are real):
 All assertions are hand-computed so the formulas are pinned independent of
 embedding quality, exactly like the existing recall/MRR math tests.
 """
+
 from __future__ import annotations
 
 import math

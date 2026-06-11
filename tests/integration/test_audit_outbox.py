@@ -24,13 +24,14 @@ monkeypatch ``backend.gateway.audit.writer.write`` to raise. The outbox path is
 pinned to a per-test ``tmp_path`` via ``config.AUDIT_OUTBOX_PATH`` so the real
 ``data/`` tree is never touched and tests don't see each other's backlog.
 """
+
 from __future__ import annotations
 
 import json
 
 import pytest
 
-_ALICE_CASE = "CASE-2025-001"     # alice has ACL
+_ALICE_CASE = "CASE-2025-001"  # alice has ACL
 
 
 @pytest.fixture()
@@ -83,10 +84,10 @@ def test_writer_failure_enqueues_to_outbox_and_does_not_mask_response(
     gateway_client, alice_token, patched_ai_engine, outbox_path, failing_audit_writer
 ):
     """A valid analyze request whose audit write fails must:
-      - still return 200 with the real analysis (the audit outage is invisible
-        to the caller), and
-      - leave exactly one JSON-parseable row in the outbox file carrying the
-        right endpoint + case_id.
+    - still return 200 with the real analysis (the audit outage is invisible
+      to the caller), and
+    - leave exactly one JSON-parseable row in the outbox file carrying the
+      right endpoint + case_id.
     """
     from backend.gateway import audit_outbox
 
@@ -110,7 +111,7 @@ def test_writer_failure_enqueues_to_outbox_and_does_not_mask_response(
     assert audit_outbox.outbox_depth() == 1
     assert outbox_path.exists()
 
-    lines = [l for l in outbox_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    lines = [line for line in outbox_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 1, lines
     record = json.loads(lines[0])  # must be JSON-parseable
 
@@ -170,9 +171,7 @@ def test_replay_drains_outbox_into_audit_db(
     # Filter to the replayed endpoint/case so the auditor's own login rows
     # don't confuse the count.
     n_target_before = sum(
-        1
-        for r in rows_before
-        if r["endpoint"] == "/v1/oa/analyze" and r["case_id"] == _ALICE_CASE
+        1 for r in rows_before if r["endpoint"] == "/v1/oa/analyze" and r["case_id"] == _ALICE_CASE
     )
 
     summary = audit_outbox.replay_outbox()
@@ -188,9 +187,7 @@ def test_replay_drains_outbox_into_audit_db(
         headers={"Authorization": f"Bearer {auditor_token}"},
     ).json()
     n_target_after = sum(
-        1
-        for r in rows_after
-        if r["endpoint"] == "/v1/oa/analyze" and r["case_id"] == _ALICE_CASE
+        1 for r in rows_after if r["endpoint"] == "/v1/oa/analyze" and r["case_id"] == _ALICE_CASE
     )
     assert n_target_after == n_target_before + 1, (n_target_before, n_target_after)
 

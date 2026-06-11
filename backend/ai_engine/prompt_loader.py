@@ -9,6 +9,7 @@ the same callsites by going through ``render_system`` / ``load_prompt``.
 (``KeyError``) when an intent is unknown so a typo doesn't silently get a
 ``None`` prompt that the LLM then "helpfully" interprets.
 """
+
 from __future__ import annotations
 
 import functools
@@ -24,7 +25,7 @@ _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _REQUIRED_KEYS = ("intent", "version", "language", "system")
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def load_prompt(intent: str) -> dict:
     """Return the parsed YAML for ``intent``.
 

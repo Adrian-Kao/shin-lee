@@ -83,6 +83,7 @@ that threat model expands, the right fix is to require a signed claim
 (JWT in ``x-upstream-auth-token``) rather than to inflate the user-quota
 machinery.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -92,8 +93,8 @@ import logging
 import secrets
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from fastapi import HTTPException, Request, status
@@ -111,10 +112,12 @@ logger = logging.getLogger(__name__)
 # local _USERS table (or a future signed-claim mechanism). Otherwise anyone
 # with a trusted-IP foothold can claim auditor role and read the audit log.
 # ---------------------------------------------------------------------------
-_UPSTREAM_ASSERTABLE_ROLES: frozenset[UserRole] = frozenset({
-    UserRole.ATTORNEY,
-    UserRole.PARALEGAL,
-})
+_UPSTREAM_ASSERTABLE_ROLES: frozenset[UserRole] = frozenset(
+    {
+        UserRole.ATTORNEY,
+        UserRole.PARALEGAL,
+    }
+)
 
 # Single source of truth for the least-privilege fallback role.
 _UPSTREAM_DEFAULT_ROLE: UserRole = UserRole.PARALEGAL
@@ -140,7 +143,7 @@ _UPSTREAM_DEFAULT_ROLE: UserRole = UserRole.PARALEGAL
 # reviewer feedback so a future contributor can't quietly extend this
 # to a real auth path.
 # ---------------------------------------------------------------------------
-def _hash_password(password: str, salt: Optional[str] = None) -> str:
+def _hash_password(password: str, salt: str | None = None) -> str:
     """Return ``'salt:hash'`` for storage.
 
     ``salt`` is 16-byte hex by default. Hex (not raw bytes) so the stored
@@ -148,7 +151,7 @@ def _hash_password(password: str, salt: Optional[str] = None) -> str:
     """
     if salt is None:
         salt = secrets.token_hex(16)
-    h = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
+    h = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
     return f"{salt}:{h}"
 
 
@@ -162,7 +165,7 @@ def _verify_password(password: str, stored: str) -> bool:
     if not stored or ":" not in stored:
         return False
     salt, expected = stored.split(":", 1)
-    candidate = hashlib.sha256(f"{salt}{password}".encode("utf-8")).hexdigest()
+    candidate = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
     return hmac.compare_digest(candidate, expected)
 
 
@@ -215,9 +218,7 @@ _USERS: dict[str, User] = {
 # Each hash is computed at import time so the docs ("default password is
 # `demo-{uid}`") stay the single source of truth — change the password
 # convention in one place and every hash regenerates.
-_PASSWORD_HASHES: dict[str, str] = {
-    uid: _hash_password(f"demo-{uid}") for uid in _USERS
-}
+_PASSWORD_HASHES: dict[str, str] = {uid: _hash_password(f"demo-{uid}") for uid in _USERS}
 
 
 # ---------------------------------------------------------------------------
@@ -246,13 +247,13 @@ def _register_federated_user(user: User) -> None:
     _FEDERATED_USERS[user.user_id] = user
 
 
-def _lookup_user(user_id: str) -> Optional[User]:
+def _lookup_user(user_id: str) -> User | None:
     """Resolve a user_id to a User, preferring the server-controlled ``_USERS``
     table and falling back to the federated registry. ``_USERS`` always wins."""
     return _USERS.get(user_id) or _FEDERATED_USERS.get(user_id)
 
 
-def _get_user(user_id: str) -> Optional[User]:
+def _get_user(user_id: str) -> User | None:
     """Lookup helper — returns the demo user or None.
 
     Exists as a named function (rather than callers reaching into `_USERS`
@@ -262,7 +263,7 @@ def _get_user(user_id: str) -> Optional[User]:
     return _USERS.get(user_id)
 
 
-def _get_password_hash(user_id: str) -> Optional[str]:
+def _get_password_hash(user_id: str) -> str | None:
     """Return the stored password hash, or ``None`` for unknown users."""
     return _PASSWORD_HASHES.get(user_id)
 
@@ -284,6 +285,7 @@ def _internal_headers() -> dict[str, str]:
         return {}
     return {"X-Internal-Token": token}
 
+
 # POC: which case_ids each user has access to.
 # Production: query from case-management system per request.
 _CASE_ACL: dict[str, set[str]] = {
@@ -292,7 +294,6 @@ _CASE_ACL: dict[str, set[str]] = {
     "carol": set(),  # IT admin doesn't access cases by default
     "audit_dave": {"*"},  # auditor sees all in their tenant
 }
-
 
 
 # H-5 (phase 3): algorithm-aware key selection. HS* is symmetric (one shared
@@ -319,7 +320,7 @@ def issue_token(user_id: str) -> str:
     user = _lookup_user(user_id)
     if user is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"unknown user: {user_id}")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user.user_id,
         "tenant_id": user.tenant_id,
@@ -346,10 +347,10 @@ def verify_token(token: str) -> User:
             audience=settings.JWT_AUD,
             issuer=settings.JWT_ISS,
         )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token expired")
+    except jwt.ExpiredSignatureError as e:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "token expired") from e
     except jwt.InvalidTokenError as e:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"invalid token: {e}")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"invalid token: {e}") from e
 
     # A magic-link token must NEVER be accepted as a Bearer session token even
     # if it somehow carries the right aud/iss. (The module docstring above
@@ -452,7 +453,7 @@ def issue_magic_token(user_id: str) -> str:
         # endpoint converts this into a uniform "if the user exists…" response
         # so existence is never leaked.
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"unknown user: {user_id}")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user_id,
         "typ": _MAGIC_TOKEN_TYP,
@@ -463,7 +464,7 @@ def issue_magic_token(user_id: str) -> str:
     return jwt.encode(payload, _signing_key(), algorithm=settings.JWT_ALGO)
 
 
-def magic_token_jti(token: str) -> Optional[str]:
+def magic_token_jti(token: str) -> str | None:
     """Best-effort extract the ``jti`` of a magic token for AUDIT use only.
 
     Returns the ``jti`` claim without verifying signature/expiry (we only want
@@ -496,16 +497,12 @@ def consume_magic_token(token: str) -> str:
     (bad signature, expired, wrong typ, unknown user, missing jti, replay) so
     the caller cannot use the failure reason as an oracle.
     """
-    uniform_401 = HTTPException(
-        status.HTTP_401_UNAUTHORIZED, "invalid or expired magic link"
-    )
+    uniform_401 = HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid or expired magic link")
     try:
-        payload = jwt.decode(
-            token, _verifying_key(), algorithms=[settings.JWT_ALGO]
-        )
-    except jwt.InvalidTokenError:
+        payload = jwt.decode(token, _verifying_key(), algorithms=[settings.JWT_ALGO])
+    except jwt.InvalidTokenError as exc:
         # Covers ExpiredSignatureError (subclass) + tamper/bad-signature.
-        raise uniform_401
+        raise uniform_401 from exc
 
     if payload.get("typ") != _MAGIC_TOKEN_TYP:
         # A session token (or any non-magic token) must not be consumable here.
@@ -556,7 +553,6 @@ def consume_magic_token(token: str) -> str:
 #   * SAML stub HMAC-signs the assertion blob instead of verifying XML-DSig.
 #   Both are the ONLY shortcuts; state/nonce/replay/audience/expiry are real.
 # ---------------------------------------------------------------------------
-from dataclasses import dataclass
 
 
 class IdpError(Exception):
@@ -579,11 +575,11 @@ class IdpIdentity:
     IT_ADMIN, exactly like the digiRunner header path.
     """
 
-    subject: str                       # IdP 'sub' (OIDC) / NameID (SAML)
-    issuer: str                        # which IdP asserted this
-    tenant_hint: Optional[str] = None  # IdP-supplied tenant (honoured only for
+    subject: str  # IdP 'sub' (OIDC) / NameID (SAML)
+    issuer: str  # which IdP asserted this
+    tenant_hint: str | None = None  # IdP-supplied tenant (honoured only for
     #                                    unknown users; known users pin on-file)
-    role_hint: Optional[str] = None    # IdP-supplied role (subject to the same
+    role_hint: str | None = None  # IdP-supplied role (subject to the same
     #                                    assertable-role whitelist as upstream)
 
 
@@ -600,7 +596,9 @@ class OIDCProvider:
     material.
     """
 
-    def exchange_code(self, code: str, expected_nonce: str) -> IdpIdentity:  # pragma: no cover - interface
+    def exchange_code(
+        self, code: str, expected_nonce: str
+    ) -> IdpIdentity:  # pragma: no cover - interface
         raise NotImplementedError
 
 
@@ -633,8 +631,8 @@ class StubOIDCProvider(OIDCProvider):
         aud: str,
         nonce: str,
         exp: int,
-        tenant: Optional[str] = None,
-        role: Optional[str] = None,
+        tenant: str | None = None,
+        role: str | None = None,
     ) -> str:
         """Test/helper: build a signed authorization code blob.
 
@@ -661,9 +659,7 @@ class StubOIDCProvider(OIDCProvider):
         if not code or code.count(".") != 1:
             raise IdpError("oidc: malformed authorization code")
         b64, sig = code.split(".", 1)
-        expected_sig = hmac.new(
-            self._secret.encode(), b64.encode(), hashlib.sha256
-        ).hexdigest()
+        expected_sig = hmac.new(self._secret.encode(), b64.encode(), hashlib.sha256).hexdigest()
         # Constant-time compare — never leak how many bytes of the sig matched.
         if not hmac.compare_digest(sig, expected_sig):
             raise IdpError("oidc: bad code signature")
@@ -671,7 +667,7 @@ class StubOIDCProvider(OIDCProvider):
             padded = b64 + "=" * (-len(b64) % 4)
             payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
         except Exception as exc:  # noqa: BLE001
-            raise IdpError(f"oidc: undecodable code payload: {exc}")
+            raise IdpError(f"oidc: undecodable code payload: {exc}") from exc
 
         # issuer pin — a code from a different IdP must not authenticate here.
         if payload.get("iss") != self._issuer:
@@ -688,7 +684,11 @@ class StubOIDCProvider(OIDCProvider):
         # token-injection (an attacker's stolen code carries the victim's nonce,
         # not the attacker's session nonce).
         nonce = payload.get("nonce")
-        if not nonce or not expected_nonce or not hmac.compare_digest(str(nonce), str(expected_nonce)):
+        if (
+            not nonce
+            or not expected_nonce
+            or not hmac.compare_digest(str(nonce), str(expected_nonce))
+        ):
             raise IdpError("oidc: nonce mismatch")
         sub = payload.get("sub")
         if not sub:
@@ -712,7 +712,9 @@ class SAMLProvider:
     does the moral equivalent over an HMAC-signed assertion blob.
     """
 
-    def validate_assertion(self, assertion: str) -> tuple[IdpIdentity, str, int]:  # pragma: no cover - interface
+    def validate_assertion(
+        self, assertion: str
+    ) -> tuple[IdpIdentity, str, int]:  # pragma: no cover - interface
         """Return (identity, assertion_id, not_on_or_after_epoch)."""
         raise NotImplementedError
 
@@ -746,8 +748,8 @@ class StubSAMLProvider(SAMLProvider):
         audience: str,
         not_before: int,
         not_on_or_after: int,
-        tenant: Optional[str] = None,
-        role: Optional[str] = None,
+        tenant: str | None = None,
+        role: str | None = None,
     ) -> str:
         import base64
         import json
@@ -776,16 +778,14 @@ class StubSAMLProvider(SAMLProvider):
         if not assertion or assertion.count(".") != 1:
             raise IdpError("saml: malformed assertion")
         b64, sig = assertion.split(".", 1)
-        expected_sig = hmac.new(
-            self._secret.encode(), b64.encode(), hashlib.sha256
-        ).hexdigest()
+        expected_sig = hmac.new(self._secret.encode(), b64.encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(sig, expected_sig):
             raise IdpError("saml: bad assertion signature")
         try:
             padded = b64 + "=" * (-len(b64) % 4)
             payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
         except Exception as exc:  # noqa: BLE001
-            raise IdpError(f"saml: undecodable assertion: {exc}")
+            raise IdpError(f"saml: undecodable assertion: {exc}") from exc
 
         if payload.get("audience") != self._audience:
             raise IdpError("saml: audience mismatch")
@@ -832,9 +832,7 @@ def get_oidc_provider() -> OIDCProvider:
 
 def get_saml_provider() -> SAMLProvider:
     if settings.SAML_PROVIDER == "stub":
-        return StubSAMLProvider(
-            settings.SAML_STUB_SIGNING_SECRET, audience=settings.SAML_AUDIENCE
-        )
+        return StubSAMLProvider(settings.SAML_STUB_SIGNING_SECRET, audience=settings.SAML_AUDIENCE)
     raise IdpError(
         f"saml: provider '{settings.SAML_PROVIDER}' not wired in this build "
         "(set SAML_PROVIDER=stub for the POC, or implement python3-saml)."
@@ -866,7 +864,7 @@ def begin_oidc_login() -> tuple[str, str]:
     return state, nonce
 
 
-def consume_oidc_state(state: Optional[str]) -> str:
+def consume_oidc_state(state: str | None) -> str:
     """Validate + single-use-consume an OIDC ``state``; return its bound nonce.
 
     Raises ``IdpError`` if the state is missing, unknown, or expired — every one
@@ -940,7 +938,9 @@ def _resolve_idp_user(identity: IdpIdentity) -> User:
             logger.warning(
                 "idp-auth: SECURITY tenant mismatch for known user_id=%s "
                 "(idp=%s, _USERS=%s) — IGNORING idp tenant, pinning on-file",
-                identity.subject, identity.tenant_hint, known.tenant_id,
+                identity.subject,
+                identity.tenant_hint,
+                known.tenant_id,
             )
         return known
 
@@ -962,9 +962,9 @@ def _resolve_idp_user(identity: IdpIdentity) -> User:
 
 
 def authenticate_oidc_callback(
-    code: Optional[str],
-    state: Optional[str],
-    provider: Optional[OIDCProvider] = None,
+    code: str | None,
+    state: str | None,
+    provider: OIDCProvider | None = None,
 ) -> User:
     """Complete an OIDC authorization-code callback -> session ``User``.
 
@@ -990,8 +990,8 @@ def authenticate_oidc_callback(
 
 
 def authenticate_saml_acs(
-    saml_response: Optional[str],
-    provider: Optional[SAMLProvider] = None,
+    saml_response: str | None,
+    provider: SAMLProvider | None = None,
 ) -> User:
     """Complete a SAML ACS POST -> session ``User``.
 
@@ -1002,9 +1002,7 @@ def authenticate_saml_acs(
     if not settings.SAML_ENABLED:
         raise IdpError("saml: disabled")
     prov = provider or get_saml_provider()
-    identity, assertion_id, not_on_or_after = prov.validate_assertion(
-        saml_response or ""
-    )
+    identity, assertion_id, not_on_or_after = prov.validate_assertion(saml_response or "")
     # Replay: a previously-consumed assertion id (even within its time window)
     # must be refused. Checked AFTER signature/time so an attacker can't use the
     # replay store as an assertion-id oracle with unsigned input.
@@ -1015,7 +1013,7 @@ def authenticate_saml_acs(
     return user
 
 
-def authorize_case_access(user: User, case_id: Optional[str]) -> None:
+def authorize_case_access(user: User, case_id: str | None) -> None:
     """Q12: legal compliance — confirm user has access to this specific case.
 
     Raises 403 if not.  This is the conflict-of-interest 看錯案件 防呆.
@@ -1046,7 +1044,7 @@ def authorize_case_access(user: User, case_id: Optional[str]) -> None:
     )
 
 
-def _normalise_client_ip(client_host: Optional[str]) -> Optional[ipaddress._BaseAddress]:
+def _normalise_client_ip(client_host: str | None) -> ipaddress._BaseAddress | None:
     """Return ``client_host`` as an ``ipaddress.IPv4Address`` /
     ``IPv6Address``, collapsing IPv4-mapped-IPv6 (``::ffff:127.0.0.1``)
     down to its IPv4 form so trust-list comparisons work on dual-stack
@@ -1070,7 +1068,7 @@ def _normalise_client_ip(client_host: Optional[str]) -> Optional[ipaddress._Base
     return addr
 
 
-def _is_trusted_peer(client_host: Optional[str]) -> bool:
+def _is_trusted_peer(client_host: str | None) -> bool:
     """Decide whether ``client_host`` is in the trust list, accommodating
     both real IPs (compared as ``ip_address`` objects to handle the
     IPv4-mapped-IPv6 case) and the synthetic TestClient string
@@ -1101,7 +1099,7 @@ def _is_trusted_peer(client_host: Optional[str]) -> bool:
     return normalised in parsed_trust
 
 
-def _user_from_upstream_headers(request: Request) -> Optional[User]:
+def _user_from_upstream_headers(request: Request) -> User | None:
     """Compat Refactor 3: build a User from digiRunner-injected headers.
 
     Returns the User when the request comes from a trusted upstream IP AND
@@ -1141,8 +1139,8 @@ def _user_from_upstream_headers(request: Request) -> Optional[User]:
         presented = request.headers.get("x-upstream-auth-token", "")
         if not hmac.compare_digest(presented, expected_secret):
             logger.warning(
-                "upstream-auth: shared-secret mismatch from client=%s — "
-                "declining upstream path", client_ip,
+                "upstream-auth: shared-secret mismatch from client=%s — declining upstream path",
+                client_ip,
             )
             return None
 
@@ -1170,7 +1168,9 @@ def _user_from_upstream_headers(request: Request) -> Optional[User]:
             logger.warning(
                 "upstream-auth: SECURITY tenant mismatch for known user_id=%s "
                 "(upstream=%s, _USERS=%s) — IGNORING upstream tenant, pinning on-file",
-                user_id, tenant_id, known.tenant_id,
+                user_id,
+                tenant_id,
+                known.tenant_id,
             )
     elif role_header:
         try:
@@ -1202,7 +1202,10 @@ def _user_from_upstream_headers(request: Request) -> Optional[User]:
     )
     logger.info(
         "upstream-auth: user=%s tenant=%s role=%s client=%s auth_source=upstream",
-        user.user_id, user.tenant_id, user.role.value, client_ip,
+        user.user_id,
+        user.tenant_id,
+        user.role.value,
+        client_ip,
     )
     return user
 
@@ -1229,7 +1232,10 @@ async def auth_dependency(request: Request) -> User:
         _client_ip = request.client.host if request.client else None
         logger.info(
             "upstream-auth: user=%s tenant=%s role=%s client=%s auth_source=jwt",
-            user.user_id, user.tenant_id, user.role.value, _client_ip,
+            user.user_id,
+            user.tenant_id,
+            user.role.value,
+            _client_ip,
         )
 
     # Case-level access check.
@@ -1310,7 +1316,5 @@ def require_roles(*allowed_roles: UserRole):
 
     # Set a function name so FastAPI's docs / debug surface the role list
     # rather than the generic "_role_dependency" closure name.
-    _role_dependency.__name__ = (
-        f"require_roles_{'_'.join(sorted(r.value for r in allowed))}"
-    )
+    _role_dependency.__name__ = f"require_roles_{'_'.join(sorted(r.value for r in allowed))}"
     return _role_dependency

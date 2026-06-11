@@ -13,6 +13,7 @@ real row.
 
 These tests are the load-bearing assertions that close H-3 and H-4.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -122,7 +123,7 @@ def test_verify_global_chain_accepts_preauth_sentinel_tenant(tmp_path):
     magic-link shows false ``broken`` rows forever. A genuinely-unknown tenant
     (typo / smuggled ghost) MUST still be flagged.
     """
-    from backend.gateway.audit import AuditWriter, _SYSTEM_SENTINEL_TENANTS
+    from backend.gateway.audit import _SYSTEM_SENTINEL_TENANTS, AuditWriter
 
     assert "_preauth_" in _SYSTEM_SENTINEL_TENANTS  # the contract this rests on
 
@@ -130,7 +131,7 @@ def test_verify_global_chain_accepts_preauth_sentinel_tenant(tmp_path):
     writer = AuditWriter(path=db_path)
 
     _seed_audit_rows(writer, "tenant_a", n=2)
-    _seed_audit_rows(writer, "_preauth_", n=2)   # legitimate pre-auth rows
+    _seed_audit_rows(writer, "_preauth_", n=2)  # legitimate pre-auth rows
     _seed_audit_rows(writer, "tenant_zzz", n=1)  # a real ghost — must be flagged
 
     result = writer.verify_global_chain()
@@ -177,11 +178,23 @@ def test_verify_global_chain_detects_fabricated_unknown_tenant(tmp_path, monkeyp
             " policy_decisions, prev_row_hash, row_hash"
             ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                ghost_id, "2026-06-04T00:00:00+00:00", "2026-06-04T08:00:00",
-                "ghost_user", "tenant_zzz", "GHOST-001",
-                "/ghost", "", "", "[]",
-                "mock", 0, 0, 0,
-                '{"authn_passed": true}', "", "FAKE_HASH_NEVER_RECOMPUTABLE",
+                ghost_id,
+                "2026-06-04T00:00:00+00:00",
+                "2026-06-04T08:00:00",
+                "ghost_user",
+                "tenant_zzz",
+                "GHOST-001",
+                "/ghost",
+                "",
+                "",
+                "[]",
+                "mock",
+                0,
+                0,
+                0,
+                '{"authn_passed": true}',
+                "",
+                "FAKE_HASH_NEVER_RECOMPUTABLE",
             ),
         )
         writer._conn.commit()
@@ -192,10 +205,7 @@ def test_verify_global_chain_detects_fabricated_unknown_tenant(tmp_path, monkeyp
     assert result["by_tenant"]["tenant_zzz"].get("unknown_tenant") is True, result
     # The ghost row must be in the broken list, tagged with its tenant.
     broken_pairs = result["broken"]
-    assert any(
-        tid == "tenant_zzz" and aid == ghost_id
-        for (tid, aid) in broken_pairs
-    ), (
+    assert any(tid == "tenant_zzz" and aid == ghost_id for (tid, aid) in broken_pairs), (
         "ghost row in unknown tenant was NOT flagged in global broken list — "
         f"H-4 fix regressed. broken={broken_pairs!r}"
     )
@@ -225,10 +235,20 @@ def test_verify_global_chain_detects_fabricated_prev_hash(tmp_path):
             " policy_decisions, prev_row_hash, row_hash"
             ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
-                ghost_id, "2026-06-04T00:00:00+00:00", "2026-06-04T08:00:00",
-                "u_tenant_a", "tenant_a", "CASE-X",
-                "/ghost", "", "", "[]",
-                "mock", 0, 0, 0,
+                ghost_id,
+                "2026-06-04T00:00:00+00:00",
+                "2026-06-04T08:00:00",
+                "u_tenant_a",
+                "tenant_a",
+                "CASE-X",
+                "/ghost",
+                "",
+                "",
+                "[]",
+                "mock",
+                0,
+                0,
+                0,
                 '{"authn_passed": true}',
                 "DEADBEEF_NEVER_A_REAL_ROW_HASH",  # prev points to nothing
                 "DOESNT_MATTER_FOR_THIS_TEST_ROW_HASH",

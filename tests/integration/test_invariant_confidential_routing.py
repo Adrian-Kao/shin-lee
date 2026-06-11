@@ -9,6 +9,7 @@ assert the routing decision end-to-end rather than just at the unit level.
 Companion unit coverage of the router decision table lives in
 tests/unit/test_p0_correctness_fixes.py.
 """
+
 from backend.shared.config import settings
 
 _OA = "Claims 1-3 are rejected under 35 U.S.C. § 103 as obvious over US7654321."
@@ -27,9 +28,7 @@ def _analyze(client, token, case_id, patent="US7654321"):
     )
 
 
-def test_public_case_uses_cloud_reasoning_model(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_public_case_uses_cloud_reasoning_model(gateway_client, alice_token, patched_ai_engine):
     r = _analyze(gateway_client, alice_token, "CASE-2025-001")
     assert r.status_code == 200, r.text
     model = r.json()["cost_meta"]["model"]
@@ -45,9 +44,7 @@ def test_confidential_case_routes_to_local_model(
     from backend.gateway import auth
 
     conf_case = "CASE-2025-003-CONF"
-    monkeypatch.setitem(
-        auth._CASE_ACL, "alice", set(auth._CASE_ACL["alice"]) | {conf_case}
-    )
+    monkeypatch.setitem(auth._CASE_ACL, "alice", set(auth._CASE_ACL["alice"]) | {conf_case})
 
     r = _analyze(gateway_client, alice_token, conf_case)
     assert r.status_code == 200, r.text

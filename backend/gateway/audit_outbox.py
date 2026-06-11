@@ -31,6 +31,7 @@ object, so the record is JSON-serialisable and survives a process restart.
 ``replay_outbox`` reconstructs a :class:`User` from those fields before calling
 ``audit.writer.write``.
 """
+
 from __future__ import annotations
 
 import json
@@ -156,7 +157,7 @@ def outbox_depth() -> int:
         with _lock:
             if not path.exists():
                 return 0
-            with open(path, "r", encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 return sum(1 for line in fh if line.strip())
     except OSError:
         logger.exception("audit outbox depth check failed for %s", path)
@@ -186,7 +187,7 @@ def replay_outbox() -> dict[str, int]:
         if not path.exists():
             return {"replayed": 0, "remaining": 0}
 
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             raw_lines = fh.readlines()
 
         replayed = 0

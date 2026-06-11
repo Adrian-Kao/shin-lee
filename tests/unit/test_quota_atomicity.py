@@ -18,6 +18,7 @@ These tests lock in the production-grade guarantees of the rate-limit layer:
      call; the cost circuit breaker is read SECOND. We assert the breaker does
      not gate the reservation.
 """
+
 from __future__ import annotations
 
 import threading
@@ -33,14 +34,22 @@ from backend.shared.models import User, UserRole
 @pytest.fixture(autouse=True)
 def _clean():
     """Wipe every rate-limit counter before and after each test."""
+
     def _wipe():
         for name in (
-            "_user_rpm", "_login_ip_rpm", "_user_daily_tokens",
-            "_tenant_monthly_tokens", "_daily_cost_usd",
-            "_tenant_daily_cost", "_tenant_monthly_cost", "_model_daily_cost",
-            "_tenant_model_daily_cost", "_tenant_model_monthly_cost",
+            "_user_rpm",
+            "_login_ip_rpm",
+            "_user_daily_tokens",
+            "_tenant_monthly_tokens",
+            "_daily_cost_usd",
+            "_tenant_daily_cost",
+            "_tenant_monthly_cost",
+            "_model_daily_cost",
+            "_tenant_model_daily_cost",
+            "_tenant_model_monthly_cost",
         ):
             getattr(rl, name).clear()
+
     _wipe()
     yield
     _wipe()
@@ -94,8 +103,9 @@ def test_record_usage_reconciles_reservation_delta():
     reserved = rl.check_quotas(u, 300)  # reserve estimate of 300
     assert rl._user_daily_tokens[(u.user_id, rl._today())] == 300
     # Actual spend was 250 (estimate over-shot by 50). Reconcile.
-    rl.record_usage(u, prompt_tokens=200, completion_tokens=50,
-                    cost_usd=0.10, reserved_tokens=reserved)
+    rl.record_usage(
+        u, prompt_tokens=200, completion_tokens=50, cost_usd=0.10, reserved_tokens=reserved
+    )
     # Counter now reflects true spend (250), not 300+250.
     assert rl._user_daily_tokens[(u.user_id, rl._today())] == 250
 
@@ -150,9 +160,7 @@ def test_concurrent_tenant_cap_never_oversold(monkeypatch):
     """Same property at the per-tenant monthly layer: many users in one tenant
     racing a small tenant cap can't collectively exceed it."""
     cap = 100
-    monkeypatch.setitem(
-        settings.DEMO_TENANTS, "tenant_x", {"monthly_token_cap": cap}
-    )
+    monkeypatch.setitem(settings.DEMO_TENANTS, "tenant_x", {"monthly_token_cap": cap})
     amount = 10
     n_threads = 40
     successes: list[int] = []

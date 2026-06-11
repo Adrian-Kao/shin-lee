@@ -33,24 +33,23 @@ The metric *names* and *label sets* are the contract; the gateway imports the
 module-level helpers (``inc`` / ``observe`` / ``render_prometheus``) and the
 typed handles (e.g. ``OA_ANALYZED``) and never reaches into the registry guts.
 """
+
 from __future__ import annotations
 
 import math
 import os
 import threading
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from collections.abc import Iterable, Sequence
 
 # ---------------------------------------------------------------------------
 # Label handling
 # ---------------------------------------------------------------------------
 # A label set is normalised to a sorted tuple of (name, value) pairs so that
 # {a=1,b=2} and {b=2,a=1} collapse to the same series key.
-LabelKey = Tuple[Tuple[str, str], ...]
+LabelKey = tuple[tuple[str, str], ...]
 
 
-def _normalise_labels(
-    declared: Sequence[str], labels: Optional[Dict[str, str]]
-) -> LabelKey:
+def _normalise_labels(declared: Sequence[str], labels: dict[str, str] | None) -> LabelKey:
     """Project ``labels`` onto the metric's declared label names.
 
     Missing declared labels default to "" (Prometheus has no concept of an
@@ -74,20 +73,16 @@ def _escape_label_value(value: str) -> str:
         "   -> \\"
         \\n -> \\n
     """
-    return (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("\n", "\\n")
-    )
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
 
 
-def _render_labels(label_pairs: LabelKey, extra: Optional[Tuple[str, str]] = None) -> str:
+def _render_labels(label_pairs: LabelKey, extra: tuple[str, str] | None = None) -> str:
     """Render a ``{k="v",...}`` clause, or "" when there are no labels.
 
     ``extra`` lets histogram bucket lines append the synthetic ``le`` label
     without mutating the stored key.
     """
-    pairs: List[Tuple[str, str]] = list(label_pairs)
+    pairs: list[tuple[str, str]] = list(label_pairs)
     if extra is not None:
         pairs.append(extra)
     if not pairs:
@@ -107,27 +102,27 @@ class Counter:
     def __init__(self, name: str, help_text: str, labels: Sequence[str] = ()):
         self.name = name
         self.help_text = help_text
-        self.label_names: Tuple[str, ...] = tuple(labels)
+        self.label_names: tuple[str, ...] = tuple(labels)
         self._lock = threading.Lock()
-        self._values: Dict[LabelKey, float] = {}
+        self._values: dict[LabelKey, float] = {}
 
-    def inc(self, labels: Optional[Dict[str, str]] = None, value: float = 1.0) -> None:
+    def inc(self, labels: dict[str, str] | None = None, value: float = 1.0) -> None:
         if value < 0:
             raise ValueError("Counter increment must be non-negative")
         key = _normalise_labels(self.label_names, labels)
         with self._lock:
             self._values[key] = self._values.get(key, 0.0) + value
 
-    def get(self, labels: Optional[Dict[str, str]] = None) -> float:
+    def get(self, labels: dict[str, str] | None = None) -> float:
         key = _normalise_labels(self.label_names, labels)
         with self._lock:
             return self._values.get(key, 0.0)
 
-    def _snapshot(self) -> List[Tuple[LabelKey, float]]:
+    def _snapshot(self) -> list[tuple[LabelKey, float]]:
         with self._lock:
             return sorted(self._values.items())
 
-    def render(self) -> List[str]:
+    def render(self) -> list[str]:
         lines = [
             f"# HELP {self.name} {self.help_text}",
             f"# TYPE {self.name} counter",
@@ -147,7 +142,7 @@ class Counter:
 # full /v1/oa/analyze round-trip through the AI engine can run seconds. The
 # spread (1ms → 10s) lets Prometheus' histogram_quantile() interpolate p50/p95/
 # p99 across both regimes.
-DEFAULT_LATENCY_BUCKETS: Tuple[float, ...] = (
+DEFAULT_LATENCY_BUCKETS: tuple[float, ...] = (
     0.001,
     0.005,
     0.01,
@@ -183,18 +178,18 @@ class Histogram:
     ):
         self.name = name
         self.help_text = help_text
-        self.label_names: Tuple[str, ...] = tuple(labels)
+        self.label_names: tuple[str, ...] = tuple(labels)
         # Sorted, de-duped, finite upper bounds. +Inf is implicit.
-        self.buckets: Tuple[float, ...] = tuple(
+        self.buckets: tuple[float, ...] = tuple(
             sorted({float(b) for b in buckets if math.isfinite(b)})
         )
         self._lock = threading.Lock()
         # Per series: cumulative bucket counts (parallel to self.buckets) + sum + count.
-        self._bucket_counts: Dict[LabelKey, List[float]] = {}
-        self._sums: Dict[LabelKey, float] = {}
-        self._counts: Dict[LabelKey, float] = {}
+        self._bucket_counts: dict[LabelKey, list[float]] = {}
+        self._sums: dict[LabelKey, float] = {}
+        self._counts: dict[LabelKey, float] = {}
 
-    def observe(self, value: float, labels: Optional[Dict[str, str]] = None) -> None:
+    def observe(self, value: float, labels: dict[str, str] | None = None) -> None:
         key = _normalise_labels(self.label_names, labels)
         with self._lock:
             counts = self._bucket_counts.get(key)
@@ -209,24 +204,24 @@ class Histogram:
             self._sums[key] += value
             self._counts[key] += 1.0
 
-    def get_count(self, labels: Optional[Dict[str, str]] = None) -> float:
+    def get_count(self, labels: dict[str, str] | None = None) -> float:
         key = _normalise_labels(self.label_names, labels)
         with self._lock:
             return self._counts.get(key, 0.0)
 
-    def get_sum(self, labels: Optional[Dict[str, str]] = None) -> float:
+    def get_sum(self, labels: dict[str, str] | None = None) -> float:
         key = _normalise_labels(self.label_names, labels)
         with self._lock:
             return self._sums.get(key, 0.0)
 
-    def _snapshot(self) -> List[Tuple[LabelKey, List[float], float, float]]:
+    def _snapshot(self) -> list[tuple[LabelKey, list[float], float, float]]:
         with self._lock:
             return [
                 (key, list(self._bucket_counts[key]), self._sums[key], self._counts[key])
                 for key in sorted(self._bucket_counts)
             ]
 
-    def render(self) -> List[str]:
+    def render(self) -> list[str]:
         lines = [
             f"# HELP {self.name} {self.help_text}",
             f"# TYPE {self.name} histogram",
@@ -236,24 +231,22 @@ class Histogram:
             # Zero series so the histogram is never absent: all buckets + sum +
             # count at 0, including the mandatory +Inf bucket.
             for bound in self.buckets:
-                lines.append(
-                    f'{self.name}_bucket{{le="{_format_float(bound)}"}} 0'
-                )
+                lines.append(f'{self.name}_bucket{{le="{_format_float(bound)}"}} 0')
             lines.append(f'{self.name}_bucket{{le="+Inf"}} 0')
             lines.append(f"{self.name}_sum 0")
             lines.append(f"{self.name}_count 0")
             return lines
         for key, counts, total_sum, total_count in snap:
-            for bound, cum in zip(self.buckets, counts):
+            for bound, cum in zip(self.buckets, counts, strict=True):
                 lines.append(
                     f"{self.name}_bucket"
-                    f'{_render_labels(key, extra=("le", _format_float(bound)))} '
+                    f"{_render_labels(key, extra=('le', _format_float(bound)))} "
                     f"{_format_float(cum)}"
                 )
             # +Inf bucket == total count (cumulative top).
             lines.append(
                 f"{self.name}_bucket"
-                f'{_render_labels(key, extra=("le", "+Inf"))} '
+                f"{_render_labels(key, extra=('le', '+Inf'))} "
                 f"{_format_float(total_count)}"
             )
             lines.append(f"{self.name}_sum{_render_labels(key)} {_format_float(total_sum)}")
@@ -277,7 +270,7 @@ class Gauge:
         self.help_text = help_text
         self._collect = collect
 
-    def render(self) -> List[str]:
+    def render(self) -> list[str]:
         lines = [
             f"# HELP {self.name} {self.help_text}",
             f"# TYPE {self.name} gauge",
@@ -319,7 +312,7 @@ class Registry:
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._metrics: Dict[str, object] = {}
+        self._metrics: dict[str, object] = {}
 
     def register(self, metric):
         with self._lock:
@@ -332,7 +325,7 @@ class Registry:
         with self._lock:
             return self._metrics.get(name)
 
-    def all(self) -> List[object]:
+    def all(self) -> list[object]:
         with self._lock:
             return list(self._metrics.values())
 
@@ -354,7 +347,7 @@ class Registry:
                     metric._counts.clear()
 
     def render(self) -> str:
-        blocks: List[str] = []
+        blocks: list[str] = []
         for metric in self.all():
             blocks.append("\n".join(metric.render()))
         # Trailing newline — the exposition format wants the body to end in \n.
@@ -464,21 +457,21 @@ PROMPT_INJECTION_DETECTED = REGISTRY.register(
 # ---------------------------------------------------------------------------
 # Convenience module-level helpers (the gateway imports these).
 # ---------------------------------------------------------------------------
-def inc(name: str, labels: Optional[Dict[str, str]] = None, value: float = 1.0) -> None:
+def inc(name: str, labels: dict[str, str] | None = None, value: float = 1.0) -> None:
     """Increment a registered counter by name. No-op if name is unknown/not a counter."""
     metric = REGISTRY.get(name)
     if isinstance(metric, Counter):
         metric.inc(labels, value)
 
 
-def observe(name: str, value: float, labels: Optional[Dict[str, str]] = None) -> None:
+def observe(name: str, value: float, labels: dict[str, str] | None = None) -> None:
     """Observe a value into a registered histogram by name. No-op if unknown."""
     metric = REGISTRY.get(name)
     if isinstance(metric, Histogram):
         metric.observe(value, labels)
 
 
-def record_llm_usage(meta: Optional[Dict[str, object]]) -> None:
+def record_llm_usage(meta: dict[str, object] | None) -> None:
     """Fold an AI-Engine endpoint's ``meta``/``usage`` dict into the LLM metrics.
 
     Accepts the loosely-typed dict the single-step inference endpoints already
@@ -528,7 +521,7 @@ def record_llm_usage(meta: Optional[Dict[str, object]]) -> None:
 # ---------------------------------------------------------------------------
 # Cost bridge — fold rate_limit's per-tenant/per-model spend in at scrape time.
 # ---------------------------------------------------------------------------
-def _cost_bridge_rows() -> Iterable[Tuple[Dict[str, str], float]]:
+def _cost_bridge_rows() -> Iterable[tuple[dict[str, str], float]]:
     """Read rate_limit's month-to-date per-(tenant, model) spend, read-only.
 
     rate_limit owns ``_tenant_model_monthly_cost`` keyed by
@@ -543,7 +536,7 @@ def _cost_bridge_rows() -> Iterable[Tuple[Dict[str, str], float]]:
         return []
     try:
         month = rate_limit._this_month()  # noqa: SLF001 — read-only accessor
-        rows: List[Tuple[Dict[str, str], float]] = []
+        rows: list[tuple[dict[str, str], float]] = []
         for (tenant, model, mo), usd in list(
             rate_limit._tenant_model_monthly_cost.items()  # noqa: SLF001
         ):

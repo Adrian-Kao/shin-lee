@@ -13,32 +13,32 @@ Vector store:
     - POC: numpy in-memory (simulates Qdrant interface).
     - Production: Qdrant self-host, one collection per tenant.
 """
+
 from __future__ import annotations
 
+import abc
 import hashlib
-import json
+import logging
 import math
 import re
-import sqlite3
+import uuid
 import zlib
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
-from backend.shared.config import PATENT_DB_PATH, settings
+from backend.shared.config import settings
 from backend.shared.models import Patent, RetrievalHit
 
-
 # ---------- Chunking ----------
+
 
 @dataclass
 class Chunk:
     chunk_id: str
     patent_no: str
-    section: str        # claim_1, spec_para_3, abstract, ...
-    claim_no: Optional[int]
+    section: str  # claim_1, spec_para_3, abstract, ...
+    claim_no: int | None
     text: str
     jurisdiction: str
     metadata: dict = field(default_factory=dict)
@@ -55,7 +55,6 @@ _SECTION_HEADINGS = [
 
 def _split_spec_into_sections(spec_text: str) -> dict[str, str]:
     sections: dict[str, str] = {}
-    pos = 0
     sorted_marks = []
     for label, pat in _SECTION_HEADINGS:
         m = pat.search(spec_text)
@@ -95,15 +94,17 @@ def chunk_patent(patent: Patent, spec_text: str = "") -> list[Chunk]:
     chunks: list[Chunk] = []
 
     # Abstract → 1 chunk
-    chunks.append(Chunk(
-        chunk_id=f"{patent.patent_no}#abstract",
-        patent_no=patent.patent_no,
-        section="abstract",
-        claim_no=None,
-        text=patent.abstract,
-        jurisdiction=patent.jurisdiction,
-        metadata={"pub_date": patent.publication_date.isoformat()},
-    ))
+    chunks.append(
+        Chunk(
+            chunk_id=f"{patent.patent_no}#abstract",
+            patent_no=patent.patent_no,
+            section="abstract",
+            claim_no=None,
+            text=patent.abstract,
+            jurisdiction=patent.jurisdiction,
+            metadata={"pub_date": patent.publication_date.isoformat()},
+        )
+    )
 
     # Spec → hierarchical
     if spec_text:
@@ -111,16 +112,21 @@ def chunk_patent(patent: Patent, spec_text: str = "") -> list[Chunk]:
         for sec_label, sec_text in sections.items():
             windows = _sliding_window(sec_text, target_tokens=400, overlap=50)
             for i, w in enumerate(windows):
-                chunks.append(Chunk(
-                    chunk_id=f"{patent.patent_no}#{sec_label}_{i}",
-                    patent_no=patent.patent_no,
-                    section=sec_label.lower(),
-                    claim_no=None,
-                    text=w,
-                    jurisdiction=patent.jurisdiction,
-                    metadata={"section_label": sec_label, "window_idx": i,
-                              "pub_date": patent.publication_date.isoformat()},
-                ))
+                chunks.append(
+                    Chunk(
+                        chunk_id=f"{patent.patent_no}#{sec_label}_{i}",
+                        patent_no=patent.patent_no,
+                        section=sec_label.lower(),
+                        claim_no=None,
+                        text=w,
+                        jurisdiction=patent.jurisdiction,
+                        metadata={
+                            "section_label": sec_label,
+                            "window_idx": i,
+                            "pub_date": patent.publication_date.isoformat(),
+                        },
+                    )
+                )
 
     # Claims → claim-tree (Q6: "每 claim 一 chunk 帶依附項").
     #
@@ -177,16 +183,20 @@ def chunk_patent(patent: Patent, spec_text: str = "") -> list[Chunk]:
     for i, claim in enumerate(patent.claims):
         cno = i + 1
         # (1) Per-claim chunk — UNCHANGED. Single claim text, claim_no=cno.
-        chunks.append(Chunk(
-            chunk_id=f"{patent.patent_no}#claim_{cno}",
-            patent_no=patent.patent_no,
-            section=f"claim_{cno}",
-            claim_no=cno,
-            text=claim,
-            jurisdiction=patent.jurisdiction,
-            metadata={"pub_date": patent.publication_date.isoformat(),
-                      "is_independent": _looks_independent(claim)},
-        ))
+        chunks.append(
+            Chunk(
+                chunk_id=f"{patent.patent_no}#claim_{cno}",
+                patent_no=patent.patent_no,
+                section=f"claim_{cno}",
+                claim_no=cno,
+                text=claim,
+                jurisdiction=patent.jurisdiction,
+                metadata={
+                    "pub_date": patent.publication_date.isoformat(),
+                    "is_independent": _looks_independent(claim),
+                },
+            )
+        )
 
     # (2) Bundle chunks — one per independent claim, carrying its dependents.
     for node in tree_nodes:
@@ -202,25 +212,31 @@ def chunk_patent(patent: Patent, spec_text: str = "") -> list[Chunk]:
         parts = [claim_text_by_no.get(cno, "")]
         parts.extend(claim_text_by_no.get(d, "") for d in dependents)
         bundle_text = "\n\n".join(p for p in parts if p)
-        chunks.append(Chunk(
-            chunk_id=f"{patent.patent_no}#claim_{cno}_tree",
-            patent_no=patent.patent_no,
-            section=f"claim_{cno}_tree",
-            claim_no=None,  # excluded from list_claim_chunks → tree path safe
-            text=bundle_text,
-            jurisdiction=patent.jurisdiction,
-            metadata={"pub_date": patent.publication_date.isoformat(),
-                      "is_independent": True,
-                      "root_claim_no": cno,
-                      "dependent_claims": dependents},
-        ))
+        chunks.append(
+            Chunk(
+                chunk_id=f"{patent.patent_no}#claim_{cno}_tree",
+                patent_no=patent.patent_no,
+                section=f"claim_{cno}_tree",
+                claim_no=None,  # excluded from list_claim_chunks → tree path safe
+                text=bundle_text,
+                jurisdiction=patent.jurisdiction,
+                metadata={
+                    "pub_date": patent.publication_date.isoformat(),
+                    "is_independent": True,
+                    "root_claim_no": cno,
+                    "dependent_claims": dependents,
+                },
+            )
+        )
 
     return chunks
 
 
 def _looks_independent(claim_text: str) -> bool:
     """Heuristic: dependent claims usually contain '依據申請專利範圍第' or 'according to claim'."""
-    return not re.search(r"\baccording to claim\b|\b依.{0,5}請求項\b|\bdepending on claim\b", claim_text, re.I)
+    return not re.search(
+        r"\baccording to claim\b|\b依.{0,5}請求項\b|\bdepending on claim\b", claim_text, re.I
+    )
 
 
 # ---------- Embedding ----------
@@ -334,15 +350,14 @@ class Embedder:
 
     def _load_st(self):
         from sentence_transformers import SentenceTransformer
+
         try:
             # Offline-first: if the model is already in the local HF cache
             # (see scripts/prefetch_bge_m3.py) load it WITHOUT any hub round
             # trip. Boot must not depend on huggingface.co reachability —
             # air-gapped / proxied on-prem deployments (Q3 posture); the
             # online adapter-config probe is a known flake behind firewalls.
-            self._st_model = SentenceTransformer(
-                settings.EMBEDDING_MODEL, local_files_only=True
-            )
+            self._st_model = SentenceTransformer(settings.EMBEDDING_MODEL, local_files_only=True)
         except Exception:
             # Model not cached yet — fall back to a normal downloading load.
             self._st_model = SentenceTransformer(settings.EMBEDDING_MODEL)
@@ -469,10 +484,6 @@ def embed(text: str, tenant_id: str = "") -> list[float]:
 # Two backends behind one interface (settings.VECTOR_BACKEND = memory | qdrant).
 # Q5 + Q7: production runs Qdrant with one collection per tenant.
 
-import abc
-import logging
-import uuid
-
 _QDRANT_NS = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 logger = logging.getLogger(__name__)
@@ -497,9 +508,7 @@ class VectorStore(abc.ABC):
     """
 
     @abc.abstractmethod
-    def upsert(
-        self, tenant_id: str, chunks: list[Chunk], vectors: list[list[float]]
-    ) -> None:
+    def upsert(self, tenant_id: str, chunks: list[Chunk], vectors: list[list[float]]) -> None:
         """Insert or update `chunks` (with parallel `vectors`) for `tenant_id`.
 
         `chunks` and `vectors` are positionally aligned (zip). Re-upserting a
@@ -513,7 +522,7 @@ class VectorStore(abc.ABC):
         tenant_id: str,
         query_vec: list[float],
         top_k: int = 5,
-        metadata_filter: Optional[dict] = None,
+        metadata_filter: dict | None = None,
     ) -> list[tuple[Chunk, float]]:
         """Return up to `top_k` nearest chunks for `tenant_id`.
 
@@ -559,7 +568,7 @@ class MemoryVectorStore(VectorStore):
         self._tenant_index: dict[str, set[str]] = {}
         # Established vector dimension (set lazily from the first vector seen).
         # None until the first upsert. Mirrors Qdrant's fixed-size collection.
-        self._dim: Optional[int] = None
+        self._dim: int | None = None
 
     def _check_dim(self, vec) -> None:
         """Fix the store dim on first sight; reject any later size drift.
@@ -585,7 +594,7 @@ class MemoryVectorStore(VectorStore):
     def upsert(self, tenant_id: str, chunks: list[Chunk], vectors: list[list[float]]):
         # Validate ALL incoming vectors BEFORE mutating any state, so a bad
         # batch fails atomically (no half-written tenant index).
-        pairs = list(zip(chunks, vectors))
+        pairs = list(zip(chunks, vectors, strict=True))
         for _ch, vec in pairs:
             self._check_dim(vec)
         for ch, vec in pairs:
@@ -704,14 +713,18 @@ class QdrantVectorStore(VectorStore):
                     "QDRANT_ALLOW_REINDEX=true: dropping collection %s due to "
                     "vector dim change %s -> %s. All stored vectors for this "
                     "tenant will be lost and must be re-indexed.",
-                    name, existing_dim, self._dim,
+                    name,
+                    existing_dim,
+                    self._dim,
                 )
                 self._client.delete_collection(collection_name=name)
                 existing.discard(name)
         if name not in existing:
             self._client.create_collection(
                 collection_name=name,
-                vectors_config=self._qm.VectorParams(size=self._dim, distance=self._qm.Distance.COSINE),
+                vectors_config=self._qm.VectorParams(
+                    size=self._dim, distance=self._qm.Distance.COSINE
+                ),
             )
         self._known_tenants.add(name)
 
@@ -736,7 +749,7 @@ class QdrantVectorStore(VectorStore):
                     "metadata": ch.metadata,
                 },
             )
-            for ch, vec in zip(chunks, vectors)
+            for ch, vec in zip(chunks, vectors, strict=True)
         ]
         self._client.upsert(collection_name=self._coll(tenant_id), points=points)
 
@@ -751,13 +764,20 @@ class QdrantVectorStore(VectorStore):
             for k, v in metadata_filter.items():
                 # Search top-level payload first; fallback to metadata.k
                 conds.append(self._qm.FieldCondition(key=k, match=self._qm.MatchValue(value=v)))
-            flt = self._qm.Filter(should=[
-                self._qm.Filter(must=[c]) for c in conds
-            ] + [
-                self._qm.Filter(must=[self._qm.FieldCondition(
-                    key=f"metadata.{k}", match=self._qm.MatchValue(value=v),
-                )]) for k, v in metadata_filter.items()
-            ])
+            flt = self._qm.Filter(
+                should=[self._qm.Filter(must=[c]) for c in conds]
+                + [
+                    self._qm.Filter(
+                        must=[
+                            self._qm.FieldCondition(
+                                key=f"metadata.{k}",
+                                match=self._qm.MatchValue(value=v),
+                            )
+                        ]
+                    )
+                    for k, v in metadata_filter.items()
+                ]
+            )
         res = self._client.search(
             collection_name=coll,
             query_vector=query_vec,
@@ -786,7 +806,7 @@ class QdrantVectorStore(VectorStore):
         for name in existing:
             if not name.startswith("patentmind_"):
                 continue
-            tenant = name[len("patentmind_"):]
+            tenant = name[len("patentmind_") :]
             tenants.append(tenant)
             try:
                 info = self._client.count(collection_name=name, exact=True)
@@ -809,11 +829,14 @@ class QdrantVectorStore(VectorStore):
         existing = {c.name for c in self._client.get_collections().collections}
         if coll not in existing:
             return []
-        flt = self._qm.Filter(must=[
-            self._qm.FieldCondition(
-                key="patent_no", match=self._qm.MatchValue(value=patent_no),
-            ),
-        ])
+        flt = self._qm.Filter(
+            must=[
+                self._qm.FieldCondition(
+                    key="patent_no",
+                    match=self._qm.MatchValue(value=patent_no),
+                ),
+            ]
+        )
         out: list[Chunk] = []
         # Qdrant `scroll` is the read-all-by-filter primitive; cap pages at
         # 256 so a misconfigured caller scrolling a 100k-claim corpus can't
@@ -831,15 +854,17 @@ class QdrantVectorStore(VectorStore):
                 pl = p.payload or {}
                 if pl.get("claim_no") is None:
                     continue
-                out.append(Chunk(
-                    chunk_id=pl.get("chunk_id", str(p.id)),
-                    patent_no=pl.get("patent_no", ""),
-                    section=pl.get("section", ""),
-                    claim_no=pl.get("claim_no"),
-                    text=pl.get("text", ""),
-                    jurisdiction=pl.get("jurisdiction", ""),
-                    metadata=pl.get("metadata", {}),
-                ))
+                out.append(
+                    Chunk(
+                        chunk_id=pl.get("chunk_id", str(p.id)),
+                        patent_no=pl.get("patent_no", ""),
+                        section=pl.get("section", ""),
+                        claim_no=pl.get("claim_no"),
+                        text=pl.get("text", ""),
+                        jurisdiction=pl.get("jurisdiction", ""),
+                        metadata=pl.get("metadata", {}),
+                    )
+                )
             if offset is None:
                 break
         out.sort(key=lambda c: c.claim_no or 0)
@@ -857,6 +882,7 @@ _store = _make_store()
 
 # ---------- Public RAG API ----------
 
+
 def index_patent(tenant_id: str, patent: Patent, spec_text: str = "") -> int:
     chunks = chunk_patent(patent, spec_text=spec_text)
     # H-3: salt mock embeddings with tenant_id (no-op for bge-m3). Indexing
@@ -872,8 +898,8 @@ def retrieve(
     tenant_id: str,
     query: str,
     top_k: int = 5,
-    jurisdiction: Optional[str] = None,
-    prefer_patent_no: Optional[str] = None,
+    jurisdiction: str | None = None,
+    prefer_patent_no: str | None = None,
 ) -> list[RetrievalHit]:
     """RAG retrieval with optional same-patent boost.
 
@@ -889,15 +915,11 @@ def retrieve(
     qvec = embed(query, tenant_id=tenant_id)
     base_filter: dict = {"jurisdiction": jurisdiction} if jurisdiction else {}
 
-    semantic_hits = _store.search(
-        tenant_id, qvec, top_k=top_k, metadata_filter=base_filter or None
-    )
+    semantic_hits = _store.search(tenant_id, qvec, top_k=top_k, metadata_filter=base_filter or None)
 
     if prefer_patent_no:
         target_filter = {**base_filter, "patent_no": prefer_patent_no}
-        target_hits = _store.search(
-            tenant_id, qvec, top_k=top_k, metadata_filter=target_filter
-        )
+        target_hits = _store.search(tenant_id, qvec, top_k=top_k, metadata_filter=target_filter)
         # OR-merge: boost target chunks so they outrank pure semantic on mock embeddings.
         boost = 0.20
         merged: dict[str, tuple] = {}

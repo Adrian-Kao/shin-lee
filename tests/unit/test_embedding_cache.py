@@ -14,6 +14,7 @@ regressing H-3:
   * mock embeddings stay tenant-distinct AND never cross-tenant-hit;
   * the gateway helpers are now tenant-namespaced (cross-tenant miss).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -29,6 +30,7 @@ def _hermetic_caches(monkeypatch):
     between cases."""
     rag.clear_embedding_cache()
     from backend.gateway.cache import _MemoryCache
+
     monkeypatch.setattr(cache_mod, "_cache", _MemoryCache())
     yield
     rag.clear_embedding_cache()

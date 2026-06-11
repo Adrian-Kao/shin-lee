@@ -9,9 +9,10 @@ We exercise this by monkeypatching the single egress point
 (`AIEngineClient.call`) with a deterministic fake that dispatches on path and
 can be told to raise for a chosen rejection — no AI Engine, no sockets.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -19,7 +20,7 @@ from backend.gateway import orchestrator as orch
 from backend.gateway.orchestrator import orchestrate_analysis
 from backend.shared.models import AnalysisRequest, User, UserRole
 
-_NOW = datetime(2025, 3, 1, tzinfo=timezone.utc)
+_NOW = datetime(2025, 3, 1, tzinfo=UTC)
 
 # Two rejections so we can fail exactly one and prove the other survives.
 _REJECTIONS = [
@@ -42,9 +43,11 @@ _REJECTIONS = [
 ]
 
 
-def _make_fake_call(fail_draft_for: set[str] | None = None,
-                    fail_retrieve_for: set[str] | None = None,
-                    fail_verify_for: set[str] | None = None):
+def _make_fake_call(
+    fail_draft_for: set[str] | None = None,
+    fail_retrieve_for: set[str] | None = None,
+    fail_verify_for: set[str] | None = None,
+):
     """Return an async fake for AIEngineClient.call dispatching on path."""
     fail_draft_for = fail_draft_for or set()
     fail_retrieve_for = fail_retrieve_for or set()
@@ -162,9 +165,7 @@ async def test_all_succeed_happy_path(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_one_draft_fails_others_survive(monkeypatch):
-    monkeypatch.setattr(
-        orch.AIEngineClient, "call", _make_fake_call(fail_draft_for={"rej-2"})
-    )
+    monkeypatch.setattr(orch.AIEngineClient, "call", _make_fake_call(fail_draft_for={"rej-2"}))
     resp, obs = await orchestrate_analysis(_user(), _req())
 
     # Count invariant preserved (verify.sh expects drafts == rejections).
@@ -187,9 +188,7 @@ async def test_one_draft_fails_others_survive(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_one_verify_fails_degrades_only_that_rejection(monkeypatch):
-    monkeypatch.setattr(
-        orch.AIEngineClient, "call", _make_fake_call(fail_verify_for={"rej-1"})
-    )
+    monkeypatch.setattr(orch.AIEngineClient, "call", _make_fake_call(fail_verify_for={"rej-1"}))
     resp, _ = await orchestrate_analysis(_user(), _req())
     assert len(resp.drafts) == len(_REJECTIONS)
 
@@ -206,9 +205,7 @@ async def test_one_retrieval_fails_draft_still_produced(monkeypatch):
     # Retrieval failure => empty grounded set for that rejection, but the
     # draft step still runs (fake returns a draft regardless), so the
     # rejection is NOT degraded — it just has an empty grounded input.
-    monkeypatch.setattr(
-        orch.AIEngineClient, "call", _make_fake_call(fail_retrieve_for={"rej-1"})
-    )
+    monkeypatch.setattr(orch.AIEngineClient, "call", _make_fake_call(fail_retrieve_for={"rej-1"}))
     resp, _ = await orchestrate_analysis(_user(), _req())
     assert len(resp.drafts) == len(_REJECTIONS)
     # Both drafts produced; no crash.
@@ -222,9 +219,7 @@ async def test_one_retrieval_fails_draft_still_produced(monkeypatch):
 async def test_cost_aggregation_skips_failed_calls(monkeypatch):
     # Even with a failed draft (no usage row), cost aggregation must not crash
     # and must still report the tokens from the surviving calls.
-    monkeypatch.setattr(
-        orch.AIEngineClient, "call", _make_fake_call(fail_draft_for={"rej-2"})
-    )
+    monkeypatch.setattr(orch.AIEngineClient, "call", _make_fake_call(fail_draft_for={"rej-2"}))
     resp, obs = await orchestrate_analysis(_user(), _req())
     assert resp.cost_meta.prompt_tokens > 0
     assert obs["prompt_tokens"] == resp.cost_meta.prompt_tokens

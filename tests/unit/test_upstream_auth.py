@@ -20,6 +20,7 @@ exercise the upstream-trust path we monkeypatch ``TRUSTED_UPSTREAM_IPS`` to
 include that sentinel string; to exercise the *untrusted* path we
 monkeypatch it to a set that does NOT include ``testclient``.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -32,6 +33,7 @@ from backend.shared.models import UserRole
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _trust_testclient(monkeypatch) -> None:
     """Make the TestClient peer (`testclient`) appear in the trusted list."""
@@ -47,9 +49,8 @@ def _untrust_everything(monkeypatch) -> None:
 # 1. Upstream-trust path
 # ---------------------------------------------------------------------------
 
-def test_upstream_headers_from_trusted_ip_skip_jwt(
-    monkeypatch, gateway_client: TestClient
-) -> None:
+
+def test_upstream_headers_from_trusted_ip_skip_jwt(monkeypatch, gateway_client: TestClient) -> None:
     """Trusted upstream + x-user-id + x-tenant-id -> 200 without any JWT."""
     _trust_testclient(monkeypatch)
 
@@ -105,15 +106,15 @@ def test_upstream_headers_missing_user_id_falls_back_to_jwt(
     )
     assert resp.status_code == 200, resp.text
     # JWT path resolved alice -> her per-user quota appears in the snapshot.
-    assert (
-        resp.json().get("user_daily_limit")
-        == auth_mod._USERS["alice"].daily_token_quota
-    ), resp.json()
+    assert resp.json().get("user_daily_limit") == auth_mod._USERS["alice"].daily_token_quota, (
+        resp.json()
+    )
 
 
 # ---------------------------------------------------------------------------
 # 2. Role / display_name resolution
 # ---------------------------------------------------------------------------
+
 
 def test_upstream_user_role_defaults_to_paralegal_when_unknown(monkeypatch) -> None:
     """Unknown user_id + no x-user-role -> least-privilege default."""
@@ -176,6 +177,7 @@ def test_upstream_unrecognised_role_string_degrades_to_known_user_role(
 # 3. JWT fallback regression guards
 # ---------------------------------------------------------------------------
 
+
 def test_jwt_fallback_still_works(gateway_client: TestClient, alice_token: str) -> None:
     """No upstream headers, valid Bearer JWT -> existing path returns 200."""
     # NOTE: we deliberately do NOT touch TRUSTED_UPSTREAM_IPS here. With the
@@ -186,10 +188,7 @@ def test_jwt_fallback_still_works(gateway_client: TestClient, alice_token: str) 
         headers={"Authorization": f"Bearer {alice_token}"},
     )
     assert resp.status_code == 200, resp.text
-    assert (
-        resp.json().get("user_daily_limit")
-        == auth_mod._USERS["alice"].daily_token_quota
-    )
+    assert resp.json().get("user_daily_limit") == auth_mod._USERS["alice"].daily_token_quota
 
 
 def test_jwt_fallback_with_invalid_token_returns_401(
@@ -232,6 +231,7 @@ def test_upstream_path_ignores_missing_client(monkeypatch) -> None:
 # ---------------------------------------------------------------------------
 # Helpers (kept at the bottom so the test bodies above read top-down)
 # ---------------------------------------------------------------------------
+
 
 class _FakeClient:
     __slots__ = ("host",)
@@ -315,6 +315,7 @@ def _isolate_trusted_ips(monkeypatch):
 # every tenant's audit history by setting one header.
 # ---------------------------------------------------------------------------
 
+
 def test_upstream_unknown_user_cannot_claim_auditor(monkeypatch) -> None:
     """eve presenting x-user-role=auditor from a trusted IP -> downgraded
     to paralegal. This is the core role-escalation guard."""
@@ -323,9 +324,9 @@ def test_upstream_unknown_user_cannot_claim_auditor(monkeypatch) -> None:
     request = _fake_request(
         client_host="10.0.0.5",
         headers={
-            "x-user-id": "eve",          # not in _USERS
+            "x-user-id": "eve",  # not in _USERS
             "x-tenant-id": "tenant_a",
-            "x-user-role": "auditor",    # privileged — should be refused
+            "x-user-role": "auditor",  # privileged — should be refused
         },
     )
     user = auth_mod._user_from_upstream_headers(request)
@@ -381,9 +382,9 @@ def test_upstream_known_alice_role_comes_from_USERS_not_header(monkeypatch) -> N
     request = _fake_request(
         client_host="10.0.0.5",
         headers={
-            "x-user-id": "alice",        # known: attorney in _USERS
+            "x-user-id": "alice",  # known: attorney in _USERS
             "x-tenant-id": "tenant_a",
-            "x-user-role": "it_admin",   # malicious upstream claim
+            "x-user-role": "it_admin",  # malicious upstream claim
         },
     )
     user = auth_mod._user_from_upstream_headers(request)
@@ -398,6 +399,7 @@ def test_upstream_known_alice_role_comes_from_USERS_not_header(monkeypatch) -> N
 # 5. CRITICAL 2 — IPv4-mapped-IPv6 + CIDR rejection
 # ---------------------------------------------------------------------------
 
+
 def test_ipv4_mapped_ipv6_loopback_is_trusted(monkeypatch) -> None:
     """uvicorn on a dual-stack socket surfaces v4 peers as ``::ffff:<v4>``.
     A trust list of ``["127.0.0.1"]`` must still match those peers, or
@@ -410,8 +412,7 @@ def test_ipv4_mapped_ipv6_loopback_is_trusted(monkeypatch) -> None:
     )
     user = auth_mod._user_from_upstream_headers(request)
     assert user is not None, (
-        "IPv4-mapped IPv6 loopback should normalise to 127.0.0.1 and "
-        "be trusted"
+        "IPv4-mapped IPv6 loopback should normalise to 127.0.0.1 and be trusted"
     )
     assert user.user_id == "alice"
 
@@ -429,6 +430,7 @@ def test_cidr_in_trust_list_raises_at_parse_time() -> None:
 # ---------------------------------------------------------------------------
 # 6. CRITICAL 3 — boot guard for non-loopback trust without shared secret
 # ---------------------------------------------------------------------------
+
 
 def test_non_loopback_trust_without_secret_refuses_boot() -> None:
     """In non-mock mode, adding a non-loopback IP to the trust list
@@ -547,8 +549,7 @@ def test_mock_mode_bypasses_non_loopback_guard() -> None:
         cwd=str(Path(__file__).resolve().parents[2]),
     )
     assert proc.returncode == 0, (
-        f"mock mode should bypass guard.\nstdout: {proc.stdout}\n"
-        f"stderr: {proc.stderr}"
+        f"mock mode should bypass guard.\nstdout: {proc.stdout}\nstderr: {proc.stderr}"
     )
     assert "MOCK_BOOT_OK" in proc.stdout
 
@@ -556,6 +557,7 @@ def test_mock_mode_bypasses_non_loopback_guard() -> None:
 # ---------------------------------------------------------------------------
 # 7. IMPORTANT — shared-secret enforcement + tenant-mismatch warning
 # ---------------------------------------------------------------------------
+
 
 def test_shared_secret_required_when_configured(monkeypatch) -> None:
     """When UPSTREAM_AUTH_SHARED_SECRET is set, a request without (or

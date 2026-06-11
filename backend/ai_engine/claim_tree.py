@@ -43,10 +43,11 @@ Algorithm:
 NB: This is a pure module — no I/O, no settings, no async. Safe to import
 from anywhere and trivial to unit-test.
 """
+
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 # Look only at this many characters of the leading clause. Patent claim
 # convention is "如請求項 1 所述..." / "The X of claim N, wherein..." which
@@ -181,7 +182,7 @@ def _extract_numbers(blob: str) -> list[int]:
 
 def _parse_one_claim_parents(
     claim_text: str,
-    own_number: Optional[int],
+    own_number: int | None,
 ) -> list[int]:
     """Find every claim number referenced as a parent in the leading clause.
 
@@ -243,6 +244,7 @@ def _compute_depth(
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def parse_claim_dependencies(claims: list[str]) -> list[dict[str, Any]]:
     """Parse a flat list of claim texts into ClaimNode dicts.
 
@@ -272,14 +274,16 @@ def parse_claim_dependencies(claims: list[str]) -> list[dict[str, Any]]:
         # false positive (e.g. "see claim 7 below").
         valid_parents = [p for p in parents if p < cno]
         depends_on = valid_parents[0] if valid_parents else None
-        nodes.append({
-            "claim_no": cno,
-            "depends_on": depends_on,
-            "parents": valid_parents,
-            "text": text,
-            "is_independent": depends_on is None,
-            "depth": 0,  # filled in below
-        })
+        nodes.append(
+            {
+                "claim_no": cno,
+                "depends_on": depends_on,
+                "parents": valid_parents,
+                "text": text,
+                "is_independent": depends_on is None,
+                "depth": 0,  # filled in below
+            }
+        )
 
     # Compute depth in a second pass once every node has its `depends_on`.
     by_number = {n["claim_no"]: n for n in nodes}

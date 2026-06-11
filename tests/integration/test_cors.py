@@ -15,6 +15,7 @@ Starlette's ``CORSMiddleware`` only echoes back the
 ``Access-Control-Allow-Origin`` header when the request's ``Origin``
 header is in the allow-list — that's what we test below.
 """
+
 from __future__ import annotations
 
 
@@ -29,8 +30,7 @@ def test_cors_allowed_origin_returns_acao_header(gateway_client):
     assert resp.status_code == 200, resp.text
     acao = resp.headers.get("access-control-allow-origin")
     assert acao == "http://localhost:5173", (
-        f"expected ACAO=http://localhost:5173; got {acao!r}; "
-        f"headers={dict(resp.headers)}"
+        f"expected ACAO=http://localhost:5173; got {acao!r}; headers={dict(resp.headers)}"
     )
 
 
@@ -46,9 +46,7 @@ def test_cors_disallowed_origin_omits_acao(gateway_client):
     # Health endpoint always 200s; CORS just doesn't echo the header.
     assert resp.status_code == 200, resp.text
     acao = resp.headers.get("access-control-allow-origin")
-    assert acao is None or acao == "", (
-        f"disallowed origin should not get ACAO; got: {acao!r}"
-    )
+    assert acao is None or acao == "", f"disallowed origin should not get ACAO; got: {acao!r}"
 
 
 def test_cors_preflight_options_returns_specific_methods(gateway_client):
@@ -74,9 +72,7 @@ def test_cors_preflight_options_returns_specific_methods(gateway_client):
         assert expected in acam, f"missing {expected!r} in {acam!r}"
     # Critically: NOT the wildcard. If a future refactor reintroduces
     # `allow_methods=["*"]` this assertion goes red.
-    assert "*" not in acam, (
-        f"CORS methods must NOT include wildcard; got: {acam!r}"
-    )
+    assert "*" not in acam, f"CORS methods must NOT include wildcard; got: {acam!r}"
 
 
 def test_cors_preflight_does_not_allow_wildcard_headers(gateway_client):
@@ -98,6 +94,4 @@ def test_cors_preflight_does_not_allow_wildcard_headers(gateway_client):
     # both are present. NOT wildcard.
     assert "authorization" in acah.lower(), acah
     assert "x-case-id" in acah.lower(), acah
-    assert "*" not in acah, (
-        f"CORS headers must NOT include wildcard; got: {acah!r}"
-    )
+    assert "*" not in acah, f"CORS headers must NOT include wildcard; got: {acah!r}"

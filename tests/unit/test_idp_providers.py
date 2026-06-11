@@ -4,8 +4,10 @@ provider-agnostic CSRF (state) and replay stores in auth.py.
 These exercise the validation logic in isolation (no FastAPI), so a failure
 points straight at the provider rather than the route wiring.
 """
+
 from __future__ import annotations
 
+import subprocess
 import time
 import uuid
 
@@ -174,7 +176,7 @@ def test_saml_replay_store_single_use():
     aid = str(uuid.uuid4())
     noa = int(time.time()) + 300
     assert auth_mod._saml_assertion_seen(aid, noa) is False  # first time
-    assert auth_mod._saml_assertion_seen(aid, noa) is True   # replay
+    assert auth_mod._saml_assertion_seen(aid, noa) is True  # replay
 
 
 # ---------------------------------------------------------------------------
@@ -212,8 +214,7 @@ def test_resolve_unknown_user_can_claim_attorney():
 # --- Boot guard: stub IdP defaults refused outside mock/test (review P2-5) --
 
 
-def _boot_subprocess(extra_env_lines: str) -> "subprocess.CompletedProcess[str]":
-    import subprocess
+def _boot_subprocess(extra_env_lines: str) -> subprocess.CompletedProcess[str]:
     import sys
     import textwrap
     from pathlib import Path
@@ -266,8 +267,7 @@ def test_stub_idp_private_secret_boots_ok():
 
 def test_stub_idp_disabled_boots_ok():
     proc = _boot_subprocess(
-        "        os.environ['OIDC_ENABLED'] = 'false'\n"
-        "        os.environ['SAML_ENABLED'] = 'false'"
+        "        os.environ['OIDC_ENABLED'] = 'false'\n        os.environ['SAML_ENABLED'] = 'false'"
     )
     assert proc.returncode == 0, proc.stderr
     assert "BOOT_OK" in proc.stdout, proc.stdout

@@ -12,6 +12,7 @@ The original ``main.py`` integration discarded the reservation handle, so:
 Each test reads the user-daily counter via ``GET /v1/quota`` before/after and
 asserts the counter moved by exactly the expected amount, not estimate+actual.
 """
+
 from __future__ import annotations
 
 _CASE = "CASE-2025-001"  # alice has ACL
@@ -53,14 +54,10 @@ def test_success_counts_actual_not_reservation_plus_actual(
     delta = _daily_used(gateway_client, alice_token) - before
     # The estimate is len(oa_text)//3 ≈ 19; if the reservation leaked the
     # delta would be actual + estimate. Exact equality is the contract.
-    assert delta == actual, (
-        f"counter moved {delta}, actual spend {actual} — reservation leaked"
-    )
+    assert delta == actual, f"counter moved {delta}, actual spend {actual} — reservation leaked"
 
 
-def test_cache_hit_consumes_zero_quota(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_cache_hit_consumes_zero_quota(gateway_client, alice_token, patched_ai_engine):
     """A cache hit does no LLM work; its reservation must be released in full
     so the second identical request costs 0 tokens."""
     oa_text = "Quota settlement cache-path OA text, identical both calls bbb."

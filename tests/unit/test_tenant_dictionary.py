@@ -12,6 +12,7 @@ replaces it (with the hard-coded set kept as a fallback):
   - an uploaded/reloaded dictionary takes effect after reload().
   - the DoS length guard rejects over-long patterns.
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ _PLACEHOLDER_RE = re.compile(r"\[[A-Z_]+_[0-9A-F]{8}\]")
 
 
 # --- fixtures --------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def isolated_module_store(tmp_path, monkeypatch):
@@ -67,6 +69,7 @@ def _write_dict(dict_dir, tenant_id, rules):
 
 # --- 1. tenant rules load from JSON and fire (round-trip exact) ------------
 
+
 def test_tenant_json_rules_fire_and_round_trip(isolated_tenant_dicts):
     _write_dict(
         isolated_tenant_dicts,
@@ -96,6 +99,7 @@ def test_tenant_json_rules_fire_and_round_trip(isolated_tenant_dicts):
 
 # --- 2. built-in PII fires alongside the loaded dictionary -----------------
 
+
 def test_builtin_pii_fires_alongside_tenant_dict(isolated_tenant_dicts):
     _write_dict(
         isolated_tenant_dicts,
@@ -116,11 +120,12 @@ def test_builtin_pii_fires_alongside_tenant_dict(isolated_tenant_dicts):
 
     assert "john.doe@example.com" not in masked
     assert "APEX-2025-0314" not in masked
-    assert "email" in rules           # built-in PII layer
-    assert "apex_case_no" in rules    # tenant dictionary layer
+    assert "email" in rules  # built-in PII layer
+    assert "apex_case_no" in rules  # tenant dictionary layer
 
 
 # --- 3. malformed regex is skipped, others still fire ----------------------
+
 
 def test_malformed_regex_is_skipped_others_survive(isolated_tenant_dicts, caplog):
     _write_dict(
@@ -148,8 +153,7 @@ def test_malformed_regex_is_skipped_others_survive(isolated_tenant_dicts, caplog
     rule_ids = {r.rule_id for r in rules}
     assert "broken" not in rule_ids
     assert "good_code" in rule_ids
-    assert any("broken" in rec.message and "invalid regex" in rec.message
-               for rec in caplog.records)
+    assert any("broken" in rec.message and "invalid regex" in rec.message for rec in caplog.records)
 
     # redaction still works for the good rule AND built-in PII
     text = "Code ZZ-123 and mail x@y.com."
@@ -161,6 +165,7 @@ def test_malformed_regex_is_skipped_others_survive(isolated_tenant_dicts, caplog
 
 
 # --- 4. unknown tenant with no JSON -> built-ins only (graceful) -----------
+
 
 def test_unknown_tenant_no_json_falls_back_to_builtins(isolated_tenant_dicts):
     # No JSON file for "ghost_tenant" and no hard-coded entry either.
@@ -184,6 +189,7 @@ def test_known_tenant_no_json_falls_back_to_hardcoded(isolated_tenant_dicts):
 
 
 # --- 5. uploaded/reloaded dictionary takes effect after reload -------------
+
 
 def test_reload_picks_up_newly_uploaded_rule(isolated_tenant_dicts):
     # Start: a dictionary WITHOUT the new rule.
@@ -234,6 +240,7 @@ def test_reload_picks_up_newly_uploaded_rule(isolated_tenant_dicts):
 
 # --- 6. DoS length guard ---------------------------------------------------
 
+
 def test_overlong_pattern_is_rejected(isolated_tenant_dicts, caplog):
     long_pattern = "a" * (MAX_TENANT_PATTERN_LEN + 1)
     _write_dict(
@@ -265,12 +272,12 @@ def test_overlong_pattern_is_rejected(isolated_tenant_dicts, caplog):
 
 # --- 7. caching: redact doesn't re-read disk every call --------------------
 
+
 def test_rules_are_cached_until_reload(isolated_tenant_dicts, monkeypatch):
     _write_dict(
         isolated_tenant_dicts,
         "tenant_a",
-        [{"rule_id": "c", "pattern": r"\bC-\d\b", "placeholder_prefix": "C",
-          "description": "c"}],
+        [{"rule_id": "c", "pattern": r"\bC-\d\b", "placeholder_prefix": "C", "description": "c"}],
     )
     reload_tenant_dictionary("tenant_a")
 
@@ -294,6 +301,7 @@ def test_rules_are_cached_until_reload(isolated_tenant_dicts, monkeypatch):
 
 
 # --- 8. malformed JSON file falls back, never crashes ----------------------
+
 
 def test_corrupt_json_file_falls_back_gracefully(isolated_tenant_dicts):
     path = isolated_tenant_dicts / "tenant_a.json"

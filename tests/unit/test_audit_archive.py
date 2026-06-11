@@ -6,12 +6,12 @@ redirects AUDIT_DB_PATH). Each test gets its own fresh AuditWriter bound to the
 tmp DB so the global ``audit.writer`` singleton (already bound to the conftest
 session DB) is never touched.
 """
+
 from __future__ import annotations
 
 import os
 import sqlite3
 import stat
-from pathlib import Path
 
 import pytest
 
@@ -93,7 +93,7 @@ def test_seal_creates_segment_and_manifest(tmp_archive):
     assert manifest["sealed_at"] == "2026-01-01T00:00:00+00:00"
 
     # segment file has exactly 3 json lines
-    lines = [l for l in seg.read_text(encoding="utf-8").splitlines() if l.strip()]
+    lines = [line for line in seg.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 3
 
     # rows pending after seal == 0
@@ -105,9 +105,7 @@ def test_merkle_root_is_stable(tmp_archive):
     _write_rows(tmp_archive["writer"], 2)
     r1 = audit_archive.seal_next_segment(now_iso="2026-01-01T00:00:00+00:00")
     # Recompute independently from the segment rows.
-    seg_rows = audit_archive._read_segment_rows(
-        tmp_archive["arc_dir"] / "segment-0001.jsonl"
-    )
+    seg_rows = audit_archive._read_segment_rows(tmp_archive["arc_dir"] / "segment-0001.jsonl")
     recomputed = audit_archive._merkle_root(seg_rows, "")
     assert recomputed == r1["merkle_root"]
 
@@ -146,9 +144,7 @@ def test_second_batch_chains_to_first(tmp_archive):
     assert r2["row_offset_start"] == 2  # after first 2 rows
 
     man2 = json.loads(
-        (tmp_archive["arc_dir"] / "segment-0002.manifest.json").read_text(
-            encoding="utf-8"
-        )
+        (tmp_archive["arc_dir"] / "segment-0002.manifest.json").read_text(encoding="utf-8")
     )
     assert man2["prev_root"] == r1["merkle_root"]
 

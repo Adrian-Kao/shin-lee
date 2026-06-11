@@ -5,12 +5,12 @@ All tests drive the real gateway via the in-process TestClient and a protected
 endpoint (`GET /v1/quota`, which only depends on `auth_dependency`). They prove
 the verify_token gate, not just the helper in isolation.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
-import pytest
 
 from backend.shared.config import settings
 
@@ -20,7 +20,7 @@ def _encode(claims: dict) -> str:
 
 
 def _base_claims(**overrides) -> dict:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     claims = {
         "sub": "alice",
         "tenant_id": "tenant_a",

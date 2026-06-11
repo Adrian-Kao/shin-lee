@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import time
-from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
 from backend.ai_engine import oa_analyzer, rag
@@ -19,7 +18,6 @@ from backend.shared.models import (
     CostMeta,
     DeadlineInfo,
     DraftResponse,
-    OADocument,
     Patent,
     RetrievalHit,
     User,
@@ -72,6 +70,7 @@ def startup_index_synthetic_cases() -> None:
     """
     import sys
     from datetime import datetime
+
     try:
         from data.cases.synthetic_cases import CASES
     except Exception as exc:
@@ -116,7 +115,9 @@ def startup_prewarm_local_llm() -> None:
         return
     import sys
     import time as _time
+
     from backend.ai_engine.llm_client import chat as _chat
+
     sys.stderr.write(f"[prewarm] warming {settings.LLM_MODEL_LOCAL} via Ollama...\n")
     sys.stderr.flush()
     t0 = _time.monotonic()
@@ -128,9 +129,7 @@ def startup_prewarm_local_llm() -> None:
             security_level="public",
         )
         dt = _time.monotonic() - t0
-        sys.stderr.write(
-            f"[prewarm] done in {dt:.1f}s model={r.model} latency_ms={r.latency_ms}\n"
-        )
+        sys.stderr.write(f"[prewarm] done in {dt:.1f}s model={r.model} latency_ms={r.latency_ms}\n")
     except Exception as exc:  # pragma: no cover - warmup is best-effort
         sys.stderr.write(f"[prewarm] skipped: {exc}\n")
     sys.stderr.flush()
@@ -242,7 +241,9 @@ def redaction_preview(
     return {"redacted": redacted, "redacted_text": redacted, "rules_triggered": rules}
 
 
-def _orchestrate_analysis(user: User, req: AnalysisRequest) -> tuple[AnalysisResponse, dict[str, object]]:
+def _orchestrate_analysis(
+    user: User, req: AnalysisRequest
+) -> tuple[AnalysisResponse, dict[str, object]]:
     started = time.monotonic()
 
     redacted_oa, mask_rules_triggered = masking.redact(req.oa_text, user.tenant_id)
@@ -307,9 +308,7 @@ def _orchestrate_analysis(user: User, req: AnalysisRequest) -> tuple[AnalysisRes
         draft.strategy = masking.unmask(draft.strategy, user.tenant_id)
 
     prompt_tokens = (
-        parse_meta["usage"]["prompt_tokens"]
-        + draft_prompt_tokens
-        + verification_usage_tokens
+        parse_meta["usage"]["prompt_tokens"] + draft_prompt_tokens + verification_usage_tokens
     )
     completion_tokens = (
         parse_meta["usage"]["completion_tokens"]

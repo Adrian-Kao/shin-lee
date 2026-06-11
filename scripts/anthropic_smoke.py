@@ -33,6 +33,7 @@ Cost: A single full run hits Anthropic twice with a small system prompt +
 a short OA snippet. Estimated cost ~$0.01-0.02 per smoke run with caching
 enabled. We hard-cap max_tokens at 256 for extra defense.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,7 +41,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("anthropic_smoke")
 
@@ -51,7 +51,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 # Exit codes — kept stable so docs/EVAL_PLAYBOOK.md can reference them.
 EXIT_OK = 0
-EXIT_SKIPPED = 0       # explicitly not 2, so CI doesn't fail when key absent
+EXIT_SKIPPED = 0  # explicitly not 2, so CI doesn't fail when key absent
 EXIT_USAGE = 2
 EXIT_AUTH = 3
 EXIT_CACHE = 4
@@ -82,7 +82,7 @@ def _bootstrap_env() -> None:
     )
 
 
-def _check_api_key() -> Optional[str]:
+def _check_api_key() -> str | None:
     """Return the API key if set; else None (signals 'skip — no key')."""
     return os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("LLM_API_KEY")
 
@@ -114,8 +114,7 @@ def _load_oa_text(case_id: str) -> str:
     path = _REPO_ROOT / "data" / "cases" / case_id / "oa.txt"
     if not path.exists():
         raise FileNotFoundError(
-            f"OA text not found for {case_id} at {path}. "
-            f"Pick a case from data/cases/CASE-DEMO-NNN."
+            f"OA text not found for {case_id} at {path}. Pick a case from data/cases/CASE-DEMO-NNN."
         )
     return path.read_text(encoding="utf-8")
 
@@ -203,12 +202,16 @@ def run_smoke(case_id: str, verbose: bool = False) -> int:
         return EXIT_AUTH
 
     if verbose:
-        print(f"call 1: model={resp1.model} prompt={resp1.prompt_tokens} "
-              f"completion={resp1.completion_tokens} cache_read={resp1.cache_read_input_tokens} "
-              f"cache_create={resp1.cache_creation_input_tokens}")
-        print(f"call 2: model={resp2.model} prompt={resp2.prompt_tokens} "
-              f"completion={resp2.completion_tokens} cache_read={resp2.cache_read_input_tokens} "
-              f"cache_create={resp2.cache_creation_input_tokens}")
+        print(
+            f"call 1: model={resp1.model} prompt={resp1.prompt_tokens} "
+            f"completion={resp1.completion_tokens} cache_read={resp1.cache_read_input_tokens} "
+            f"cache_create={resp1.cache_creation_input_tokens}"
+        )
+        print(
+            f"call 2: model={resp2.model} prompt={resp2.prompt_tokens} "
+            f"completion={resp2.completion_tokens} cache_read={resp2.cache_read_input_tokens} "
+            f"cache_create={resp2.cache_creation_input_tokens}"
+        )
 
     # ---- Assertion B: cache_read_input_tokens > 0 on call 2 ----
     if resp2.cache_read_input_tokens <= 0:
@@ -227,9 +230,10 @@ def run_smoke(case_id: str, verbose: bool = False) -> int:
     # identical, since estimate_cost is pure arithmetic; the 1¢ slack is
     # for floating-point + future per-region overrides).
     usage2 = {
-        "input_tokens": max(0, resp2.prompt_tokens
-                            - resp2.cache_read_input_tokens
-                            - resp2.cache_creation_input_tokens),
+        "input_tokens": max(
+            0,
+            resp2.prompt_tokens - resp2.cache_read_input_tokens - resp2.cache_creation_input_tokens,
+        ),
         "output_tokens": resp2.completion_tokens,
         "cache_read_input_tokens": resp2.cache_read_input_tokens,
         "cache_creation_input_tokens": resp2.cache_creation_input_tokens,
@@ -238,8 +242,9 @@ def run_smoke(case_id: str, verbose: bool = False) -> int:
     # Cross-check: the model used must be a known row in the pricing table
     # (else we'd silently fall through to the fallback and the user wouldn't
     # know costs are approximate).
-    known = (resp2.model in _MODEL_PRICING_USD_PER_M
-             or any(resp2.model.startswith(k) for k in _MODEL_PRICING_USD_PER_M))
+    known = resp2.model in _MODEL_PRICING_USD_PER_M or any(
+        resp2.model.startswith(k) for k in _MODEL_PRICING_USD_PER_M
+    )
     if not known:
         print(
             f"FAIL (pricing): model {resp2.model!r} is not in "
@@ -316,7 +321,7 @@ def run_smoke(case_id: str, verbose: bool = False) -> int:
     return EXIT_OK
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Anthropic SDK smoke test. Run before the first --mode anthropic "
@@ -324,10 +329,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             "behave as the eval harness expects."
         )
     )
-    parser.add_argument("--case", default="CASE-DEMO-001",
-                        help="Case to use for the prompt (default CASE-DEMO-001).")
-    parser.add_argument("--verbose", action="store_true",
-                        help="Print per-call token + cost detail.")
+    parser.add_argument(
+        "--case",
+        default="CASE-DEMO-001",
+        help="Case to use for the prompt (default CASE-DEMO-001).",
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="Print per-call token + cost detail."
+    )
     args = parser.parse_args(argv)
     return run_smoke(args.case, verbose=args.verbose)
 

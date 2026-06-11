@@ -28,6 +28,7 @@ their Anthropic key arrives (the FIRST being scripts/anthropic_smoke.py).
 It must explain — in 30 seconds — whether real Anthropic is worth the cost
 delta over the mock harness.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,7 +38,6 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger("eval_compare")
 
@@ -182,15 +182,9 @@ def build_per_case_delta(
         c_snap = _case_snapshot(c)
 
         rejection_types_changed = b_snap["rejection_types"] != c_snap["rejection_types"]
-        claims_match_delta = (
-            c_snap["claims_match"] - b_snap["claims_match"]
-        )
-        latency_delta_sec = round(
-            c_snap["latency_sec"] - b_snap["latency_sec"], 4
-        )
-        cost_delta_usd = round(
-            c_snap["cost_usd"] - b_snap["cost_usd"], 6
-        )
+        claims_match_delta = c_snap["claims_match"] - b_snap["claims_match"]
+        latency_delta_sec = round(c_snap["latency_sec"] - b_snap["latency_sec"], 4)
+        cost_delta_usd = round(c_snap["cost_usd"] - b_snap["cost_usd"], 6)
 
         # "Regressed" = candidate did materially worse on classification quality.
         # We DON'T count higher cost/latency as a regression here — those are
@@ -365,10 +359,14 @@ def build_compare_report(
     L: list[str] = []
     L.append(f"# PatentMind eval comparison — {timestamp}")
     L.append("")
-    L.append(f"- Baseline: `{baseline_dir}` (mode={baseline_summary.get('mode')}, "
-             f"timestamp={baseline_summary.get('timestamp')})")
-    L.append(f"- Candidate: `{candidate_dir}` (mode={candidate_summary.get('mode')}, "
-             f"timestamp={candidate_summary.get('timestamp')})")
+    L.append(
+        f"- Baseline: `{baseline_dir}` (mode={baseline_summary.get('mode')}, "
+        f"timestamp={baseline_summary.get('timestamp')})"
+    )
+    L.append(
+        f"- Candidate: `{candidate_dir}` (mode={candidate_summary.get('mode')}, "
+        f"timestamp={candidate_summary.get('timestamp')})"
+    )
     L.append("")
 
     overlap = delta["overlap"]
@@ -377,13 +375,17 @@ def build_compare_report(
     if baseline_only or candidate_only:
         L.append("> WARNING — case sets do not match.")
         if baseline_only:
-            L.append(f"> - Only in baseline ({len(baseline_only)}): "
-                     f"{', '.join(baseline_only[:10])}"
-                     f"{' …' if len(baseline_only) > 10 else ''}")
+            L.append(
+                f"> - Only in baseline ({len(baseline_only)}): "
+                f"{', '.join(baseline_only[:10])}"
+                f"{' …' if len(baseline_only) > 10 else ''}"
+            )
         if candidate_only:
-            L.append(f"> - Only in candidate ({len(candidate_only)}): "
-                     f"{', '.join(candidate_only[:10])}"
-                     f"{' …' if len(candidate_only) > 10 else ''}")
+            L.append(
+                f"> - Only in candidate ({len(candidate_only)}): "
+                f"{', '.join(candidate_only[:10])}"
+                f"{' …' if len(candidate_only) > 10 else ''}"
+            )
         L.append(f"> - Comparing the {len(overlap)} overlapping case_ids only.")
         L.append("")
 
@@ -392,57 +394,55 @@ def build_compare_report(
     L.append("")
     L.append("| Metric | Baseline | Candidate | Delta |")
     L.append("|--------|----------|-----------|-------|")
-    L.append(_aggregate_row(
-        "rejection_type accuracy",
-        baseline_summary.get("rejection_type_correct", 0),
-        baseline_summary.get("rejection_type_total", 0),
-        candidate_summary.get("rejection_type_correct", 0),
-        candidate_summary.get("rejection_type_total", 0),
-    ))
-    L.append(_aggregate_row(
-        "affected_claims accuracy",
-        baseline_summary.get("affected_claims_correct", 0),
-        baseline_summary.get("affected_claims_total", 0),
-        candidate_summary.get("affected_claims_correct", 0),
-        candidate_summary.get("affected_claims_total", 0),
-    ))
-    L.append(_aggregate_row(
-        "received_date accuracy",
-        baseline_summary.get("received_date_correct", 0),
-        baseline_summary.get("received_date_total", 0),
-        candidate_summary.get("received_date_correct", 0),
-        candidate_summary.get("received_date_total", 0),
-    ))
-    L.append(_aggregate_row(
-        "deadline accuracy",
-        baseline_summary.get("deadline_correct", 0),
-        baseline_summary.get("deadline_total", 0),
-        candidate_summary.get("deadline_correct", 0),
-        candidate_summary.get("deadline_total", 0),
-    ))
+    L.append(
+        _aggregate_row(
+            "rejection_type accuracy",
+            baseline_summary.get("rejection_type_correct", 0),
+            baseline_summary.get("rejection_type_total", 0),
+            candidate_summary.get("rejection_type_correct", 0),
+            candidate_summary.get("rejection_type_total", 0),
+        )
+    )
+    L.append(
+        _aggregate_row(
+            "affected_claims accuracy",
+            baseline_summary.get("affected_claims_correct", 0),
+            baseline_summary.get("affected_claims_total", 0),
+            candidate_summary.get("affected_claims_correct", 0),
+            candidate_summary.get("affected_claims_total", 0),
+        )
+    )
+    L.append(
+        _aggregate_row(
+            "received_date accuracy",
+            baseline_summary.get("received_date_correct", 0),
+            baseline_summary.get("received_date_total", 0),
+            candidate_summary.get("received_date_correct", 0),
+            candidate_summary.get("received_date_total", 0),
+        )
+    )
+    L.append(
+        _aggregate_row(
+            "deadline accuracy",
+            baseline_summary.get("deadline_correct", 0),
+            baseline_summary.get("deadline_total", 0),
+            candidate_summary.get("deadline_correct", 0),
+            candidate_summary.get("deadline_total", 0),
+        )
+    )
     # Time + cost
     b_wall = baseline_summary.get("wall_time_sec", 0.0)
     c_wall = candidate_summary.get("wall_time_sec", 0.0)
-    L.append(
-        f"| total wall time | {b_wall:.1f}s | {c_wall:.1f}s |"
-        f" {c_wall - b_wall:+.1f}s |"
-    )
+    L.append(f"| total wall time | {b_wall:.1f}s | {c_wall:.1f}s | {c_wall - b_wall:+.1f}s |")
     b_cost = baseline_summary.get("total_cost_usd", 0.0)
     c_cost = candidate_summary.get("total_cost_usd", 0.0)
-    L.append(
-        f"| total cost | ${b_cost:.4f} | ${c_cost:.4f} |"
-        f" ${c_cost - b_cost:+.4f} |"
-    )
+    L.append(f"| total cost | ${b_cost:.4f} | ${c_cost:.4f} | ${c_cost - b_cost:+.4f} |")
     b_in = baseline_summary.get("total_input_tokens", 0)
     c_in = candidate_summary.get("total_input_tokens", 0)
-    L.append(
-        f"| total input tokens | {b_in:,} | {c_in:,} | {c_in - b_in:+,} |"
-    )
+    L.append(f"| total input tokens | {b_in:,} | {c_in:,} | {c_in - b_in:+,} |")
     b_out = baseline_summary.get("total_output_tokens", 0)
     c_out = candidate_summary.get("total_output_tokens", 0)
-    L.append(
-        f"| total output tokens | {b_out:,} | {c_out:,} | {c_out - b_out:+,} |"
-    )
+    L.append(f"| total output tokens | {b_out:,} | {c_out:,} | {c_out - b_out:+,} |")
     L.append("")
 
     # ---- Per-case detail table ----
@@ -461,8 +461,11 @@ def build_compare_report(
         b = d["baseline"]
         c = d["candidate"]
         rej_match = "y" if b["rejection_types"] == c["rejection_types"] else "n"
-        claims_match = "y" if (b["claims_match"] == c["claims_match"]
-                               and b["claims_total"] == c["claims_total"]) else "n"
+        claims_match = (
+            "y"
+            if (b["claims_match"] == c["claims_match"] and b["claims_total"] == c["claims_total"])
+            else "n"
+        )
         L.append(
             f"| {cid} | {','.join(b['rejection_types'])[:18] or '-'} |"
             f" {','.join(c['rejection_types'])[:18] or '-'} | {rej_match} |"
@@ -560,7 +563,7 @@ def _aggregate_row(label: str, b_pass: int, b_total: int, c_pass: int, c_total: 
 def run_compare(
     baseline_dir: Path,
     candidate_dir: Path,
-    output_root: Optional[Path] = None,
+    output_root: Path | None = None,
     monthly_volume: int = _DEFAULT_PROJECTION_VOLUME,
 ) -> Path:
     """Programmatic entry point — used by both the CLI and the tests.
@@ -612,7 +615,7 @@ def run_compare(
     return out_dir
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Compare two eval_cases.py output directories. Typical use: "
@@ -622,12 +625,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument("baseline_dir", type=Path)
     parser.add_argument("candidate_dir", type=Path)
-    parser.add_argument("--output", type=Path,
-                        help="Output root dir. Default: data/eval_compare/")
-    parser.add_argument("--projection-volume", type=int,
-                        default=_DEFAULT_PROJECTION_VOLUME,
-                        help=f"Monthly OA volume for cost projection "
-                             f"(default {_DEFAULT_PROJECTION_VOLUME}).")
+    parser.add_argument("--output", type=Path, help="Output root dir. Default: data/eval_compare/")
+    parser.add_argument(
+        "--projection-volume",
+        type=int,
+        default=_DEFAULT_PROJECTION_VOLUME,
+        help=f"Monthly OA volume for cost projection (default {_DEFAULT_PROJECTION_VOLUME}).",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")

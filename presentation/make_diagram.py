@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Architecture diagram for PatentMind, drawn with Pillow.
 
 Real delivery pipeline (2026-06):
@@ -6,7 +5,8 @@ Real delivery pipeline (2026-06):
 Custom-drawn so it reads as designed, not a slide full of default boxes.
 """
 import os
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")

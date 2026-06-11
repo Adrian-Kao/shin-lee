@@ -6,16 +6,14 @@ do real queries through the gateway.
 Usage:
     python -m backend.patent_db.seed
 """
+
 from __future__ import annotations
 
-import json
 import sys
-from pathlib import Path
 
 import httpx
 
 from backend.shared.config import settings
-
 
 DEMO_PATENTS = [
     {
@@ -152,7 +150,7 @@ DEMO_PATENTS = [
         ],
         "publication_date": "2021-09-01T00:00:00+00:00",
         "jurisdiction": "TW",
-        "is_local": True,    # 客戶內部專利
+        "is_local": True,  # 客戶內部專利
         "spec_text": "本發明涉及電動車冷卻系統，尤指採用微流道板之冷卻設計。",
     },
     {
@@ -224,11 +222,7 @@ def main():
     # is configured (main.py middleware). Send it so seeding works against a
     # secured engine; empty token (local-dev/pytest mock) sends no header,
     # matching the engine's "empty + mock = permit" rule.
-    headers = (
-        {"X-Internal-Token": settings.INTERNAL_TOKEN}
-        if settings.INTERNAL_TOKEN
-        else {}
-    )
+    headers = {"X-Internal-Token": settings.INTERNAL_TOKEN} if settings.INTERNAL_TOKEN else {}
     print(f"Seeding patents → {url}")
     with httpx.Client(timeout=30.0) as client:
         for p in DEMO_PATENTS:
@@ -237,8 +231,10 @@ def main():
                 print(f"  ✗ {p['patent_no']}: HTTP {r.status_code} {r.text}")
                 sys.exit(1)
             data = r.json()
-            print(f"  ✓ {p['patent_no']} ({p['jurisdiction']}, tenant={p['tenant_id']}): "
-                  f"{data['chunks_indexed']} chunks")
+            print(
+                f"  ✓ {p['patent_no']} ({p['jurisdiction']}, tenant={p['tenant_id']}): "
+                f"{data['chunks_indexed']} chunks"
+            )
     print(f"\nDone. {len(DEMO_PATENTS)} patents indexed.")
 
 

@@ -21,6 +21,7 @@ The harness is intentionally read-only against the backend codebase (no
 imports modified, no monkey-patches that survive the run). All wiring lives
 in this single file so a future cleanup can delete it cleanly.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,16 +29,14 @@ import asyncio
 import json
 import logging
 import os
-import re
 import statistics
 import sys
 import tempfile
 import time
 import traceback
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
 
 logger = logging.getLogger("eval_cases")
 
@@ -90,6 +89,7 @@ def _bootstrap_env(mode: str) -> None:
     os.environ.setdefault("AUDIT_DB_PATH", str(_scratch / "audit.db"))
     os.environ.setdefault("MAPPING_DB_PATH", str(_scratch / "mapping.db"))
     from backend.shared import config as _cfg
+
     _cfg.AUDIT_DB_PATH = Path(os.environ["AUDIT_DB_PATH"])
     _cfg.MAPPING_DB_PATH = Path(os.environ["MAPPING_DB_PATH"])
 
@@ -115,15 +115,29 @@ def _add_months_naive(base_iso: str, months: int) -> str:
     y += m_total // 12
     m = m_total % 12 + 1
     # day clamp (no calendar library needed for the months ∈ {1,2,3,6} we see)
-    days_in_month = [31, 29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 28,
-                     31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1]
+    days_in_month = [
+        31,
+        29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 28,
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ][m - 1]
     d = min(d, days_in_month)
     return f"{y:04d}-{m:02d}-{d:02d}"
 
 
 def _add_days_iso(base_iso: str, days: int) -> str:
     """Add `days` calendar days to YYYY-MM-DD via stdlib date arithmetic."""
-    from datetime import date as _date, timedelta
+    from datetime import date as _date
+    from datetime import timedelta
+
     y, m, d = (int(x) for x in base_iso.split("-"))
     nd = _date(y, m, d) + timedelta(days=days)
     return nd.isoformat()
@@ -208,6 +222,7 @@ class EvalRunner:
         the eval run rather than per-fixture.
         """
         import httpx
+
         ai_app = self.ai_main.app
         original_async_client = httpx.AsyncClient
 
@@ -227,6 +242,7 @@ class EvalRunner:
         retrieval-quality signal in the report.
         """
         from datetime import datetime as _dt
+
         n_total = 0
         for case in self.sc.CASES:
             p = case["patent"]
@@ -236,7 +252,7 @@ class EvalRunner:
                 title=p["title"],
                 abstract=p["abstract"],
                 claims=p["claims"],
-                publication_date=_dt(pub_y, pub_m, pub_d, tzinfo=timezone.utc),
+                publication_date=_dt(pub_y, pub_m, pub_d, tzinfo=UTC),
                 jurisdiction=p["jurisdiction"],
                 is_local=False,
             )
@@ -332,7 +348,8 @@ class EvalRunner:
         )
         received_match = pred_received_iso.startswith(exp_received_iso)
         deadline_within_range = (
-            pred_statutory.startswith(target_a) or pred_statutory.startswith(target_b)
+            pred_statutory.startswith(target_a)
+            or pred_statutory.startswith(target_b)
             or _within_days(pred_statutory[:10], target_a, 7)
             or _within_days(pred_statutory[:10], target_b, 7)
         )
@@ -340,14 +357,16 @@ class EvalRunner:
         # ---- Drafts ----
         drafts_out = []
         for d in response.drafts:
-            drafts_out.append({
-                "rejection_id": d.rejection_id,
-                "strategy_preview": d.strategy[:200],
-                "draft_text_lines": d.draft_text.count("\n") + (1 if d.draft_text else 0),
-                "draft_text_chars": len(d.draft_text),
-                "grounded_citations": list(d.grounded_citations),
-                "confidence": float(d.confidence),
-            })
+            drafts_out.append(
+                {
+                    "rejection_id": d.rejection_id,
+                    "strategy_preview": d.strategy[:200],
+                    "draft_text_lines": d.draft_text.count("\n") + (1 if d.draft_text else 0),
+                    "draft_text_chars": len(d.draft_text),
+                    "grounded_citations": list(d.grounded_citations),
+                    "confidence": float(d.confidence),
+                }
+            )
 
         # ---- Retrieval top-3 (across all rejections, sorted by score desc) ----
         top_hits = sorted(response.related_prior_art, key=lambda h: -h.score)[:3]
@@ -377,8 +396,7 @@ class EvalRunner:
                 "rejection_types": pred_types,
                 "received_date": pred_received_iso,
                 "statutory_deadline": pred_statutory,
-                "recommended_internal_deadline":
-                    response.deadline_summary.recommended_internal_deadline.isoformat(),
+                "recommended_internal_deadline": response.deadline_summary.recommended_internal_deadline.isoformat(),
                 "days_remaining": response.deadline_summary.days_remaining,
                 "deadline_warnings": list(response.deadline_summary.warnings),
             },
@@ -404,6 +422,7 @@ class EvalRunner:
 def _within_days(iso_a: str, iso_b: str, days: int) -> bool:
     """Return True if |iso_a - iso_b| <= days. Both are 'YYYY-MM-DD'."""
     from datetime import date as _date
+
     try:
         a = _date(*(int(x) for x in iso_a.split("-")[:3]))
         b = _date(*(int(x) for x in iso_b.split("-")[:3]))
@@ -453,7 +472,8 @@ def build_report(
             st["count"] += 1
             # Per-rejection-type pass = predicted contained this type with matching claims
             pred_match = any(
-                pr["rejection_type"] == t and set(pr["affected_claims"]) == set(er["affected_claims"])
+                pr["rejection_type"] == t
+                and set(pr["affected_claims"]) == set(er["affected_claims"])
                 for pr in r["predicted"]["rejections"]
             )
             if pred_match:
@@ -472,7 +492,7 @@ def build_report(
         score = 0
         if not c["rejection_types_match"]:
             score += 4
-        score += (c["affected_claims_total"] - c["affected_claims_matches"])
+        score += c["affected_claims_total"] - c["affected_claims_matches"]
         if not c["received_date_match"]:
             score += 1
         if not c["deadline_within_range"]:
@@ -535,8 +555,12 @@ def build_report(
 
     L.append("## Per-case detail")
     L.append("")
-    L.append("| case_id       | rej_pred                  | rej_expected              | OK | deadline           | draft_lines | tokens | latency |")
-    L.append("|---------------|---------------------------|---------------------------|----|--------------------|-------------|--------|---------|")
+    L.append(
+        "| case_id       | rej_pred                  | rej_expected              | OK | deadline           | draft_lines | tokens | latency |"
+    )
+    L.append(
+        "|---------------|---------------------------|---------------------------|----|--------------------|-------------|--------|---------|"
+    )
     for r in sorted(results, key=lambda x: x["case_id"]):
         if r["status"] != "ok":
             L.append(
@@ -545,11 +569,15 @@ def build_report(
             )
             continue
         c = r["comparison"]
-        ok_mark = "OK" if (
-            c["rejection_types_match"]
-            and c["received_date_match"]
-            and c["deadline_within_range"]
-        ) else "--"
+        ok_mark = (
+            "OK"
+            if (
+                c["rejection_types_match"]
+                and c["received_date_match"]
+                and c["deadline_within_range"]
+            )
+            else "--"
+        )
         pred_str = ",".join(r["predicted"]["rejection_types"])[:25]
         exp_str = ",".join(r["expected"]["rejection_types"])[:25]
         dl = r["predicted"]["statutory_deadline"][:10]
@@ -591,7 +619,9 @@ def build_report(
                     f" expected candidates={r['expected']['deadline_candidates']}"
                 )
             L.append(f"- Latency: {r['latency_sec']:.2f}s")
-            L.append(f"- Tokens: {r['cost_meta']['prompt_tokens'] + r['cost_meta']['completion_tokens']}")
+            L.append(
+                f"- Tokens: {r['cost_meta']['prompt_tokens'] + r['cost_meta']['completion_tokens']}"
+            )
             L.append("")
 
     if err:
@@ -656,15 +686,18 @@ def build_summary(
     for r in ok:
         for er in r["expected"]["rejections"]:
             t = er["rejection_type"]
-            st = by_type.setdefault(t, {
-                "count": 0,
-                "pass": 0,
-                "confs": [],
-                "latencies_sec": [],
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "cost_usd": 0.0,
-            })
+            st = by_type.setdefault(
+                t,
+                {
+                    "count": 0,
+                    "pass": 0,
+                    "confs": [],
+                    "latencies_sec": [],
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "cost_usd": 0.0,
+                },
+            )
             st["count"] += 1
             pred_match = any(
                 pr["rejection_type"] == t
@@ -689,12 +722,11 @@ def build_summary(
         by_type_out[t] = {
             "count": st["count"],
             "pass": st["pass"],
-            "mean_confidence": (
-                round(statistics.fmean(st["confs"]), 4) if st["confs"] else 0.0
-            ),
+            "mean_confidence": (round(statistics.fmean(st["confs"]), 4) if st["confs"] else 0.0),
             "mean_latency_ms": (
                 round(statistics.fmean(st["latencies_sec"]) * 1000.0, 2)
-                if st["latencies_sec"] else 0.0
+                if st["latencies_sec"]
+                else 0.0
             ),
             "total_input_tokens": st["input_tokens"],
             "total_output_tokens": st["output_tokens"],
@@ -850,18 +882,26 @@ async def _amain(args: argparse.Namespace) -> int:
         cid = case_ids[i]  # parallel list — same order as `tasks`
         if isinstance(r, BaseException) and not isinstance(r, Exception):
             # BaseException leaked past _run_one_unguarded's try/except.
-            results.append({
-                "case_id": cid,
-                "status": "error",
-                "error": f"{type(r).__name__}: {r}",
-            })
+            results.append(
+                {
+                    "case_id": cid,
+                    "status": "error",
+                    "error": f"{type(r).__name__}: {r}",
+                }
+            )
         elif isinstance(r, Exception):
             # Defensive: _run_one_unguarded should have caught this already.
             results.append({"case_id": cid, "status": "error", "error": str(r)})
         else:
             # Should never happen — gather returns either the result or an
             # exception. Surface it loudly.
-            results.append({"case_id": cid, "status": "error", "error": f"unexpected result type: {type(r).__name__}"})
+            results.append(
+                {
+                    "case_id": cid,
+                    "status": "error",
+                    "error": f"unexpected result type: {type(r).__name__}",
+                }
+            )
     wall_time = time.monotonic() - wall_start
 
     # ---- Write outputs ----
@@ -903,17 +943,22 @@ async def _amain(args: argparse.Namespace) -> int:
     return 0 if not err else 1
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Evaluate the orchestrator against the 30 synthetic demo cases."
     )
     parser.add_argument("--mode", choices=("mock", "anthropic"), default="mock")
     parser.add_argument("--case", help="Run a single case (e.g. CASE-DEMO-001).")
-    parser.add_argument("--concurrency", type=int, default=0,
-                        help="Concurrent orchestrator calls. Default: 4 mock / 2 anthropic.")
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        default=0,
+        help="Concurrent orchestrator calls. Default: 4 mock / 2 anthropic.",
+    )
     parser.add_argument("--output", help="Output directory root. Default: data/eval_results/.")
-    parser.add_argument("--confirm", action="store_true",
-                        help="Auto-confirm cost prompt in anthropic mode.")
+    parser.add_argument(
+        "--confirm", action="store_true", help="Auto-confirm cost prompt in anthropic mode."
+    )
     args = parser.parse_args(argv)
 
     # asyncio.Semaphore(N) raises a bare ValueError for negative N. Catch it

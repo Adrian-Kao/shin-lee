@@ -22,6 +22,7 @@ Prereqs: Dify CE running (cd D:/patentmind-infra/dify/docker && docker compose u
 
 See scripts/setup_dify.md for the manual fallback for each step.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,6 +58,7 @@ EMBED_MODEL = "nomic-embed-text"
 # .env helpers (tiny, dependency-free)
 # ---------------------------------------------------------------------------
 
+
 def read_env() -> dict[str, str]:
     out: dict[str, str] = {}
     if ENV_PATH.exists():
@@ -87,6 +89,7 @@ def upsert_env(updates: dict[str, str]) -> None:
 # Dify console client (cookie session + X-CSRF-Token, Dify >= 1.14)
 # ---------------------------------------------------------------------------
 
+
 class DifyConsole:
     def __init__(self, base_url: str):
         self.base = base_url.rstrip("/")
@@ -110,8 +113,9 @@ class DifyConsole:
         return r.json()["step"]
 
     def setup(self, email: str, name: str, password: str) -> None:
-        r = self.post("/setup", {"email": email, "name": name,
-                                 "password": password, "language": "zh-Hant"})
+        r = self.post(
+            "/setup", {"email": email, "name": name, "password": password, "language": "zh-Hant"}
+        )
         if r.status_code not in (200, 201):
             raise RuntimeError(f"setup failed: {r.status_code} {r.text[:300]}")
 
@@ -133,7 +137,8 @@ class DifyConsole:
         try:
             r = httpx.get(
                 f"https://marketplace.dify.ai/api/v1/plugins/{OLLAMA_PLUGIN_ID}",
-                timeout=30.0, verify=True,
+                timeout=30.0,
+                verify=True,
             )
             ident = r.json()["data"]["plugin"]["latest_package_identifier"]
             if ident:
@@ -148,14 +153,17 @@ class DifyConsole:
             return
         ident = self.marketplace_identifier()
         print(f"  installing {ident} ...")
-        r = self.post("/workspaces/current/plugin/install/marketplace",
-                      {"plugin_unique_identifiers": [ident]})
+        r = self.post(
+            "/workspaces/current/plugin/install/marketplace", {"plugin_unique_identifiers": [ident]}
+        )
         if r.status_code != 200:
             # The api container may be unable to reach marketplace.dify.ai
             # (proxy / TLS environment). Fall back: download the signed
             # .difypkg HOST-side and push it through upload/pkg + install/pkg.
-            print(f"  marketplace-side install failed ({r.text[:160]}) — "
-                  "falling back to host-side download + pkg upload")
+            print(
+                f"  marketplace-side install failed ({r.text[:160]}) — "
+                "falling back to host-side download + pkg upload"
+            )
             self._install_via_local_pkg(ident)
             return
         task = r.json()
@@ -165,8 +173,7 @@ class DifyConsole:
         self._wait_plugin_task(task.get("task_id"))
 
     def _install_via_local_pkg(self, ident: str) -> None:
-        url = ("https://marketplace.dify.ai/api/v1/plugins/download"
-               f"?unique_identifier={ident}")
+        url = f"https://marketplace.dify.ai/api/v1/plugins/download?unique_identifier={ident}"
         cached = Path("D:/patentmind-infra/ollama.difypkg")
         if cached.exists() and cached.stat().st_size > 0:
             content = cached.read_bytes()
@@ -183,8 +190,10 @@ class DifyConsole:
         if up.status_code != 200:
             raise RuntimeError(f"pkg upload failed: {up.status_code} {up.text[:300]}")
         uploaded_ident = up.json().get("unique_identifier") or ident
-        r = self.post("/workspaces/current/plugin/install/pkg",
-                      {"plugin_unique_identifiers": [uploaded_ident]})
+        r = self.post(
+            "/workspaces/current/plugin/install/pkg",
+            {"plugin_unique_identifiers": [uploaded_ident]},
+        )
         if r.status_code != 200:
             raise RuntimeError(f"pkg install failed: {r.status_code} {r.text[:300]}")
         task = r.json()
@@ -217,8 +226,12 @@ class DifyConsole:
                 return
         r = self.post(
             f"/workspaces/current/model-providers/{OLLAMA_PROVIDER}/models/credentials",
-            {"model": model, "model_type": model_type,
-             "credentials": credentials, "name": f"ollama-{model_type}"},
+            {
+                "model": model,
+                "model_type": model_type,
+                "credentials": credentials,
+                "name": f"ollama-{model_type}",
+            },
         )
         if r.status_code in (200, 201):
             print(f"  [ok] model {model} registered + validated")
@@ -250,8 +263,10 @@ class DifyConsole:
         return body["app_id"]
 
     def publish_workflow(self, app_id: str) -> None:
-        r = self.post(f"/apps/{app_id}/workflows/publish",
-                      {"marked_name": "setup_dify.py", "marked_comment": "automated publish"})
+        r = self.post(
+            f"/apps/{app_id}/workflows/publish",
+            {"marked_name": "setup_dify.py", "marked_comment": "automated publish"},
+        )
         if r.status_code != 200:
             raise RuntimeError(f"publish failed: {r.status_code} {r.text[:300]}")
         print("  [ok] workflow published")
@@ -272,13 +287,21 @@ class DifyConsole:
 # DSL generation — prompts injected from backend/ai_engine/prompts/*.yaml
 # ---------------------------------------------------------------------------
 
+
 def load_prompt(intent: str) -> str:
     doc = yaml.safe_load((PROMPTS_DIR / f"{intent}.yaml").read_text(encoding="utf-8"))
     return doc["system"]
 
 
-def _llm_node(node_id: str, title: str, system_text: str, start_id: str,
-              temperature: float, num_predict: int, y: int) -> dict:
+def _llm_node(
+    node_id: str,
+    title: str,
+    system_text: str,
+    start_id: str,
+    temperature: float,
+    num_predict: int,
+    y: int,
+) -> dict:
     return {
         "data": {
             "context": {"enabled": False, "variable_selector": []},
@@ -295,8 +318,7 @@ def _llm_node(node_id: str, title: str, system_text: str, start_id: str,
             },
             "prompt_template": [
                 {"id": str(uuid.uuid4()), "role": "system", "text": system_text},
-                {"id": str(uuid.uuid4()), "role": "user",
-                 "text": f"{{{{#{start_id}.query#}}}}"},
+                {"id": str(uuid.uuid4()), "role": "user", "text": f"{{{{#{start_id}.query#}}}}"},
             ],
             "selected": False,
             "title": title,
@@ -304,10 +326,15 @@ def _llm_node(node_id: str, title: str, system_text: str, start_id: str,
             "variables": [],
             "vision": {"enabled": False},
         },
-        "height": 90, "id": node_id,
-        "position": {"x": 680, "y": y}, "positionAbsolute": {"x": 680, "y": y},
-        "selected": False, "sourcePosition": "right", "targetPosition": "left",
-        "type": "custom", "width": 244,
+        "height": 90,
+        "id": node_id,
+        "position": {"x": 680, "y": y},
+        "positionAbsolute": {"x": 680, "y": y},
+        "selected": False,
+        "sourcePosition": "right",
+        "targetPosition": "left",
+        "type": "custom",
+        "width": 244,
     }
 
 
@@ -315,25 +342,40 @@ def _end_node(node_id: str, llm_id: str, y: int) -> dict:
     return {
         "data": {
             "desc": "",
-            "outputs": [{"value_selector": [llm_id, "text"],
-                         "value_type": "string", "variable": "text"}],
-            "selected": False, "title": "End", "type": "end",
+            "outputs": [
+                {"value_selector": [llm_id, "text"], "value_type": "string", "variable": "text"}
+            ],
+            "selected": False,
+            "title": "End",
+            "type": "end",
         },
-        "height": 90, "id": node_id,
-        "position": {"x": 1000, "y": y}, "positionAbsolute": {"x": 1000, "y": y},
-        "selected": False, "sourcePosition": "right", "targetPosition": "left",
-        "type": "custom", "width": 244,
+        "height": 90,
+        "id": node_id,
+        "position": {"x": 1000, "y": y},
+        "positionAbsolute": {"x": 1000, "y": y},
+        "selected": False,
+        "sourcePosition": "right",
+        "targetPosition": "left",
+        "type": "custom",
+        "width": 244,
     }
 
 
 def _edge(src: str, handle: str, dst: str, src_type: str, dst_type: str) -> dict:
     return {
-        "data": {"isInIteration": False, "isInLoop": False,
-                 "sourceType": src_type, "targetType": dst_type},
+        "data": {
+            "isInIteration": False,
+            "isInLoop": False,
+            "sourceType": src_type,
+            "targetType": dst_type,
+        },
         "id": f"{src}-{handle}-{dst}-target",
-        "source": src, "sourceHandle": handle,
-        "target": dst, "targetHandle": "target",
-        "type": "custom", "zIndex": 0,
+        "source": src,
+        "sourceHandle": handle,
+        "target": dst,
+        "targetHandle": "target",
+        "type": "custom",
+        "zIndex": 0,
     }
 
 
@@ -354,46 +396,83 @@ def build_dsl(plugin_identifier: str) -> str:
             {
                 "data": {
                     "desc": "intent: parse_oa | draft_response. query: the full user message (OA text / rejection + grounded set).",
-                    "selected": False, "title": "Start", "type": "start",
+                    "selected": False,
+                    "title": "Start",
+                    "type": "start",
                     "variables": [
-                        {"label": "intent", "variable": "intent", "type": "select",
-                         "required": True, "max_length": None,
-                         "options": ["parse_oa", "draft_response"]},
-                        {"label": "query", "variable": "query", "type": "paragraph",
-                         "required": True, "max_length": None, "options": []},
+                        {
+                            "label": "intent",
+                            "variable": "intent",
+                            "type": "select",
+                            "required": True,
+                            "max_length": None,
+                            "options": ["parse_oa", "draft_response"],
+                        },
+                        {
+                            "label": "query",
+                            "variable": "query",
+                            "type": "paragraph",
+                            "required": True,
+                            "max_length": None,
+                            "options": [],
+                        },
                     ],
                 },
-                "height": 116, "id": start_id,
-                "position": {"x": 80, "y": 250}, "positionAbsolute": {"x": 80, "y": 250},
-                "selected": False, "sourcePosition": "right", "targetPosition": "left",
-                "type": "custom", "width": 244,
+                "height": 116,
+                "id": start_id,
+                "position": {"x": 80, "y": 250},
+                "positionAbsolute": {"x": 80, "y": 250},
+                "selected": False,
+                "sourcePosition": "right",
+                "targetPosition": "left",
+                "type": "custom",
+                "width": 244,
             },
             {
                 "data": {
-                    "cases": [{
-                        "case_id": "true",
-                        "conditions": [{
-                            "comparison_operator": "is",
-                            "id": str(uuid.uuid4()),
-                            "value": "parse_oa",
-                            "varType": "string",
-                            "variable_selector": [start_id, "intent"],
-                        }],
-                        "id": "true",
-                        "logical_operator": "and",
-                    }],
+                    "cases": [
+                        {
+                            "case_id": "true",
+                            "conditions": [
+                                {
+                                    "comparison_operator": "is",
+                                    "id": str(uuid.uuid4()),
+                                    "value": "parse_oa",
+                                    "varType": "string",
+                                    "variable_selector": [start_id, "intent"],
+                                }
+                            ],
+                            "id": "true",
+                            "logical_operator": "and",
+                        }
+                    ],
                     "desc": "route by intent",
-                    "selected": False, "title": "IF intent == parse_oa", "type": "if-else",
+                    "selected": False,
+                    "title": "IF intent == parse_oa",
+                    "type": "if-else",
                 },
-                "height": 126, "id": if_id,
-                "position": {"x": 380, "y": 250}, "positionAbsolute": {"x": 380, "y": 250},
-                "selected": False, "sourcePosition": "right", "targetPosition": "left",
-                "type": "custom", "width": 244,
+                "height": 126,
+                "id": if_id,
+                "position": {"x": 380, "y": 250},
+                "positionAbsolute": {"x": 380, "y": 250},
+                "selected": False,
+                "sourcePosition": "right",
+                "targetPosition": "left",
+                "type": "custom",
+                "width": 244,
             },
-            _llm_node(llm_parse_id, "LLM parse_oa", load_prompt("parse_oa"),
-                      start_id, 0.2, 1536, 120),
-            _llm_node(llm_draft_id, "LLM draft_response", load_prompt("draft_response"),
-                      start_id, 0.3, 2048, 400),
+            _llm_node(
+                llm_parse_id, "LLM parse_oa", load_prompt("parse_oa"), start_id, 0.2, 1536, 120
+            ),
+            _llm_node(
+                llm_draft_id,
+                "LLM draft_response",
+                load_prompt("draft_response"),
+                start_id,
+                0.3,
+                2048,
+                400,
+            ),
             _end_node(end_parse_id, llm_parse_id, 120),
             _end_node(end_draft_id, llm_draft_id, 400),
         ],
@@ -408,15 +487,19 @@ def build_dsl(plugin_identifier: str) -> str:
                 "verify_citations deliberately stays in the PatentMind AI engine "
                 "(Q14 deterministic hard wall)."
             ),
-            "icon": "📄", "icon_background": "#E0F2FE",
-            "mode": "workflow", "name": APP_NAME,
+            "icon": "📄",
+            "icon_background": "#E0F2FE",
+            "mode": "workflow",
+            "name": APP_NAME,
             "use_icon_as_answer_icon": False,
         },
-        "dependencies": [{
-            "current_identifier": None,
-            "type": "marketplace",
-            "value": {"marketplace_plugin_unique_identifier": plugin_identifier},
-        }],
+        "dependencies": [
+            {
+                "current_identifier": None,
+                "type": "marketplace",
+                "value": {"marketplace_plugin_unique_identifier": plugin_identifier},
+            }
+        ],
         "kind": "app",
         "version": "0.6.0",
         "workflow": {
@@ -441,6 +524,7 @@ def build_dsl(plugin_identifier: str) -> str:
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -485,9 +569,14 @@ def main() -> int:
     }
     c.add_model(LLM_MODEL, "llm", llm_credentials)
     try:
-        c.add_model(EMBED_MODEL, "text-embedding", {
-            "base_url": OLLAMA_BASE_URL_FROM_DIFY, "context_size": "8192",
-        })
+        c.add_model(
+            EMBED_MODEL,
+            "text-embedding",
+            {
+                "base_url": OLLAMA_BASE_URL_FROM_DIFY,
+                "context_size": "8192",
+            },
+        )
     except Exception as e:
         print(f"  [warn] embedding model registration failed (non-fatal): {e}")
 
@@ -504,12 +593,14 @@ def main() -> int:
 
     print("[7/7] service API key")
     key = c.service_api_key(app_id)
-    upsert_env({
-        "DIFY_API_URL": dify_url,
-        "DIFY_API_KEY_ANALYZE": key,
-        "DIFY_ADMIN_EMAIL": email,
-        "DIFY_ADMIN_PASSWORD": password,
-    })
+    upsert_env(
+        {
+            "DIFY_API_URL": dify_url,
+            "DIFY_API_KEY_ANALYZE": key,
+            "DIFY_ADMIN_EMAIL": email,
+            "DIFY_ADMIN_PASSWORD": password,
+        }
+    )
     print(f"  [ok] key saved to .env: {key[:12]}…")
     print()
     print("DONE. To run the AI engine against Dify:")

@@ -22,10 +22,10 @@ This module holds the pure (no-FastAPI, no-DB) building blocks the
 Keeping these here (rather than inline in the handler) makes them unit-testable
 and keeps the handler focused on the policy gates (auth, role, ACL, signoff).
 """
+
 from __future__ import annotations
 
 import hashlib
-from typing import Optional
 
 from fastapi import HTTPException, status
 
@@ -71,6 +71,7 @@ def signoff_audit_fields(user: User, signed_off: bool) -> dict:
         "signoff_by": user.user_id,
         "signoff_passed": bool(signed_off),
     }
+
 
 # Separator used when concatenating accepted segments into the final document.
 # A blank line between segments keeps paragraph boundaries readable and is

@@ -24,44 +24,45 @@ the recommended-internal-deadline-never-on/after-statutory invariant, timezone
 correctness, calendar-version locking, missing-calendar warnings, and the
 unknown-jurisdiction default.
 """
+
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime, timezone, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
 from backend.ai_engine.deadline import (
-    calculate_deadline,
-    get_holidays,
-    reload_calendars,
-    calendar_is_missing,
-    deadline_year_is_covered,
-    RULES,
     _FALLBACK_HOLIDAYS,
     CALENDARS_DIR,
+    RULES,
+    CachingHolidayProvider,
+    CalendarRangeError,
+    DeadlineError,
     # Agent C — provider abstraction + strict API + observed-shift helpers
     HolidayProvider,
-    StaticBundledProvider,
+    InvalidReceivedDateError,
     JsonFileProvider,
     RemoteHolidayProvider,
-    CachingHolidayProvider,
-    get_holiday_provider,
-    set_holiday_provider,
-    calculate_deadline_strict,
-    observed_us,
-    observed_substitute_next_weekday,
-    DeadlineError,
+    StaticBundledProvider,
     UnknownJurisdictionError,
-    InvalidReceivedDateError,
-    CalendarRangeError,
     _build_provider_for_source,
+    calculate_deadline,
+    calculate_deadline_strict,
+    calendar_is_missing,
+    deadline_year_is_covered,
+    get_holiday_provider,
+    get_holidays,
+    observed_substitute_next_weekday,
+    observed_us,
+    reload_calendars,
+    set_holiday_provider,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _stat_date(result) -> date:
     """Pull the date portion out of the returned statutory_deadline ISO str."""
@@ -80,17 +81,20 @@ def _utc(y, m, d, hh=9, mm=0):
 # 1. Happy-path window length per jurisdiction
 # ===========================================================================
 
+
 @pytest.mark.parametrize(
     "jur,version,received,expected_min_raw",
     [
         # received -> raw deadline = received + response_days (before rollover)
-        ("TW", "2025.1", date(2025, 5, 29), date(2025, 7, 28)),   # +60
-        ("US", "2025.1", date(2025, 4, 1), date(2025, 6, 30)),    # +90
-        ("JP", "2025.1", date(2025, 6, 2), date(2025, 8, 31)),    # +90
+        ("TW", "2025.1", date(2025, 5, 29), date(2025, 7, 28)),  # +60
+        ("US", "2025.1", date(2025, 4, 1), date(2025, 6, 30)),  # +90
+        ("JP", "2025.1", date(2025, 6, 2), date(2025, 8, 31)),  # +90
     ],
 )
 def test_window_length_baseline(jur, version, received, expected_min_raw):
-    r = calculate_deadline(datetime(received.year, received.month, received.day, 9, 0, tzinfo=UTC), jur, version)
+    r = calculate_deadline(
+        datetime(received.year, received.month, received.day, 9, 0, tzinfo=UTC), jur, version
+    )
     # statutory >= raw (rollover only pushes forward, never backward)
     assert _stat_date(r) >= expected_min_raw
     assert r["holiday_calendar_version"] == version
@@ -101,15 +105,22 @@ def test_window_length_baseline(jur, version, received, expected_min_raw):
 #    Pick received dates so the +60 lands on Mon..Sun, away from TW holidays.
 # ===========================================================================
 
+
 @pytest.mark.parametrize(
     "received,raw_weekday,should_roll",
     [
         # received -> +60 days, choose mid-year dates clear of TW holidays
-        (date(2025, 6, 2), 0, False),   # +60 = 2025-08-01 Fri? compute below; just assert roll behaviour
+        (
+            date(2025, 6, 2),
+            0,
+            False,
+        ),  # +60 = 2025-08-01 Fri? compute below; just assert roll behaviour
     ],
 )
 def test_tw_weekday_landing_smoke(received, raw_weekday, should_roll):
-    r = calculate_deadline(datetime(received.year, received.month, received.day, 9, 0, tzinfo=UTC), "TW", "2025.1")
+    r = calculate_deadline(
+        datetime(received.year, received.month, received.day, 9, 0, tzinfo=UTC), "TW", "2025.1"
+    )
     sd = _stat_date(r)
     assert sd.weekday() < 5  # never a weekend
     assert sd not in get_holidays("TW", "2025.1")  # never a holiday
@@ -166,13 +177,16 @@ def test_statutory_never_weekend_or_holiday_JP_full_year():
 #    must roll forward off it.
 # ===========================================================================
 
+
 def _received_for_raw(jur, raw_target: date) -> datetime:
     """Given a desired raw deadline date, back out the received date in the
     case timezone and return it as a UTC-noon datetime (noon avoids any TZ
     date-flip ambiguity)."""
     days = RULES[jur].response_days
     received_local = raw_target - timedelta(days=days)
-    return datetime(received_local.year, received_local.month, received_local.day, 12, 0, tzinfo=UTC)
+    return datetime(
+        received_local.year, received_local.month, received_local.day, 12, 0, tzinfo=UTC
+    )
 
 
 @pytest.mark.parametrize("hol_date", sorted(_FALLBACK_HOLIDAYS[("TW", "2025.1")].keys()))
@@ -211,11 +225,17 @@ def test_jp_each_holiday_rolls_forward(hol_date):
 # 4. Multi-day holiday blocks — must roll over the ENTIRE block + weekend.
 # ===========================================================================
 
+
 def test_tw_spring_festival_block_rolls_to_after():
     """TW 春節 2025-01-27..01-31 (Mon-Fri) followed by weekend 2/1-2/2.
     A raw deadline anywhere inside the block must land on Mon 2025-02-03."""
-    for raw in [date(2025, 1, 27), date(2025, 1, 28), date(2025, 1, 29),
-                date(2025, 1, 30), date(2025, 1, 31)]:
+    for raw in [
+        date(2025, 1, 27),
+        date(2025, 1, 28),
+        date(2025, 1, 29),
+        date(2025, 1, 30),
+        date(2025, 1, 31),
+    ]:
         received = _received_for_raw("TW", raw)
         r = calculate_deadline(received, "TW", "2025.1")
         assert _stat_date(r) == date(2025, 2, 3), f"raw {raw} -> {_stat_date(r)}"
@@ -263,6 +283,7 @@ def test_jp_yearend_block_rolls_into_next_year():
 # 5. Year-boundary rollover — needs next-year calendar.
 # ===========================================================================
 
+
 def test_tw_year_boundary_warns_when_2026_calendar_absent():
     """TW received 2025-12-20 -> +60 = 2026-02-18 (春節初三 in 2026). With the
     2025.1 calendar the calc can't see 2026 holidays -> must warn."""
@@ -293,6 +314,7 @@ def test_us_year_boundary_correct_when_2026_loaded():
 # ===========================================================================
 # 6. Leap-year Feb 29 handling.
 # ===========================================================================
+
 
 def test_leap_day_received_is_valid():
     """received 2024-02-29 (leap day) -> TW +60 = 2024-04-29 (Mon)."""
@@ -328,6 +350,7 @@ def test_non_leap_year_has_no_feb_29():
 #    This is the _prev_business_day bug class. Brute-force every 2025 day x3 jur.
 # ===========================================================================
 
+
 @pytest.mark.parametrize("jur", ["TW", "US", "JP", "EP", "CN", "KR"])
 def test_recommended_strictly_before_statutory_full_year(jur):
     d = date(2025, 1, 1)
@@ -361,6 +384,7 @@ def test_recommended_before_statutory_across_long_block():
 # ===========================================================================
 # 8. Timezone correctness — received near UTC midnight maps to correct local date.
 # ===========================================================================
+
 
 def test_tz_tw_late_utc_is_next_local_day():
     """2025-03-09 23:00 UTC = 2025-03-10 07:00 Asia/Taipei (+8). The case-local
@@ -411,6 +435,7 @@ def test_tz_same_local_day_same_answer(hh):
 # 9. Calendar-version locking invariant.
 # ===========================================================================
 
+
 def test_same_version_identical_output():
     """Same (jurisdiction, version) twice = byte-identical result."""
     a = calculate_deadline(_utc(2025, 5, 1), "TW", "2025.1")
@@ -428,8 +453,14 @@ def test_get_holidays_version_locked_and_cached():
 def test_file_and_fallback_agree_for_shipped_versions():
     """The shipped JSON calendars must mirror the hard-coded fallback exactly,
     so version-locking holds whether or not the data dir is present."""
-    for (jur, ver) in [("TW", "2025.1"), ("US", "2025.1"), ("JP", "2025.1"),
-                       ("EP", "2025.1"), ("CN", "2025.1"), ("KR", "2025.1")]:
+    for jur, ver in [
+        ("TW", "2025.1"),
+        ("US", "2025.1"),
+        ("JP", "2025.1"),
+        ("EP", "2025.1"),
+        ("CN", "2025.1"),
+        ("KR", "2025.1"),
+    ]:
         path = CALENDARS_DIR / f"{jur}_{ver}.json"
         assert path.exists(), f"missing shipped calendar {path}"
         doc = json.loads(path.read_text(encoding="utf-8"))
@@ -455,6 +486,7 @@ def test_different_version_may_differ_but_is_stable():
 # ===========================================================================
 # 10. Missing-calendar version -> empty set + LOUD warning, never silent.
 # ===========================================================================
+
 
 def test_missing_version_warns_and_flags():
     r = calculate_deadline(_utc(2025, 3, 1), "TW", "9999.9")
@@ -487,6 +519,7 @@ def test_known_version_not_flagged_missing():
 # 11. Unknown jurisdiction -> 60-day naive default + warning.
 # ===========================================================================
 
+
 @pytest.mark.parametrize("jur", ["DE", "GB", "IN", "ZZ"])
 def test_unknown_jurisdiction_default(jur):
     r = calculate_deadline(_utc(2025, 4, 1), jur, "2025.1")
@@ -507,10 +540,11 @@ def test_unknown_jurisdiction_recommended_before_statutory():
 # 12. days_remaining / passed-deadline warning behaviour.
 # ===========================================================================
 
+
 def test_future_receipt_has_positive_days_remaining():
     """Receipt far in the future -> large positive days_remaining, no passed
     warning."""
-    future = datetime.now(timezone.utc) + timedelta(days=400)
+    future = datetime.now(UTC) + timedelta(days=400)
     r = calculate_deadline(future, "TW", "2026.1")
     assert r["days_remaining"] > 0
     assert not any("DEADLINE PASSED" in w for w in r["warnings"])
@@ -527,8 +561,12 @@ def test_old_receipt_flags_passed_deadline():
 # ===========================================================================
 
 REQUIRED_KEYS = {
-    "received_date", "statutory_deadline", "recommended_internal_deadline",
-    "days_remaining", "holiday_calendar_version", "warnings",
+    "received_date",
+    "statutory_deadline",
+    "recommended_internal_deadline",
+    "days_remaining",
+    "holiday_calendar_version",
+    "warnings",
 }
 
 
@@ -539,8 +577,9 @@ def test_result_has_required_keys(jur):
     assert isinstance(r["warnings"], list)
 
 
-@pytest.mark.parametrize("jur,ver", [("TW", "2025.1"), ("US", "2025.1"),
-                                     ("JP", "2025.1"), ("TW", "9999.9")])
+@pytest.mark.parametrize(
+    "jur,ver", [("TW", "2025.1"), ("US", "2025.1"), ("JP", "2025.1"), ("TW", "9999.9")]
+)
 def test_result_keys_are_wire_model_compatible(jur, ver):
     """DeadlineInfo (backend.shared.models) forbids extra inputs. The returned
     dict must therefore expose EXACTLY the model's fields — no stray
@@ -560,6 +599,7 @@ def test_statutory_after_received(jur):
 # ===========================================================================
 # 14. JP rule basis sanity (POC approximation = 90 days, Tokyo TZ).
 # ===========================================================================
+
 
 def test_jp_uses_tokyo_timezone_and_90_days():
     assert RULES["JP"].timezone_name == "Asia/Tokyo"
@@ -583,6 +623,7 @@ def test_jp_loaded_from_json_not_just_fallback():
 # 15. reload_calendars clears the cache (client-update story).
 # ===========================================================================
 
+
 def test_reload_calendars_repopulates():
     h1 = get_holidays("US", "2025.1")
     reload_calendars()
@@ -595,6 +636,7 @@ def test_reload_calendars_repopulates():
 # ===========================================================================
 # 16. Cross-jurisdiction PCT-style: same receipt, 3 jurisdictions, 3 deadlines.
 # ===========================================================================
+
 
 def test_pct_style_multi_jurisdiction_distinct_deadlines():
     received = _utc(2025, 4, 1)
@@ -619,29 +661,31 @@ def test_pct_style_multi_jurisdiction_distinct_deadlines():
 
 # --- Rule basis sanity --------------------------------------------------------
 
+
 def test_ep_rule_basis():
     assert RULES["EP"].timezone_name == "Europe/Berlin"  # canonical Munich zone
-    assert RULES["EP"].response_days == 120              # ~4 months (approx.)
+    assert RULES["EP"].response_days == 120  # ~4 months (approx.)
 
 
 def test_cn_rule_basis():
     assert RULES["CN"].timezone_name == "Asia/Shanghai"
-    assert RULES["CN"].response_days == 120              # ~4 months from 发文日
+    assert RULES["CN"].response_days == 120  # ~4 months from 发文日
 
 
 def test_kr_rule_basis():
     assert RULES["KR"].timezone_name == "Asia/Seoul"
-    assert RULES["KR"].response_days == 60               # ~2 months, extendable
+    assert RULES["KR"].response_days == 60  # ~2 months, extendable
 
 
 # --- Window length baselines --------------------------------------------------
 
+
 @pytest.mark.parametrize(
     "jur,received,raw",
     [
-        ("EP", date(2025, 4, 1), date(2025, 7, 30)),   # +120
-        ("CN", date(2025, 6, 9), date(2025, 10, 7)),   # +120 (lands in 国庆 week)
-        ("KR", date(2025, 8, 1), date(2025, 9, 30)),   # +60
+        ("EP", date(2025, 4, 1), date(2025, 7, 30)),  # +120
+        ("CN", date(2025, 6, 9), date(2025, 10, 7)),  # +120 (lands in 国庆 week)
+        ("KR", date(2025, 8, 1), date(2025, 9, 30)),  # +60
     ],
 )
 def test_new_jur_window_length(jur, received, raw):
@@ -652,6 +696,7 @@ def test_new_jur_window_length(jur, received, raw):
 
 
 # --- Full-year business-day invariant (never weekend/holiday) -----------------
+
 
 @pytest.mark.parametrize("jur", ["EP", "CN", "KR"])
 def test_statutory_never_weekend_or_holiday_new_jur_full_year(jur):
@@ -669,6 +714,7 @@ def test_statutory_never_weekend_or_holiday_new_jur_full_year(jur):
 
 # --- Each shipped holiday rolls forward off itself ----------------------------
 
+
 @pytest.mark.parametrize("jur", ["EP", "CN", "KR"])
 def test_new_jur_each_holiday_rolls_forward(jur):
     for hol_date in sorted(_FALLBACK_HOLIDAYS[(jur, "2025.1")].keys()):
@@ -682,12 +728,12 @@ def test_new_jur_each_holiday_rolls_forward(jur):
 
 # --- Multi-day block roll-through ---------------------------------------------
 
+
 def test_cn_spring_festival_block_rolls_past():
     """CN 春节 golden week 2025-01-28..02-04 (Tue..Tue) + the 02-05 boundary.
     A raw deadline anywhere in the block rolls to Wed 2025-02-05 (first working
     day after)."""
-    for raw in [date(2025, 1, 28), date(2025, 1, 31), date(2025, 2, 1),
-                date(2025, 2, 4)]:
+    for raw in [date(2025, 1, 28), date(2025, 1, 31), date(2025, 2, 1), date(2025, 2, 4)]:
         received = _received_for_raw("CN", raw)
         assert _stat_date(calculate_deadline(received, "CN", "2025.1")) == date(2025, 2, 5)
 
@@ -720,6 +766,7 @@ def test_kr_seollal_block_rolls_past():
 
 # --- Timezone correctness (a near-midnight-UTC instant maps to the right local
 #     date for Europe/Berlin vs Asia/Shanghai vs Asia/Seoul) -------------------
+
 
 def test_tz_berlin_offset_in_output():
     r = calculate_deadline(_utc(2025, 4, 1), "EP", "2025.1")
@@ -761,6 +808,7 @@ def test_tz_near_utc_midnight_maps_to_correct_local_date():
 # --- Recommended internal deadline strictly before statutory across a golden
 #     week -----------------------------------------------------------------
 
+
 def test_cn_recommended_before_statutory_across_golden_week():
     """CN statutory rolled to 2025-10-09 (after the 国庆 golden week). The
     recommended date (~7 days earlier) falls INSIDE the golden week and must
@@ -790,6 +838,7 @@ def test_kr_recommended_before_statutory_across_chuseok():
 
 # --- Calendar-version locking holds for the new jurisdictions -----------------
 
+
 @pytest.mark.parametrize("jur", ["EP", "CN", "KR"])
 def test_new_jur_version_locked_and_cached(jur):
     h1 = get_holidays(jur, "2025.1")
@@ -807,10 +856,12 @@ def test_new_jur_same_version_identical_output(jur):
 
 # --- PCT-style: one receipt, six jurisdictions, distinct windows --------------
 
+
 def test_six_jurisdiction_distinct_windows():
     received = _utc(2025, 4, 1)
-    results = {j: calculate_deadline(received, j, "2025.1")
-               for j in ["TW", "US", "JP", "EP", "CN", "KR"]}
+    results = {
+        j: calculate_deadline(received, j, "2025.1") for j in ["TW", "US", "JP", "EP", "CN", "KR"]
+    }
     for j, r in results.items():
         assert not any("not yet implemented" in w for w in r["warnings"]), j
         assert _stat_date(r) > date(2025, 4, 1)
@@ -826,6 +877,7 @@ def test_six_jurisdiction_distinct_windows():
 # stay green. These tests pin the new surface — resolution contract, version
 # locking, the file-only provider, and the safe-but-inert remote stub.
 # ===========================================================================
+
 
 @pytest.fixture(autouse=True)
 def _restore_provider():
@@ -862,7 +914,11 @@ def test_provider_resolve_never_raises_on_missing():
     """The resolution contract: a merely-missing calendar returns ({}, False),
     NEVER an exception. (RemoteHolidayProvider is the documented exception — it
     raises NotImplementedError, exercised separately.)"""
-    for p in (StaticBundledProvider(), JsonFileProvider(), CachingHolidayProvider(StaticBundledProvider())):
+    for p in (
+        StaticBundledProvider(),
+        JsonFileProvider(),
+        CachingHolidayProvider(StaticBundledProvider()),
+    ):
         holidays, found = p.resolve("XX", "no-such-version")
         assert isinstance(holidays, dict)
         assert found is False
@@ -887,8 +943,9 @@ def test_jsonfile_provider_has_no_hardcoded_fallback():
 
 def test_jsonfile_provider_custom_dir(tmp_path):
     (tmp_path / "ZZ_test.json").write_text(
-        json.dumps({"jurisdiction": "ZZ", "version": "test",
-                    "holidays": {"2025-07-04": "Test Day"}}),
+        json.dumps(
+            {"jurisdiction": "ZZ", "version": "test", "holidays": {"2025-07-04": "Test Day"}}
+        ),
         encoding="utf-8",
     )
     p = JsonFileProvider(calendars_dir=tmp_path)
@@ -909,11 +966,12 @@ def test_caching_provider_reload_drops_cache():
     a = p.resolve("US", "2025.1")
     p.reload()
     b = p.resolve("US", "2025.1")
-    assert a[0] == b[0]      # same content
-    assert a is not b        # fresh tuple after reload -> cache was cleared
+    assert a[0] == b[0]  # same content
+    assert a is not b  # fresh tuple after reload -> cache was cleared
 
 
 # --- The safe-but-inert remote stub ------------------------------------------
+
 
 def test_remote_provider_raises_not_implemented():
     """Directly, the stub raises — nobody ships a silent live dependency."""
@@ -945,13 +1003,13 @@ def test_caching_swallows_arbitrary_inner_exception():
 def test_caching_falls_back_when_inner_not_found():
     """If the inner provider has no source (found=False) but the fallback does,
     the fallback answers — file-first, mirror-second layering."""
-    p = CachingHolidayProvider(JsonFileProvider(), fallback=StaticBundledProvider())
     # JP_2025.1.json exists, so inner answers; but force the missing path via a
     # jurisdiction whose file is absent yet has a hard-coded fallback. All shipped
     # jurisdictions have both; use a tmp JsonFileProvider pointing at an empty dir
     # so the inner is always not-found and the bundled fallback must answer.
     import tempfile
     from pathlib import Path
+
     with tempfile.TemporaryDirectory() as d:
         p2 = CachingHolidayProvider(JsonFileProvider(Path(d)), fallback=StaticBundledProvider())
         holidays, found = p2.resolve("TW", "2025.1")
@@ -961,11 +1019,15 @@ def test_caching_falls_back_when_inner_not_found():
 
 # --- HOLIDAY_SOURCE -> provider mapping --------------------------------------
 
-@pytest.mark.parametrize("source,inner_type", [
-    ("bundled", StaticBundledProvider),
-    ("jsonfile", JsonFileProvider),
-    ("remote", RemoteHolidayProvider),
-])
+
+@pytest.mark.parametrize(
+    "source,inner_type",
+    [
+        ("bundled", StaticBundledProvider),
+        ("jsonfile", JsonFileProvider),
+        ("remote", RemoteHolidayProvider),
+    ],
+)
 def test_build_provider_for_source(source, inner_type):
     p = _build_provider_for_source(source)
     assert isinstance(p, CachingHolidayProvider)
@@ -990,6 +1052,7 @@ def test_set_holiday_provider_swaps_and_reloads():
 # (all subclassing DeadlineError(ValueError)) on the same conditions.
 # ===========================================================================
 
+
 def test_error_hierarchy():
     for exc in (UnknownJurisdictionError, InvalidReceivedDateError, CalendarRangeError):
         assert issubclass(exc, DeadlineError)
@@ -999,8 +1062,9 @@ def test_error_hierarchy():
 @pytest.mark.parametrize("jur", ["TW", "US", "JP", "EP", "CN", "KR"])
 def test_strict_matches_lenient_on_happy_path(jur):
     received = _utc(2025, 4, 1)
-    assert calculate_deadline_strict(received, jur, "2025.1") == \
-        calculate_deadline(received, jur, "2025.1")
+    assert calculate_deadline_strict(received, jur, "2025.1") == calculate_deadline(
+        received, jur, "2025.1"
+    )
 
 
 @pytest.mark.parametrize("jur", ["DE", "GB", "ZZ"])
@@ -1049,16 +1113,20 @@ def test_strict_returns_wire_compatible_dict():
 # 대체공휴일: a Sunday (or overlapping) holiday shifts to the next free weekday.
 # ===========================================================================
 
-@pytest.mark.parametrize("holiday,expected", [
-    # 2025-07-04 is a Friday -> unchanged
-    (date(2025, 7, 4), date(2025, 7, 4)),
-    # A Saturday holiday -> observed the preceding Friday
-    (date(2025, 7, 5), date(2025, 7, 4)),   # Sat -> Fri
-    # A Sunday holiday -> observed the following Monday
-    (date(2025, 7, 6), date(2025, 7, 7)),   # Sun -> Mon
-    # Mid-week unchanged
-    (date(2025, 12, 25), date(2025, 12, 25)),  # Thu
-])
+
+@pytest.mark.parametrize(
+    "holiday,expected",
+    [
+        # 2025-07-04 is a Friday -> unchanged
+        (date(2025, 7, 4), date(2025, 7, 4)),
+        # A Saturday holiday -> observed the preceding Friday
+        (date(2025, 7, 5), date(2025, 7, 4)),  # Sat -> Fri
+        # A Sunday holiday -> observed the following Monday
+        (date(2025, 7, 6), date(2025, 7, 7)),  # Sun -> Mon
+        # Mid-week unchanged
+        (date(2025, 12, 25), date(2025, 12, 25)),  # Thu
+    ],
+)
 def test_observed_us_rule(holiday, expected):
     assert observed_us(holiday) == expected
 
@@ -1068,16 +1136,19 @@ def test_observed_us_real_2026_independence_day():
     assert observed_us(date(2026, 7, 4)) == date(2026, 7, 3)
 
 
-@pytest.mark.parametrize("holiday,existing,expected", [
-    # Weekday, not overlapping -> unchanged
-    (date(2025, 5, 5), set(), date(2025, 5, 5)),     # Mon
-    # Sunday -> next free weekday (Mon)
-    (date(2025, 5, 4), set(), date(2025, 5, 5)),     # Sun -> Mon
-    # Sunday whose Monday is ALSO a holiday -> skip to Tue
-    (date(2025, 5, 4), {date(2025, 5, 5)}, date(2025, 5, 6)),
-    # Overlapping a weekday holiday -> next free weekday
-    (date(2025, 5, 5), {date(2025, 5, 5)}, date(2025, 5, 6)),
-])
+@pytest.mark.parametrize(
+    "holiday,existing,expected",
+    [
+        # Weekday, not overlapping -> unchanged
+        (date(2025, 5, 5), set(), date(2025, 5, 5)),  # Mon
+        # Sunday -> next free weekday (Mon)
+        (date(2025, 5, 4), set(), date(2025, 5, 5)),  # Sun -> Mon
+        # Sunday whose Monday is ALSO a holiday -> skip to Tue
+        (date(2025, 5, 4), {date(2025, 5, 5)}, date(2025, 5, 6)),
+        # Overlapping a weekday holiday -> next free weekday
+        (date(2025, 5, 5), {date(2025, 5, 5)}, date(2025, 5, 6)),
+    ],
+)
 def test_observed_substitute_next_weekday(holiday, existing, expected):
     assert observed_substitute_next_weekday(holiday, existing) == expected
 
@@ -1094,6 +1165,7 @@ def test_observed_substitute_matches_shipped_kr_substitution():
 # ===========================================================================
 # 21. Agent C — provider swap is observable end-to-end + reload integration.
 # ===========================================================================
+
 
 def test_reload_calendars_also_reloads_provider():
     """reload_calendars() must clear BOTH the module loader cache and the active
@@ -1112,4 +1184,5 @@ def test_supported_jurisdictions_config_matches_rules():
     a drift here means the stub path silently swallows a 'supported' jurisdiction
     or vice-versa."""
     from backend.shared.config import settings
+
     assert set(settings.SUPPORTED_JURISDICTIONS) == set(RULES.keys())

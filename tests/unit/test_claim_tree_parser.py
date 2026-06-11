@@ -13,6 +13,7 @@ Covers:
     * cycle resilience — explicit self-reference is filtered out by own_number
       filter, and an injected cycle in the depth walk does not crash
 """
+
 from __future__ import annotations
 
 from backend.ai_engine.claim_tree import parse_claim_dependencies
@@ -75,10 +76,10 @@ def test_depth_three_chain():
         "2. 一種獨立方法。",
         "3. 一種獨立系統。",
         "4. 一種獨立裝置。",
-        "5. 如請求項 1 所述之方法，其中…",   # depth 1
-        "6. 如請求項 1 所述之方法。",          # depth 1 (different parent path)
-        "7. 如請求項 5 所述之方法，其中…",   # depth 2
-        "8. 如請求項 7 所述之方法。",          # depth 3
+        "5. 如請求項 1 所述之方法，其中…",  # depth 1
+        "6. 如請求項 1 所述之方法。",  # depth 1 (different parent path)
+        "7. 如請求項 5 所述之方法，其中…",  # depth 2
+        "8. 如請求項 7 所述之方法。",  # depth 3
     ]
     nodes = parse_claim_dependencies(claims)
     by_no = {n["claim_no"]: n for n in nodes}
@@ -108,9 +109,9 @@ def test_malformed_entries_are_tolerated():
     # None and non-string entries should not crash the parser.
     claims = [
         "1. 一種方法。",
-        None,                     # type: ignore[list-item]
+        None,  # type: ignore[list-item]
         "3. 如請求項 1 所述之方法。",
-        123,                      # type: ignore[list-item]
+        123,  # type: ignore[list-item]
     ]
     nodes = parse_claim_dependencies(claims)  # type: ignore[arg-type]
     assert len(nodes) == 4

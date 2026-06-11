@@ -4,6 +4,7 @@ The Redis backend (REVOCATION_BACKEND=redis) is exercised only when a Redis
 server is reachable; here we test the default in-memory store's contract:
 revoke → is_revoked, TTL expiry (with lazy prune), and clear.
 """
+
 from __future__ import annotations
 
 import time

@@ -27,6 +27,7 @@ into the orchestrator pipeline — callers import `extract_element_table` /
 CLI:
     python -m backend.ai_engine.element_table
 """
+
 from __future__ import annotations
 
 import re
@@ -35,7 +36,6 @@ import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-
 
 # ---------------------------------------------------------------------------
 # Tunables / heuristics
@@ -51,29 +51,107 @@ _MIN_NUMERAL = 1
 # Words we never want to keep as the *description* — articles, and a handful
 # of structural words that would otherwise leak in as the leading token.
 _EN_STOPWORDS = {
-    "a", "an", "the", "said", "and", "or", "of", "to", "in",
-    "for", "with", "by", "as", "is", "are", "be",
+    "a",
+    "an",
+    "the",
+    "said",
+    "and",
+    "or",
+    "of",
+    "to",
+    "in",
+    "for",
+    "with",
+    "by",
+    "as",
+    "is",
+    "are",
+    "be",
     # prepositions / connectives that can lead the captured window but are
     # never part of the element name itself ("mounted on the substrate 10").
-    "on", "at", "from", "into", "onto", "upon", "through", "between",
-    "over", "under", "within", "about", "via", "per", "that", "which",
-    "wherein", "whereby",
+    "on",
+    "at",
+    "from",
+    "into",
+    "onto",
+    "upon",
+    "through",
+    "between",
+    "over",
+    "under",
+    "within",
+    "about",
+    "via",
+    "per",
+    "that",
+    "which",
+    "wherein",
+    "whereby",
     # spec verbs / connectives that lead a captured window but aren't the name
-    "comprising", "comprises", "comprise", "including", "includes", "include",
-    "having", "has", "have", "defining", "defines", "define", "disposed",
-    "mounted", "provided", "arranged", "formed", "coupled", "connected",
-    "thereon", "thereof", "therein", "thereto",
+    "comprising",
+    "comprises",
+    "comprise",
+    "including",
+    "includes",
+    "include",
+    "having",
+    "has",
+    "have",
+    "defining",
+    "defines",
+    "define",
+    "disposed",
+    "mounted",
+    "provided",
+    "arranged",
+    "formed",
+    "coupled",
+    "connected",
+    "thereon",
+    "thereof",
+    "therein",
+    "thereto",
 }
 
 # Tokens that, when they *precede* a number, mark it as NOT a reference
 # numeral (claim/section/figure/paragraph/citation references, money, etc.).
 # Matched case-insensitively against the word immediately before the number.
 _EN_BLOCKLIST_PREV = {
-    "claim", "claims", "fig", "figs", "figure", "figures", "page", "pages",
-    "paragraph", "paragraphs", "para", "section", "sections", "step", "steps",
-    "no", "no.", "u.s.c", "usc", "§", "chapter", "item", "example", "table",
-    "embodiment", "column", "col", "line", "lines", "row", "rows",
-    "version", "part", "vol", "volume",
+    "claim",
+    "claims",
+    "fig",
+    "figs",
+    "figure",
+    "figures",
+    "page",
+    "pages",
+    "paragraph",
+    "paragraphs",
+    "para",
+    "section",
+    "sections",
+    "step",
+    "steps",
+    "no",
+    "no.",
+    "u.s.c",
+    "usc",
+    "§",
+    "chapter",
+    "item",
+    "example",
+    "table",
+    "embodiment",
+    "column",
+    "col",
+    "line",
+    "lines",
+    "row",
+    "rows",
+    "version",
+    "part",
+    "vol",
+    "volume",
 }
 
 # Subset of the above that is NEVER a legitimate element head noun.  Used to
@@ -81,16 +159,52 @@ _EN_BLOCKLIST_PREV = {
 # ("claim 1", "Fig 3").  Deliberately excludes "section/column/line/part/
 # row/table/item" which routinely appear as element names in specs.
 _STRUCTURAL_HEADWORDS = {
-    "claim", "claims", "fig", "figs", "figure", "figures", "page", "pages",
-    "paragraph", "paragraphs", "para", "step", "steps", "no", "u.s.c", "usc",
-    "chapter", "embodiment",
+    "claim",
+    "claims",
+    "fig",
+    "figs",
+    "figure",
+    "figures",
+    "page",
+    "pages",
+    "paragraph",
+    "paragraphs",
+    "para",
+    "step",
+    "steps",
+    "no",
+    "u.s.c",
+    "usc",
+    "chapter",
+    "embodiment",
 }
 
 # Chinese counterpart of the above — when one of these characters/words
 # directly precedes the number, it is a structural reference, not an element.
 _ZH_BLOCKLIST_PREV = {
-    "請求項", "圖", "第", "頁", "段", "節", "步驟", "項", "條", "款", "例",
-    "表", "欄", "列", "行", "卷", "冊", "章", "民國", "年", "月", "日", "號",
+    "請求項",
+    "圖",
+    "第",
+    "頁",
+    "段",
+    "節",
+    "步驟",
+    "項",
+    "條",
+    "款",
+    "例",
+    "表",
+    "欄",
+    "列",
+    "行",
+    "卷",
+    "冊",
+    "章",
+    "民國",
+    "年",
+    "月",
+    "日",
+    "號",
 }
 
 # Chinese measure words / units that, when they FOLLOW the number, mark it as
@@ -99,10 +213,53 @@ _ZH_BLOCKLIST_PREV = {
 # (In a spec, "基板 10" is followed by punctuation/space/another noun, not by
 # one of these unit characters.)
 _ZH_BLOCKLIST_NEXT = {
-    "段", "節", "頁", "項", "條", "款", "章", "卷", "冊", "號", "樓", "室",
-    "年", "月", "日", "時", "分", "秒", "個", "份", "件", "次", "種", "類",
-    "千", "萬", "億", "元", "角", "分", "度", "級", "層", "排", "組", "步",
-    "名", "位", "人", "家", "間", "棟", "台", "輛", "張", "片", "枚", "顆",
+    "段",
+    "節",
+    "頁",
+    "項",
+    "條",
+    "款",
+    "章",
+    "卷",
+    "冊",
+    "號",
+    "樓",
+    "室",
+    "年",
+    "月",
+    "日",
+    "時",
+    "分",
+    "秒",
+    "個",
+    "份",
+    "件",
+    "次",
+    "種",
+    "類",
+    "千",
+    "萬",
+    "億",
+    "元",
+    "角",
+    "度",
+    "級",
+    "層",
+    "排",
+    "組",
+    "步",
+    "名",
+    "位",
+    "人",
+    "家",
+    "間",
+    "棟",
+    "台",
+    "輛",
+    "張",
+    "片",
+    "枚",
+    "顆",
 }
 
 # A bare 4-digit number in the plausible-year range is almost always a year,
@@ -115,9 +272,11 @@ _YEAR_LO, _YEAR_HI = 1900, 2099
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ElementMention:
     """One occurrence of a numeral with its candidate description phrase."""
+
     numeral: int
     phrase: str
     raw_context: str = ""
@@ -126,6 +285,7 @@ class ElementMention:
 @dataclass
 class Element:
     """Aggregated view of one reference numeral across the whole document."""
+
     numeral: int
     description: str
     mention_count: int = 0
@@ -175,7 +335,7 @@ def _en_prev_word(text: str, start: int) -> str:
     this is O(1) per call rather than O(start) — critical on large documents
     where thousands of matches would otherwise make extraction quadratic.
     """
-    left = text[max(0, start - _NEIGHBOUR_WINDOW):start].rstrip()
+    left = text[max(0, start - _NEIGHBOUR_WINDOW) : start].rstrip()
     m = re.search(r"([A-Za-z§\.]+)$", left)
     return m.group(1).lower() if m else ""
 
@@ -224,21 +384,20 @@ def _en_next_word(text: str, end: int) -> str:
     Slices only a bounded window after `end` (see `_NEIGHBOUR_WINDOW`) so this
     is O(1) per call — see `_en_prev_word` for the quadratic-blowup rationale.
     """
-    right = text[end:end + _NEIGHBOUR_WINDOW].lstrip()
+    right = text[end : end + _NEIGHBOUR_WINDOW].lstrip()
     m = re.match(r"([A-Za-z\.]+)", right)
     return m.group(1).lower().strip(".") if m else ""
 
 
 def _looks_like_year(text: str, m: re.Match) -> bool:
     """True if a 4-digit number sits in an obvious date/citation context."""
-    window = text[max(0, m.start() - 12):m.end() + 4].lower()
+    window = text[max(0, m.start() - 12) : m.end() + 4].lower()
     # "in 1999", "© 2020", "(2018)", month names, "20xx-" date fragments.
     if re.search(r"(?:in|since|©|\(|year)\s*\d{4}", window):
         return True
     if re.search(r"\b\d{4}[-/]\d", window):  # 2025-04, 2025/04
         return True
-    months = ("jan", "feb", "mar", "apr", "may", "jun",
-              "jul", "aug", "sep", "oct", "nov", "dec")
+    months = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
     if any(mon in window for mon in months):
         return True
     return False
@@ -250,9 +409,7 @@ def _looks_like_year(text: str, m: re.Match) -> bool:
 
 # A run of CJK chars (the element name) optionally separated by a space from a
 # 1-4 digit number.  After NFKC the digits are halfwidth.
-_ZH_PHRASE = re.compile(
-    r"(?P<phrase>[一-鿿]{1,8})\s*(?P<num>\d{1,4})\b"
-)
+_ZH_PHRASE = re.compile(r"(?P<phrase>[一-鿿]{1,8})\s*(?P<num>\d{1,4})\b")
 
 # Leading Chinese connectives / particles that get greedily swept into the
 # captured phrase but are not part of the element name — strip from the front.
@@ -287,12 +444,12 @@ def _extract_zh(text: str) -> list[ElementMention]:
         # Blocklist (following): a measure word / unit right after the number
         # (skipping intervening whitespace) marks a quantity / address / date,
         # not a drawing numeral — "2 段", "185 號", "3 樓", "1 千元", "10 項".
-        tail = text[m.end():m.end() + 4].lstrip()
+        tail = text[m.end() : m.end() + 4].lstrip()
         if tail and tail[0] in _ZH_BLOCKLIST_NEXT:
             continue
         # Year-ish: a 4-digit Gregorian year in a date context.
         if _YEAR_LO <= num <= _YEAR_HI:
-            window = text[max(0, m.start() - 6):m.end() + 2]
+            window = text[max(0, m.start() - 6) : m.end() + 2]
             if "年" in window or "民國" in window or re.search(r"\d{4}[-/]\d", window):
                 continue
         mentions.append(ElementMention(num, phrase, m.group(0).strip()))
@@ -302,6 +459,7 @@ def _extract_zh(text: str) -> list[ElementMention]:
 # ---------------------------------------------------------------------------
 # Aggregation + public API
 # ---------------------------------------------------------------------------
+
 
 def _aggregate(mentions: list[ElementMention]) -> dict[int, Element]:
     """Collapse mentions to one Element per numeral.
@@ -359,10 +517,7 @@ def extract_element_table(text: str, jurisdiction: str = "US") -> dict[int, str]
     This is the headline entry point.  See `extract_elements` for the
     richer per-numeral view (mention counts, candidate phrases).
     """
-    return {
-        num: el.description
-        for num, el in extract_elements(text, jurisdiction).items()
-    }
+    return {num: el.description for num, el in extract_elements(text, jurisdiction).items()}
 
 
 # ---------------------------------------------------------------------------
@@ -377,9 +532,9 @@ def _tokens(phrase: str) -> set[str]:
     toks: set[str] = set()
     for chunk in _TOKEN_RE.findall(phrase.lower()):
         if re.search(r"[一-鿿]", chunk):
-            toks.update(chunk)          # per-character for CJK
+            toks.update(chunk)  # per-character for CJK
         else:
-            toks.add(chunk)             # whole word for latin
+            toks.add(chunk)  # whole word for latin
     # Drop pure stopwords from the comparison set.
     return {t for t in toks if t not in _EN_STOPWORDS}
 
@@ -449,12 +604,13 @@ def _as_str_table(table: dict) -> dict[int, str]:
 # CLI — mirrors `python -m backend.ai_engine.deadline`
 # ---------------------------------------------------------------------------
 
+
 def _print_table(label: str, path: Path, jurisdiction: str) -> dict[int, str]:
     print("=" * 64)
     print(f"{label}  ({path})")
     print("=" * 64)
     if not path.exists():
-        print(f"  (sample not found — skipped)")
+        print("  (sample not found — skipped)")
         return {}
     text = path.read_text(encoding="utf-8")
     elements = extract_elements(text, jurisdiction)
@@ -462,7 +618,7 @@ def _print_table(label: str, path: Path, jurisdiction: str) -> dict[int, str]:
         print("  (no reference numerals found)")
         return {}
     print(f"  {'numeral':>8}  {'cnt':>3}  description")
-    print(f"  {'-'*8}  {'-'*3}  {'-'*32}")
+    print(f"  {'-' * 8}  {'-' * 3}  {'-' * 32}")
     for num in sorted(elements):
         el = elements[num]
         print(f"  {num:>8}  {el.mention_count:>3}  {el.description}")
@@ -494,7 +650,7 @@ def _print_dict_table(label: str, elements: dict[int, Element]) -> None:
         print("  (no reference numerals found)")
         return
     print(f"  {'numeral':>8}  {'cnt':>3}  description")
-    print(f"  {'-'*8}  {'-'*3}  {'-'*32}")
+    print(f"  {'-' * 8}  {'-' * 3}  {'-' * 32}")
     for num in sorted(elements):
         el = elements[num]
         print(f"  {num:>8}  {el.mention_count:>3}  {el.description}")
@@ -529,9 +685,11 @@ def _main() -> None:
     if not pairs:
         print("  (no correspondences above threshold)")
     for p in pairs:
-        print(f"  app {p['app_numeral']:>4} ({p['app_description']!r})"
-              f"  <->  cited {p['cited_numeral']:>4} ({p['cited_description']!r})"
-              f"   score={p['score']}")
+        print(
+            f"  app {p['app_numeral']:>4} ({p['app_description']!r})"
+            f"  <->  cited {p['cited_numeral']:>4} ({p['cited_description']!r})"
+            f"   score={p['score']}"
+        )
 
 
 if __name__ == "__main__":

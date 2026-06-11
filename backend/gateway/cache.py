@@ -8,19 +8,18 @@ Key invariants:
 
 POC: in-memory dict with TTL.  Production: Redis with EVAL atomic ops.
 """
+
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from backend.shared.config import settings
-
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +101,7 @@ class _MemoryCache:
                 return _SHARED_BUCKET
         return _SHARED_BUCKET
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         with self._lock:
             e = self._data.get(key)
             if e is None:
@@ -112,7 +111,7 @@ class _MemoryCache:
                 return None
             return e.value
 
-    def set(self, key: str, value: Any, ttl_sec: int = 0, tenant: Optional[str] = None):
+    def set(self, key: str, value: Any, ttl_sec: int = 0, tenant: str | None = None):
         """Insert (or overwrite) a cache entry.
 
         ``tenant`` is optional for backwards compatibility — when omitted
@@ -153,8 +152,10 @@ class _MemoryCache:
                     evicted = self._data.pop(oldest_key, None)
                     if evicted is not None:
                         logger.debug(
-                            "cache: evicted oldest entry for tenant=%s "
-                            "(cap=%d) key=%s", bucket, cap, oldest_key,
+                            "cache: evicted oldest entry for tenant=%s (cap=%d) key=%s",
+                            bucket,
+                            cap,
+                            oldest_key,
                         )
 
     def _delete_locked(self, key: str) -> None:
@@ -179,8 +180,7 @@ class _MemoryCache:
                 # synthetic key so the dashboard can render it labelled
                 # "shared (embeddings)".
                 "per_tenant": {
-                    tenant: len(order)
-                    for tenant, order in self._per_tenant_order.items()
+                    tenant: len(order) for tenant, order in self._per_tenant_order.items()
                 },
                 "max_per_tenant": settings.MAX_CACHE_ENTRIES_PER_TENANT,
             }
@@ -214,11 +214,12 @@ def _hash_key(parts: list[str]) -> str:
 
 # --- Public API ---
 
+
 def response_cache_key(tenant_id: str, user_id: str, case_id: str, prompt_hash: str) -> str:
     return "resp:" + _hash_key([tenant_id, user_id, case_id, prompt_hash])
 
 
-def get_response(tenant_id: str, user_id: str, case_id: str, prompt_hash: str) -> Optional[Any]:
+def get_response(tenant_id: str, user_id: str, case_id: str, prompt_hash: str) -> Any | None:
     return _cache.get(response_cache_key(tenant_id, user_id, case_id, prompt_hash))
 
 
@@ -247,7 +248,7 @@ def embedding_cache_key(text: str, tenant_id: str = "") -> str:
     return "emb:" + h
 
 
-def get_embedding(text: str, tenant_id: str = "") -> Optional[list[float]]:
+def get_embedding(text: str, tenant_id: str = "") -> list[float] | None:
     return _cache.get(embedding_cache_key(text, tenant_id))
 
 
@@ -264,7 +265,7 @@ def retrieval_cache_key(tenant_id: str, query_hash: str) -> str:
     return "ret:" + _hash_key([tenant_id, query_hash])
 
 
-def get_retrieval(tenant_id: str, query: str) -> Optional[Any]:
+def get_retrieval(tenant_id: str, query: str) -> Any | None:
     qh = hashlib.sha256(query.encode()).hexdigest()
     return _cache.get(retrieval_cache_key(tenant_id, qh))
 
@@ -279,7 +280,7 @@ def set_retrieval(tenant_id: str, query: str, results: Any):
     )
 
 
-def _safe_set(key: str, value: Any, ttl_sec: int = 0, tenant: Optional[str] = None) -> None:
+def _safe_set(key: str, value: Any, ttl_sec: int = 0, tenant: str | None = None) -> None:
     """Backend-agnostic set helper.
 
     The in-memory backend gained a ``tenant`` kwarg for the M-8 per-tenant
@@ -314,9 +315,7 @@ def hash_prompt(prompt: str, model: str, redaction_version: str = "v1") -> str:
     compatibility with any caller still passing two args. The orchestrator
     passes ``settings.REDACTION_VERSION`` explicitly.
     """
-    return hashlib.sha256(
-        f"{model}|{redaction_version}|{prompt}".encode()
-    ).hexdigest()
+    return hashlib.sha256(f"{model}|{redaction_version}|{prompt}".encode()).hexdigest()
 
 
 def stats() -> dict:

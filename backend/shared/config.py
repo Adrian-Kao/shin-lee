@@ -2,12 +2,14 @@
 
 各設定後面標 (Qxx) 對應 docs/DECISIONS.md
 """
+
 from __future__ import annotations
 
 import ipaddress
 import os
+from collections.abc import Iterable
 from pathlib import Path
-from typing import FrozenSet, Iterable, Union
+from typing import Union
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = ROOT / "data"
@@ -41,7 +43,7 @@ _IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 
 def _parse_trusted_ips(
     raw: Union[str, Iterable[str]],
-) -> FrozenSet[_IPAddress]:
+) -> frozenset[_IPAddress]:
     """Parse TRUSTED_UPSTREAM_IPS into a set of ``ipaddress.IPv*Address``
     objects.
 
@@ -102,16 +104,16 @@ class Settings:
     MAGIC_LINK_TTL_MIN: int = int(os.getenv("MAGIC_LINK_TTL_MIN", "15"))
 
     # Rate limit / Quota (Q18 全套)
-    DEFAULT_RPM: int = 30                   # per-user request/minute
+    DEFAULT_RPM: int = 30  # per-user request/minute
     # Day 8 post-review (Chunk A/B Important #1): login is pre-auth so
     # /v1/auth/login can't use DEFAULT_RPM (no user_id yet). Key on client
     # IP, stricter cap — brute-forcing demo-{user_id} passwords needs to
     # be very expensive even when the attacker reaches the gateway.
     LOGIN_RPM: int = int(os.getenv("LOGIN_RPM", "10"))
-    DEFAULT_DAILY_TOKENS: int = 100_000     # per-user daily token quota
-    TENANT_MONTHLY_TOKENS: int = 50_000_000 # per-tenant monthly cap
-    REQUEST_HARD_LIMIT_TOKENS: int = 32_000 # single prompt hard cap
-    COST_CIRCUIT_DAILY_USD: float = 100.0   # 日成本斷路器閾值（POC 用低值方便測）
+    DEFAULT_DAILY_TOKENS: int = 100_000  # per-user daily token quota
+    TENANT_MONTHLY_TOKENS: int = 50_000_000  # per-tenant monthly cap
+    REQUEST_HARD_LIMIT_TOKENS: int = 32_000  # single prompt hard cap
+    COST_CIRCUIT_DAILY_USD: float = 100.0  # 日成本斷路器閾值（POC 用低值方便測）
 
     # LLM router (Q15 多模型 + 機密走地端)
     # Defaults below assume cloud Anthropic SDK (LLM_MODE=anthropic). They are
@@ -121,7 +123,9 @@ class Settings:
     LLM_MODEL_REASONING: str = os.getenv("LLM_MODEL_REASONING", "claude-sonnet-4-6")
     LLM_MODEL_CHEAP: str = os.getenv("LLM_MODEL_CHEAP", "claude-haiku-4-5-20251001")
     LLM_MODEL_LOCAL: str = os.getenv("LLM_MODEL_LOCAL", "llama3.1:8b")
-    LLM_MODEL_VERIFIER: str = os.getenv("LLM_MODEL_VERIFIER", "claude-haiku-4-5-20251001")  # Q14 — MUST differ from REASONING
+    LLM_MODEL_VERIFIER: str = os.getenv(
+        "LLM_MODEL_VERIFIER", "claude-haiku-4-5-20251001"
+    )  # Q14 — MUST differ from REASONING
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
 
     # Ollama / local LLM (MVP)
@@ -161,9 +165,9 @@ class Settings:
     # `redis` makes the logout kill switch durable + fleet-wide, with each jti
     # auto-expiring at the token's own TTL so the set stays bounded.
     REVOCATION_BACKEND: str = os.getenv("REVOCATION_BACKEND", "memory")  # memory | redis
-    CACHE_TTL_RESPONSE_SEC: int = 3600        # LLM response cache 1hr
-    CACHE_TTL_RETRIEVAL_SEC: int = 86400      # retrieval result 24hr
-    CACHE_EMBEDDING_PERMANENT: bool = True    # patent embedding 永久
+    CACHE_TTL_RESPONSE_SEC: int = 3600  # LLM response cache 1hr
+    CACHE_TTL_RETRIEVAL_SEC: int = 86400  # retrieval result 24hr
+    CACHE_EMBEDDING_PERMANENT: bool = True  # patent embedding 永久
 
     # Vector store (Q7)
     VECTOR_BACKEND: str = os.getenv("VECTOR_BACKEND", "memory")  # memory | qdrant
@@ -174,7 +178,11 @@ class Settings:
     # QdrantVectorStore REFUSES by default rather than silently dropping the
     # tenant's index. Set QDRANT_ALLOW_REINDEX=true ONLY for a deliberate,
     # operator-driven re-index where data loss is acceptable.
-    QDRANT_ALLOW_REINDEX: bool = os.getenv("QDRANT_ALLOW_REINDEX", "false").lower() in ("1", "true", "yes")
+    QDRANT_ALLOW_REINDEX: bool = os.getenv("QDRANT_ALLOW_REINDEX", "false").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     # Embedding (Q5/Q7 — POC 預設 mock；切 bge-m3 用 SentenceTransformer)
     EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "mock")  # mock | bge-m3
@@ -332,14 +340,22 @@ class Settings:
     # This turns invariant #3 from a grep-by-convention into a hard,
     # fail-closed technical chokepoint. Kept ON even in mock mode so the demo
     # shows enforcement. Set EGRESS_GUARD_ENABLED=false ONLY for debugging.
-    EGRESS_GUARD_ENABLED: bool = os.getenv("EGRESS_GUARD_ENABLED", "true").lower() in ("1", "true", "yes")
+    EGRESS_GUARD_ENABLED: bool = os.getenv("EGRESS_GUARD_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     # Q11 prompt-injection layer 5 (canary) + layer 3 (output filter). When
     # True, oa_analyzer plants a per-call canary in the hardened system prompt
     # and scans every LLM response for it (and other injection signatures);
     # a hit FAILS CLOSED (InjectionDetected). Kept ON even in mock mode so the
     # demo shows enforcement. Set INJECTION_GUARD_ENABLED=false ONLY for debugging.
-    INJECTION_GUARD_ENABLED: bool = os.getenv("INJECTION_GUARD_ENABLED", "true").lower() in ("1", "true", "yes")
+    INJECTION_GUARD_ENABLED: bool = os.getenv("INJECTION_GUARD_ENABLED", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     # Mapping-table at-rest encryption (Q3/Q10 crown jewel). Master key for
     # the per-tenant HKDF derivation that encrypts the reversible un-redaction
@@ -520,9 +536,7 @@ class Settings:
     # Fraction (0..1) of pages allowed to be OCR'd before the whole document is
     # flagged "likely a scanned document — extraction quality may be degraded".
     # Purely advisory; surfaced in warnings.
-    OCR_SCANNED_DOC_WARN_RATIO: float = float(
-        os.getenv("OCR_SCANNED_DOC_WARN_RATIO", "0.5")
-    )
+    OCR_SCANNED_DOC_WARN_RATIO: float = float(os.getenv("OCR_SCANNED_DOC_WARN_RATIO", "0.5"))
 
 
 settings = Settings()

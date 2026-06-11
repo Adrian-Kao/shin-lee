@@ -12,6 +12,7 @@ The AI Engine (Dify mock) only does **single-step AI inference**.
 No business state lives in Dify.  This makes business logic unit-testable
 and lets us swap AI providers without touching orchestration.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -22,11 +23,10 @@ from typing import Any
 
 import httpx
 
-from backend.gateway import cache, masking
+from backend.gateway import masking
 from backend.gateway.auth import _internal_headers
 from backend.gateway.rate_limit import cost_provenance_for, estimate_cost
 from backend.shared.config import settings
-from backend.shared.observability import request_id_headers
 from backend.shared.models import (
     AnalysisRequest,
     AnalysisResponse,
@@ -36,10 +36,10 @@ from backend.shared.models import (
     DraftResponse,
     OADocument,
     RedactionSummary,
-    Rejection,
     RetrievalHit,
     User,
 )
+from backend.shared.observability import request_id_headers
 
 logger = logging.getLogger("patentmind.gateway.egress")
 
@@ -118,8 +118,7 @@ def _assert_no_raw_pii(path: str, payload: dict) -> None:
         # Never log the offending value itself — that would re-leak the PII
         # into the log sink. Log the rule id + destination path only.
         logger.error(
-            "EGRESS GUARD: unredacted PII pattern %s detected in outbound "
-            "payload to %s",
+            "EGRESS GUARD: unredacted PII pattern %s detected in outbound payload to %s",
             rule_id,
             path,
         )
@@ -203,23 +202,25 @@ async def orchestrate_analysis(
     # retrieval failing must NOT sink the others — a failed retrieval degrades
     # to an empty grounded set for that rejection only.
     retrieve_tasks = [
-        ai.call("/v1/retrieve_prior_art", {
-            "tenant_id": user.tenant_id,
-            "rejection": rej.model_dump(),
-            "target_patent_no": req.target_patent_no,
-            "top_k": 5,
-        })
+        ai.call(
+            "/v1/retrieve_prior_art",
+            {
+                "tenant_id": user.tenant_id,
+                "rejection": rej.model_dump(),
+                "target_patent_no": req.target_patent_no,
+                "top_k": 5,
+            },
+        )
         for rej in oa_doc.rejections
     ]
     retrieval_results = await asyncio.gather(*retrieve_tasks, return_exceptions=True)
 
     all_hits: list[RetrievalHit] = []
     hits_by_rejection: dict[str, list[RetrievalHit]] = {}
-    for rej, ret in zip(oa_doc.rejections, retrieval_results):
+    for rej, ret in zip(oa_doc.rejections, retrieval_results, strict=True):
         if isinstance(ret, BaseException):
             logger.warning(
-                "saga: retrieval failed for rejection %s (%s) — proceeding "
-                "with empty grounded set",
+                "saga: retrieval failed for rejection %s (%s) — proceeding with empty grounded set",
                 rej.rejection_id,
                 ret.__class__.__name__,
             )
@@ -232,16 +233,19 @@ async def orchestrate_analysis(
     # ---- Step 3: per-rejection draft (saga: per-rejection resilient) ----
     # NB: we send the *grounded set* (retrieval hits) so LLM can only cite from there (Q14).
     draft_tasks = [
-        ai.call("/v1/draft_response", {
-            "tenant_id": user.tenant_id,
-            "user_id": user.user_id,
-            "case_id": req.case_id,
-            "rejection": rej.model_dump(),
-            "grounded_set": [h.model_dump() for h in hits_by_rejection[rej.rejection_id]],
-            "user_hint": req.user_hint,
-            "security_level": _security_level_for_case(req.case_id),
-            "circuit_open": circuit_open,
-        })
+        ai.call(
+            "/v1/draft_response",
+            {
+                "tenant_id": user.tenant_id,
+                "user_id": user.user_id,
+                "case_id": req.case_id,
+                "rejection": rej.model_dump(),
+                "grounded_set": [h.model_dump() for h in hits_by_rejection[rej.rejection_id]],
+                "user_hint": req.user_hint,
+                "security_level": _security_level_for_case(req.case_id),
+                "circuit_open": circuit_open,
+            },
+        )
         for rej in oa_doc.rejections
     ]
     draft_results = await asyncio.gather(*draft_tasks, return_exceptions=True)
@@ -251,7 +255,7 @@ async def orchestrate_analysis(
     # so the verify step can skip them (no point verifying a placeholder).
     drafts: list[DraftResponse] = []
     failed_rejection_ids: set[str] = set()
-    for rej, dr in zip(oa_doc.rejections, draft_results):
+    for rej, dr in zip(oa_doc.rejections, draft_results, strict=True):
         if isinstance(dr, BaseException):
             logger.warning(
                 "saga: draft generation failed for rejection %s (%s) — "
@@ -281,14 +285,17 @@ async def orchestrate_analysis(
     # citations and must never reach the verifier (nothing to ground).
     verifiable = [d for d in drafts if d.rejection_id not in failed_rejection_ids]
     verify_tasks = [
-        ai.call("/v1/verify_citations", {
-            "draft": d.model_dump(),
-            "grounded_set": [h.model_dump() for h in hits_by_rejection.get(d.rejection_id, [])],
-        })
+        ai.call(
+            "/v1/verify_citations",
+            {
+                "draft": d.model_dump(),
+                "grounded_set": [h.model_dump() for h in hits_by_rejection.get(d.rejection_id, [])],
+            },
+        )
         for d in verifiable
     ]
     verifications = await asyncio.gather(*verify_tasks, return_exceptions=True)
-    for d, v in zip(verifiable, verifications):
+    for d, v in zip(verifiable, verifications, strict=True):
         if isinstance(v, BaseException):
             # Verifier failed for this rejection. Q14 is a hard wall: an
             # unverified draft must NOT be served with its (unvalidated)
@@ -318,11 +325,14 @@ async def orchestrate_analysis(
         d.confidence = min(d.confidence, v["verifier_confidence"])
 
     # ---- Step 5: deadline (Q17) ----
-    deadline_resp = await ai.call("/v1/deadline", {
-        "received_date_iso": oa_doc.received_date.isoformat(),
-        "jurisdiction": _jurisdiction_for_patent(req.target_patent_no),
-        "calendar_version": settings.HOLIDAY_CALENDAR_VERSION,
-    })
+    deadline_resp = await ai.call(
+        "/v1/deadline",
+        {
+            "received_date_iso": oa_doc.received_date.isoformat(),
+            "jurisdiction": _jurisdiction_for_patent(req.target_patent_no),
+            "calendar_version": settings.HOLIDAY_CALENDAR_VERSION,
+        },
+    )
     deadline = DeadlineInfo(**deadline_resp)
     oa_doc.deadline = deadline.statutory_deadline
 
@@ -332,10 +342,13 @@ async def orchestrate_analysis(
     # indexed, fall back to an empty tree so the front-end renders normally.
     claim_tree_nodes: list[ClaimNode] = []
     try:
-        ct_resp = await ai.call("/v1/claim_tree", {
-            "tenant_id": user.tenant_id,
-            "patent_no": req.target_patent_no,
-        })
+        ct_resp = await ai.call(
+            "/v1/claim_tree",
+            {
+                "tenant_id": user.tenant_id,
+                "patent_no": req.target_patent_no,
+            },
+        )
         claim_tree_nodes = [ClaimNode(**n) for n in ct_resp.get("claim_tree", [])]
     except Exception:
         # Trees are a presentation nicety — never let their absence break
@@ -359,16 +372,13 @@ async def orchestrate_analysis(
     # `.get`, so including it would crash the aggregation.
     all_call_meta = [
         r
-        for r in (
-            [parsed]
-            + list(retrieval_results)
-            + list(draft_results)
-            + list(verifications)
-        )
+        for r in ([parsed] + list(retrieval_results) + list(draft_results) + list(verifications))
         if isinstance(r, dict)
     ]
     total_prompt_tokens = sum(r.get("usage", {}).get("prompt_tokens", 0) for r in all_call_meta)
-    total_completion_tokens = sum(r.get("usage", {}).get("completion_tokens", 0) for r in all_call_meta)
+    total_completion_tokens = sum(
+        r.get("usage", {}).get("completion_tokens", 0) for r in all_call_meta
+    )
 
     estimated_cost = 0.0
     # M-3 fix: track the *weakest* provenance across every call. Order is
@@ -439,10 +449,7 @@ def _degraded_draft(rejection_id: str) -> DraftResponse:
     the attorney treat it as "AI could not help here — draft manually". The
     rest of the analysis (other rejections, deadline, claim tree) is unaffected.
     """
-    note = (
-        "[draft generation failed for this rejection — "
-        "manual attorney drafting required]"
-    )
+    note = "[draft generation failed for this rejection — manual attorney drafting required]"
     return DraftResponse(
         rejection_id=rejection_id,
         strategy=note,

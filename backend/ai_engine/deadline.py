@@ -32,18 +32,19 @@ POC jurisdictions: TW, US, JP, EP, CN, KR (the EP/CN/KR rules are documented
 approximations — see each rule's inline caveat). Anything else stubs out
 (60-day default + warning).
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import threading
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, date, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from typing import Optional
 
-from backend.shared.config import settings, DATA_DIR
+from backend.shared.config import DATA_DIR, settings
 
 logger = logging.getLogger(__name__)
 
@@ -207,9 +208,7 @@ def _calendar_path(jurisdiction: str, version: str) -> Path:
     return CALENDARS_DIR / f"{jurisdiction}_{version}.json"
 
 
-def _parse_calendar_doc(
-    jurisdiction: str, version: str, doc: object
-) -> Optional[dict[date, str]]:
+def _parse_calendar_doc(jurisdiction: str, version: str, doc: object) -> dict[date, str] | None:
     """Validate + parse a loaded calendar JSON document into {date: name}.
 
     Returns None (caller falls back) on any structural problem. A single bad
@@ -217,7 +216,8 @@ def _parse_calendar_doc(
     if not isinstance(doc, dict):
         logger.warning(
             "calendar %s_%s: top-level JSON is not an object; ignoring file.",
-            jurisdiction, version,
+            jurisdiction,
+            version,
         )
         return None
     # Soft-validate the self-describing fields (don't hard-fail on mismatch,
@@ -225,18 +225,25 @@ def _parse_calendar_doc(
     if doc.get("jurisdiction") not in (None, jurisdiction):
         logger.warning(
             "calendar %s_%s: file declares jurisdiction=%r (filename says %r).",
-            jurisdiction, version, doc.get("jurisdiction"), jurisdiction,
+            jurisdiction,
+            version,
+            doc.get("jurisdiction"),
+            jurisdiction,
         )
     if doc.get("version") not in (None, version):
         logger.warning(
             "calendar %s_%s: file declares version=%r (filename says %r).",
-            jurisdiction, version, doc.get("version"), version,
+            jurisdiction,
+            version,
+            doc.get("version"),
+            version,
         )
     raw = doc.get("holidays")
     if not isinstance(raw, dict):
         logger.warning(
             "calendar %s_%s: 'holidays' is not an object; ignoring file.",
-            jurisdiction, version,
+            jurisdiction,
+            version,
         )
         return None
     out: dict[date, str] = {}
@@ -246,7 +253,9 @@ def _parse_calendar_doc(
         except (TypeError, ValueError):
             logger.warning(
                 "calendar %s_%s: skipping un-parseable date key %r.",
-                jurisdiction, version, k,
+                jurisdiction,
+                version,
+                k,
             )
             continue
         out[d] = str(name)
@@ -265,8 +274,9 @@ def _read_calendar(jurisdiction: str, version: str) -> tuple[dict[date, str], bo
             doc = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             logger.warning(
-                "calendar %s: failed to read/parse (%s); falling back to "
-                "hard-coded calendar.", path, exc,
+                "calendar %s: failed to read/parse (%s); falling back to hard-coded calendar.",
+                path,
+                exc,
             )
         else:
             parsed = _parse_calendar_doc(jurisdiction, version, doc)
@@ -306,7 +316,10 @@ def get_holidays(jurisdiction: str, version: str) -> dict[date, str]:
                 "calendar %s_%s: NO source (no JSON file, no hard-coded "
                 "fallback). Using an EMPTY holiday set — deadline may be wrong. "
                 "Load data/calendars/%s_%s.json before relying on this.",
-                jurisdiction, version, jurisdiction, version,
+                jurisdiction,
+                version,
+                jurisdiction,
+                version,
             )
     return _calendar_cache[key]
 
@@ -319,9 +332,7 @@ def calendar_is_missing(jurisdiction: str, version: str) -> bool:
     return (jurisdiction, version) in _calendar_missing
 
 
-def deadline_year_is_covered(
-    jurisdiction: str, calendar_version: str, deadline_date: date
-) -> bool:
+def deadline_year_is_covered(jurisdiction: str, calendar_version: str, deadline_date: date) -> bool:
     """True iff the loaded calendar covers ``deadline_date``'s year.
 
     Out-of-band query so callers/tests can branch on the year-boundary
@@ -371,8 +382,6 @@ HOLIDAYS = _FALLBACK_HOLIDAYS
 #   Provider swallows NotImplementedError specifically, so a stubbed remote
 #   backend degrades to inert rather than exploding).
 
-from abc import ABC, abstractmethod
-
 
 class HolidayProvider(ABC):
     """A source of versioned holiday calendars, keyed by (jurisdiction, version)."""
@@ -383,7 +392,10 @@ class HolidayProvider(ABC):
         calendar — return ``({}, False)`` instead."""
         raise NotImplementedError
 
-    def reload(self) -> None:  # pragma: no cover - default no-op
+    # Deliberately a concrete no-op, not @abstractmethod: reload is an OPTIONAL
+    # hook — only caching providers need it, and forcing every provider to
+    # implement an empty override would be noise (B027 suppressed by design).
+    def reload(self) -> None:  # noqa: B027  # pragma: no cover - default no-op
         """Drop any provider-internal cache. Overridden by caching providers."""
 
 
@@ -403,7 +415,7 @@ class JsonFileProvider(HolidayProvider):
     owns the calendars and you want a missing/clobbered file to surface loudly
     rather than be papered over by the bundled mirror. Still fully offline."""
 
-    def __init__(self, calendars_dir: Optional[Path] = None):
+    def __init__(self, calendars_dir: Path | None = None):
         self._dir = calendars_dir  # None -> read the live module CALENDARS_DIR
 
     def _path(self, jurisdiction: str, version: str) -> Path:
@@ -466,7 +478,7 @@ class CachingHolidayProvider(HolidayProvider):
     def __init__(
         self,
         inner: HolidayProvider,
-        fallback: Optional[HolidayProvider] = None,
+        fallback: HolidayProvider | None = None,
     ):
         self._inner = inner
         self._fallback = fallback if fallback is not None else StaticBundledProvider()
@@ -486,16 +498,16 @@ class CachingHolidayProvider(HolidayProvider):
             self._cache[key] = result
             return result
 
-    def _resolve_uncached(
-        self, jurisdiction: str, version: str
-    ) -> tuple[dict[date, str], bool]:
+    def _resolve_uncached(self, jurisdiction: str, version: str) -> tuple[dict[date, str], bool]:
         try:
             holidays, found = self._inner.resolve(jurisdiction, version)
         except NotImplementedError:
             logger.warning(
                 "CachingHolidayProvider: inner provider %s is a stub for %s_%s; "
                 "degrading to fallback %s (safe-but-inert).",
-                type(self._inner).__name__, jurisdiction, version,
+                type(self._inner).__name__,
+                jurisdiction,
+                version,
                 type(self._fallback).__name__,
             )
             return self._fallback.resolve(jurisdiction, version)
@@ -503,7 +515,10 @@ class CachingHolidayProvider(HolidayProvider):
             logger.warning(
                 "CachingHolidayProvider: inner provider %s raised for %s_%s (%s); "
                 "degrading to fallback %s.",
-                type(self._inner).__name__, jurisdiction, version, exc,
+                type(self._inner).__name__,
+                jurisdiction,
+                version,
+                exc,
                 type(self._fallback).__name__,
             )
             return self._fallback.resolve(jurisdiction, version)
@@ -530,9 +545,7 @@ def _build_provider_for_source(source: str) -> HolidayProvider:
         return CachingHolidayProvider(JsonFileProvider())
     if src == "remote":
         # Remote inner, bundled fallback -> safe-but-inert until the stub lands.
-        return CachingHolidayProvider(
-            RemoteHolidayProvider(), fallback=StaticBundledProvider()
-        )
+        return CachingHolidayProvider(RemoteHolidayProvider(), fallback=StaticBundledProvider())
     # default / "bundled"
     return CachingHolidayProvider(StaticBundledProvider())
 
@@ -589,16 +602,14 @@ def reload_calendars() -> None:  # type: ignore[no-redef]
 def observed_us(holiday: date) -> date:
     """US OPM in-lieu-of rule: a holiday on Saturday is observed the preceding
     Friday; on Sunday, the following Monday. Weekday holidays are unchanged."""
-    if holiday.weekday() == 5:      # Saturday -> Friday
+    if holiday.weekday() == 5:  # Saturday -> Friday
         return holiday - timedelta(days=1)
-    if holiday.weekday() == 6:      # Sunday -> Monday
+    if holiday.weekday() == 6:  # Sunday -> Monday
         return holiday + timedelta(days=1)
     return holiday
 
 
-def observed_substitute_next_weekday(
-    holiday: date, existing: set[date]
-) -> date:
+def observed_substitute_next_weekday(holiday: date, existing: set[date]) -> date:
     """JP 振替休日 / KR 대체공휴일 style: if ``holiday`` falls on a Sunday (or on a day
     already in ``existing``, i.e. overlapping another holiday), the substitute is
     the next day that is neither a weekend nor already a holiday. Returns the
@@ -684,28 +695,29 @@ def calculate_deadline_strict(
 
 # ---------- Rule specs ----------
 
+
 @dataclass(frozen=True)
 class JurisdictionRule:
     name: str
-    response_days: int           # statutory days from start_date
+    response_days: int  # statutory days from start_date
     excludes_weekends: bool
     excludes_holidays: bool
     timezone_name: str
-    extension_days: Optional[int]  # e.g. US +3 month; TW one-off extension
+    extension_days: int | None  # e.g. US +3 month; TW one-off extension
 
 
 RULES: dict[str, JurisdictionRule] = {
     "TW": JurisdictionRule(
         name="台灣 TIPO 答辯期間",
-        response_days=60,             # 兩個月（簡化）
-        excludes_weekends=False,      # 週末算入；只有最後一日為假日才順延
+        response_days=60,  # 兩個月（簡化）
+        excludes_weekends=False,  # 週末算入；只有最後一日為假日才順延
         excludes_holidays=False,
         timezone_name="Asia/Taipei",
         extension_days=30,
     ),
     "US": JurisdictionRule(
         name="USPTO Office Action shortened response",
-        response_days=90,             # 3 months shortened
+        response_days=90,  # 3 months shortened
         excludes_weekends=False,
         excludes_holidays=False,
         timezone_name="America/New_York",
@@ -747,11 +759,11 @@ RULES: dict[str, JurisdictionRule] = {
     # confirmed with an EP attorney before production use.
     "EP": JurisdictionRule(
         name="EPO Art. 94(3) examination response (POC approximation)",
-        response_days=120,            # ~4 months, simplified to fixed days
+        response_days=120,  # ~4 months, simplified to fixed days
         excludes_weekends=False,
         excludes_holidays=False,
         timezone_name="Europe/Berlin",  # canonical IANA zone for Munich
-        extension_days=60,            # further processing / extension, approx.
+        extension_days=60,  # further processing / extension, approx.
     ),
     # CN (CNIPA) — POC APPROXIMATION, pending attorney confirmation.
     # Basis: a response to the first Office Action (审查意见通知书) is due ~4
@@ -768,7 +780,7 @@ RULES: dict[str, JurisdictionRule] = {
     #   receipt date. Confirm with a CN attorney before production use.
     "CN": JurisdictionRule(
         name="CNIPA 审查意见通知书 答复期限 (POC approximation)",
-        response_days=120,            # ~4 months from 发文日, simplified
+        response_days=120,  # ~4 months from 发文日, simplified
         excludes_weekends=False,
         excludes_holidays=False,
         timezone_name="Asia/Shanghai",
@@ -784,7 +796,7 @@ RULES: dict[str, JurisdictionRule] = {
     #   are simplified; confirm with a KR attorney before production use.
     "KR": JurisdictionRule(
         name="KIPO 의견제출통지서 응답기간 (POC approximation)",
-        response_days=60,             # ~2 months, extendable
+        response_days=60,  # ~2 months, extendable
         excludes_weekends=False,
         excludes_holidays=False,
         timezone_name="Asia/Seoul",
@@ -864,8 +876,7 @@ def calculate_deadline(
     # itself crosses the boundary — e.g. JP 12/31 rolling onto 1/1.)
     loaded_years = {h.year for h in holidays}
     deadline_year_covered = (
-        raw_deadline_date.year in loaded_years
-        and final_deadline_date.year in loaded_years
+        raw_deadline_date.year in loaded_years and final_deadline_date.year in loaded_years
     )
 
     # Recommended internal deadline = ~7 days earlier. Roll BACKWARD to the
@@ -894,9 +905,7 @@ def calculate_deadline(
     elif not deadline_year_covered:
         # Deadline lands in / rolled into a year the loaded calendar doesn't
         # cover. Name the uncovered year(s) explicitly.
-        uncovered = sorted(
-            {raw_deadline_date.year, final_deadline_date.year} - loaded_years
-        )
+        uncovered = sorted({raw_deadline_date.year, final_deadline_date.year} - loaded_years)
         years_str = ", ".join(str(y) for y in uncovered)
         warnings.append(
             f"⚠️  Statutory deadline involves year(s) {years_str}, but the loaded "
@@ -932,39 +941,40 @@ def calculate_deadline(
 
 # ---------- Self-tests (run with: python -m backend.ai_engine.deadline) ----------
 
+
 def _self_test():
     """Run common edge cases.  Production replaces with pytest."""
     # Case 1: TW received 2025-01-15 → statutory 60 days → 2025-03-16 → Sunday → roll to 2025-03-17
-    r = calculate_deadline(datetime(2025, 1, 15, 9, 0, tzinfo=timezone.utc), "TW", "2025.1")
+    r = calculate_deadline(datetime(2025, 1, 15, 9, 0, tzinfo=UTC), "TW", "2025.1")
     assert r["statutory_deadline"].startswith("2025-03-17"), r["statutory_deadline"]
 
     # Case 2: TW received 2024-12-01 → 60 days → 2025-01-30 → 春節 → roll to next biz day
-    r = calculate_deadline(datetime(2024, 12, 1, 9, 0, tzinfo=timezone.utc), "TW", "2025.1")
+    r = calculate_deadline(datetime(2024, 12, 1, 9, 0, tzinfo=UTC), "TW", "2025.1")
     assert "2025-02" in r["statutory_deadline"], r["statutory_deadline"]
 
     # Case 3: US received 2025-04-01 → 90 days → 2025-06-30 → biz day → keep
-    r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=timezone.utc), "US", "2025.1")
+    r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=UTC), "US", "2025.1")
     assert r["statutory_deadline"].startswith("2025-06-30"), r["statutory_deadline"]
 
     # Case 4: jurisdiction stub (still works for anything not in RULES)
-    r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=timezone.utc), "DE", "2025.1")
+    r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=UTC), "DE", "2025.1")
     assert any("not yet implemented" in w for w in r["warnings"])
 
     # Case 5: CN — +120 days lands on the 国庆 golden week; must roll past it
     # and land on a business day, in +08:00 (Asia/Shanghai).
-    r = calculate_deadline(datetime(2025, 6, 9, 9, 0, tzinfo=timezone.utc), "CN", "2025.1")
+    r = calculate_deadline(datetime(2025, 6, 9, 9, 0, tzinfo=UTC), "CN", "2025.1")
     assert r["statutory_deadline"].endswith("+08:00"), r["statutory_deadline"]
     cn_sd = date.fromisoformat(r["statutory_deadline"][:10])
     assert cn_sd.weekday() < 5 and cn_sd not in get_holidays("CN", "2025.1"), cn_sd
 
     # Case 6: KR — +60 days, Asia/Seoul (+09:00), rolls off weekends/holidays.
-    r = calculate_deadline(datetime(2025, 8, 1, 9, 0, tzinfo=timezone.utc), "KR", "2025.1")
+    r = calculate_deadline(datetime(2025, 8, 1, 9, 0, tzinfo=UTC), "KR", "2025.1")
     assert r["statutory_deadline"].endswith("+09:00"), r["statutory_deadline"]
     kr_sd = date.fromisoformat(r["statutory_deadline"][:10])
     assert kr_sd.weekday() < 5 and kr_sd not in get_holidays("KR", "2025.1"), kr_sd
 
     # Case 7: EP — +120 days, Europe/Munich; business day.
-    r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=timezone.utc), "EP", "2025.1")
+    r = calculate_deadline(datetime(2025, 4, 1, 9, 0, tzinfo=UTC), "EP", "2025.1")
     ep_sd = date.fromisoformat(r["statutory_deadline"][:10])
     assert ep_sd.weekday() < 5 and ep_sd not in get_holidays("EP", "2025.1"), ep_sd
 

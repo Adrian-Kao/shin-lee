@@ -20,12 +20,11 @@ To simulate a *determined* attacker who first drops the triggers (or a SQLite
 file edited offline), we drop the trigger then mutate via raw SQL — exactly the
 post-compromise state the verifier exists to catch.
 """
+
 from __future__ import annotations
 
 import sqlite3
 import uuid
-
-import pytest
 
 from backend.gateway.audit import AuditWriter
 from backend.shared.models import User, UserRole
@@ -178,12 +177,8 @@ def test_verify_chain_detects_reordered_rows(tmp_path):
     ids = _seed(w, "tenant_a", 4)
     conn = _drop_triggers(tmp_path / "audit.db")
     # Fetch current rowids for rows 1 and 2 (0-indexed: ids[1], ids[2]).
-    rid1 = conn.execute(
-        "SELECT rowid FROM audit WHERE audit_id = ?", (ids[1],)
-    ).fetchone()[0]
-    rid2 = conn.execute(
-        "SELECT rowid FROM audit WHERE audit_id = ?", (ids[2],)
-    ).fetchone()[0]
+    rid1 = conn.execute("SELECT rowid FROM audit WHERE audit_id = ?", (ids[1],)).fetchone()[0]
+    rid2 = conn.execute("SELECT rowid FROM audit WHERE audit_id = ?", (ids[2],)).fetchone()[0]
     # Swap them via a temp parking rowid (rowids must stay unique).
     park = 10_000_000
     conn.execute("UPDATE audit SET rowid = ? WHERE audit_id = ?", (park, ids[1]))
@@ -201,12 +196,10 @@ def test_verify_chain_detects_reordered_rows(tmp_path):
 def test_verify_chain_is_tenant_scoped(tmp_path):
     """A tamper in tenant_b must NOT show up in tenant_a's per-tenant verify."""
     w = _writer(tmp_path)
-    a_ids = _seed(w, "tenant_a", 3)
+    _seed(w, "tenant_a", 3)
     b_ids = _seed(w, "tenant_b", 3)
     conn = _drop_triggers(tmp_path / "audit.db")
-    conn.execute(
-        "UPDATE audit SET row_hash = ? WHERE audit_id = ?", ("00" * 32, b_ids[1])
-    )
+    conn.execute("UPDATE audit SET row_hash = ? WHERE audit_id = ?", ("00" * 32, b_ids[1]))
     conn.commit()
     conn.close()
 
@@ -251,9 +244,9 @@ def test_cross_tenant_flags_tenant_chain_break(tmp_path):
     result = w.verify_cross_tenant(["tenant_a", "tenant_b"])
     assert result["ok"] is False
     breaks = [a for a in result["anomalies"] if a["type"] == "tenant_chain_break"]
-    assert any(
-        a["tenant_id"] == "tenant_b" and a["audit_id"] == b_ids[1] for a in breaks
-    ), result["anomalies"]
+    assert any(a["tenant_id"] == "tenant_b" and a["audit_id"] == b_ids[1] for a in breaks), result[
+        "anomalies"
+    ]
 
 
 def test_cross_tenant_flags_hash_collision_across_tenants(tmp_path):
@@ -280,20 +273,30 @@ def test_cross_tenant_flags_hash_collision_across_tenants(tmp_path):
         " policy_decisions, prev_row_hash, row_hash"
         ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
-            str(uuid.uuid4()), "2026-06-04T00:00:00+00:00", "2026-06-04T08:00:00",
-            "u_tenant_b", "tenant_b", "CASE-COLLIDE",
-            "/x", "", "", "[]", "mock", 0, 0, 0,
-            '{"authn_passed": true}', "", stolen_hash,
+            str(uuid.uuid4()),
+            "2026-06-04T00:00:00+00:00",
+            "2026-06-04T08:00:00",
+            "u_tenant_b",
+            "tenant_b",
+            "CASE-COLLIDE",
+            "/x",
+            "",
+            "",
+            "[]",
+            "mock",
+            0,
+            0,
+            0,
+            '{"authn_passed": true}',
+            "",
+            stolen_hash,
         ),
     )
     conn.commit()
     conn.close()
 
     result = w.verify_cross_tenant(["tenant_a", "tenant_b"])
-    collisions = [
-        a for a in result["anomalies"]
-        if a["type"] == "cross_tenant_hash_collision"
-    ]
+    collisions = [a for a in result["anomalies"] if a["type"] == "cross_tenant_hash_collision"]
     assert collisions, result["anomalies"]
     assert set(collisions[0]["tenants"]) == {"tenant_a", "tenant_b"}
 
@@ -323,6 +326,5 @@ def test_cross_tenant_none_verifies_all_present(tmp_path):
     assert set(result["tenants_verified"]) == {"tenant_a", "tenant_b"}
     assert result["ok"] is True, result["anomalies"]
     assert not any(
-        a["type"] in ("unexpected_tenant", "missing_tenant")
-        for a in result["anomalies"]
+        a["type"] in ("unexpected_tenant", "missing_tenant") for a in result["anomalies"]
     )

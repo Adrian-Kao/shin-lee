@@ -21,6 +21,7 @@ Selection is purely via the env var EMBEDDING_BACKEND=lexical (settings reads it
 as a free-form str), so these tests monkeypatch ``settings.EMBEDDING_BACKEND``
 and rebuild the rag module singletons (the reset idiom the other rag tests use).
 """
+
 from __future__ import annotations
 
 import numpy as np
@@ -229,8 +230,10 @@ def test_retrieval_ranks_overlapping_patent_first(lexical_rag):
         "Microchannel cooling system for electric vehicle battery",
         "A cooling system with microchannels of non-uniform cross-section to "
         "induce turbulent coolant flow in an electric vehicle battery pack.",
-        ["A cooling system comprising a base plate having a plurality of "
-         "microchannels with non-uniform cross-section and a coolant manifold."],
+        [
+            "A cooling system comprising a base plate having a plurality of "
+            "microchannels with non-uniform cross-section and a coolant manifold."
+        ],
     )
     p_heat = _patent(
         "US-HEAT",
@@ -244,8 +247,10 @@ def test_retrieval_ranks_overlapping_patent_first(lexical_rag):
         "Wireless charging coil alignment system",
         "A wireless charging system with active coil alignment and a position "
         "sensor for misalignment tolerance.",
-        ["A wireless charging system comprising a transmitting coil array and a "
-         "position sensor and a controller."],
+        [
+            "A wireless charging system comprising a transmitting coil array and a "
+            "position sensor and a controller."
+        ],
     )
 
     lexical_rag.index_patent(tenant, p_micro)
@@ -269,8 +274,10 @@ def test_retrieval_ranks_overlapping_patent_first_cjk(lexical_rag):
         "電動車充電站之充電管理方法及系統",
         "一種電動車充電站之充電管理方法，伺服器執行能源管理方案以對充電場域中之"
         "電動車充電站執行負載管理作業，並依據裝置資料決定可變動之第一參考值。",
-        ["一種電動車充電站之充電管理方法，由伺服器執行能源管理方案，取得第一特定"
-         "電動車充電站之第一裝置資料，並依據第一裝置資料決定第一參考值。"],
+        [
+            "一種電動車充電站之充電管理方法，由伺服器執行能源管理方案，取得第一特定"
+            "電動車充電站之第一裝置資料，並依據第一裝置資料決定第一參考值。"
+        ],
         jurisdiction="TW",
     )
     p_cool = _patent(

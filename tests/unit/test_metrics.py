@@ -7,6 +7,7 @@ Covers:
     values (quote / backslash / newline).
   * Concurrent inc is lock-safe (no lost updates).
 """
+
 from __future__ import annotations
 
 import threading
@@ -113,11 +114,15 @@ def test_module_helpers_inc_and_observe():
     metrics.inc("oa_analyzed_total", {"tenant": "tenant_a"})
     assert metrics.OA_ANALYZED.get({"tenant": "tenant_a"}) == 2.0
 
-    metrics.observe("http_request_duration_seconds", 0.3,
-                    {"endpoint": "/x", "method": "POST", "status": "200"})
-    assert metrics.HTTP_REQUEST_DURATION.get_count(
-        {"endpoint": "/x", "method": "POST", "status": "200"}
-    ) == 1.0
+    metrics.observe(
+        "http_request_duration_seconds", 0.3, {"endpoint": "/x", "method": "POST", "status": "200"}
+    )
+    assert (
+        metrics.HTTP_REQUEST_DURATION.get_count(
+            {"endpoint": "/x", "method": "POST", "status": "200"}
+        )
+        == 1.0
+    )
 
 
 def test_helpers_noop_on_unknown_name():

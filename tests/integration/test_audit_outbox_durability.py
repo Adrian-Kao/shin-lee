@@ -20,6 +20,7 @@ private AuditWriter bound to the tmp DB, and ``audit.writer`` (the module
 singleton that ``replay_outbox`` calls) is monkeypatched to it so replay lands
 in OUR tmp DB, never the conftest session DB.
 """
+
 from __future__ import annotations
 
 import json
@@ -123,9 +124,7 @@ def test_replay_is_idempotent_no_duplicates(tmp_outbox):
 # ===========================================================================
 # 3. Partial failure — failing rows retained in order; successes not re-applied.
 # ===========================================================================
-def test_partial_replay_retains_failures_without_reapplying_successes(
-    tmp_outbox, monkeypatch
-):
+def test_partial_replay_retains_failures_without_reapplying_successes(tmp_outbox, monkeypatch):
     for i in range(4):
         _enqueue_row(i)
 
@@ -147,9 +146,9 @@ def test_partial_replay_retains_failures_without_reapplying_successes(
 
     # The remaining line must be CASE-2 (order/identity preserved).
     remaining = [
-        json.loads(l)
-        for l in tmp_outbox["outbox"].read_text("utf-8").splitlines()
-        if l.strip()
+        json.loads(line)
+        for line in tmp_outbox["outbox"].read_text("utf-8").splitlines()
+        if line.strip()
     ]
     assert len(remaining) == 1
     assert remaining[0]["kwargs"]["case_id"] == "CASE-2"
@@ -224,7 +223,7 @@ def test_corrupt_line_retained_and_not_replayed(tmp_outbox):
     assert audit_outbox.outbox_depth() == 1
 
     remaining = [
-        l for l in tmp_outbox["outbox"].read_text("utf-8").splitlines() if l.strip()
+        line for line in tmp_outbox["outbox"].read_text("utf-8").splitlines() if line.strip()
     ]
     assert remaining == ["this is not json"], remaining
 

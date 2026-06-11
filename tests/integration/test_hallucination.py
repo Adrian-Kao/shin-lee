@@ -16,6 +16,7 @@ a whitelisted statute), then a second-stage verifier LLM as an independent check
 end-to-end (mock backends) and asserts every fabrication is caught while the one
 legitimately grounded citation survives untouched.
 """
+
 from __future__ import annotations
 
 from backend.ai_engine import oa_analyzer

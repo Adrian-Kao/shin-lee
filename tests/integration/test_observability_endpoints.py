@@ -11,6 +11,7 @@ Covers:
     AI Engine side (single registry per process; here the in-process AI Engine
     app shares the test process registry).
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -67,18 +68,14 @@ def test_gateway_generates_request_id_when_absent(gateway_client):
 
 
 def test_gateway_preserves_inbound_request_id(gateway_client):
-    resp = gateway_client.get(
-        "/v1/health", headers={obs.REQUEST_ID_HEADER: "trace-from-proxy-1"}
-    )
+    resp = gateway_client.get("/v1/health", headers={obs.REQUEST_ID_HEADER: "trace-from-proxy-1"})
     assert resp.headers.get(obs.REQUEST_ID_HEADER) == "trace-from-proxy-1"
 
 
 def test_gateway_sanitises_forged_request_id(gateway_client):
     # A header value attempting log forging via newline must be neutralised
     # before it's echoed / logged.
-    resp = gateway_client.get(
-        "/v1/health", headers={obs.REQUEST_ID_HEADER: "ok-part"}
-    )
+    resp = gateway_client.get("/v1/health", headers={obs.REQUEST_ID_HEADER: "ok-part"})
     echoed = resp.headers.get(obs.REQUEST_ID_HEADER)
     assert "\n" not in (echoed or "")
     assert echoed == "ok-part"
@@ -95,9 +92,7 @@ def test_gateway_request_id_on_error_response(gateway_client):
 # Correlation id — AI Engine echoes the propagated id.
 # ---------------------------------------------------------------------------
 def test_ai_engine_echoes_inbound_request_id(ai_engine_client):
-    resp = ai_engine_client.get(
-        "/v1/health", headers={obs.REQUEST_ID_HEADER: "gw-propagated-99"}
-    )
+    resp = ai_engine_client.get("/v1/health", headers={obs.REQUEST_ID_HEADER: "gw-propagated-99"})
     assert resp.headers.get(obs.REQUEST_ID_HEADER) == "gw-propagated-99"
 
 

@@ -55,6 +55,7 @@ Network failures fail with a clear actionable message, never a raw stack trace.
 
 Run with no args to print usage + supported jurisdictions.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -65,9 +66,9 @@ import os
 import sys
 import tempfile
 from calendar import monthrange
-from datetime import date, datetime, timedelta, timezone
+from collections.abc import Callable
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
-from typing import Callable, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = ROOT / "data" / "calendars"
@@ -97,6 +98,7 @@ class FetchError(RuntimeError):
 # US — deterministic federal-holiday computation (no network)                 #
 # --------------------------------------------------------------------------- #
 
+
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
     """The Nth `weekday` (Mon=0 .. Sun=6) of `month` in `year`. n is 1-based."""
     first = date(year, month, 1)
@@ -118,9 +120,9 @@ def _observed(d: date) -> date:
     Friday; on Sunday, the following Monday. Uses timedelta so month/year
     boundaries (e.g. New Year's Day on a Saturday -> Dec 31 prior year) are
     handled correctly."""
-    if d.weekday() == 5:        # Saturday -> Friday
+    if d.weekday() == 5:  # Saturday -> Friday
         return d - timedelta(days=1)
-    if d.weekday() == 6:        # Sunday -> Monday
+    if d.weekday() == 6:  # Sunday -> Monday
         return d + timedelta(days=1)
     return d
 
@@ -142,12 +144,12 @@ def compute_us_federal_holidays(year: int) -> dict[str, str]:
         (date(year, 12, 25), "Christmas"),
     ]
     floating: list[tuple[date, str]] = [
-        (_nth_weekday(year, 1, 0, 3), "MLK Day"),            # 3rd Mon Jan
-        (_nth_weekday(year, 2, 0, 3), "Presidents' Day"),    # 3rd Mon Feb
-        (_last_weekday(year, 5, 0), "Memorial Day"),         # last Mon May
-        (_nth_weekday(year, 9, 0, 1), "Labor Day"),          # 1st Mon Sep
-        (_nth_weekday(year, 10, 0, 2), "Columbus Day"),      # 2nd Mon Oct
-        (_nth_weekday(year, 11, 3, 4), "Thanksgiving"),      # 4th Thu Nov
+        (_nth_weekday(year, 1, 0, 3), "MLK Day"),  # 3rd Mon Jan
+        (_nth_weekday(year, 2, 0, 3), "Presidents' Day"),  # 3rd Mon Feb
+        (_last_weekday(year, 5, 0), "Memorial Day"),  # last Mon May
+        (_nth_weekday(year, 9, 0, 1), "Labor Day"),  # 1st Mon Sep
+        (_nth_weekday(year, 10, 0, 2), "Columbus Day"),  # 2nd Mon Oct
+        (_nth_weekday(year, 11, 3, 4), "Thanksgiving"),  # 4th Thu Nov
     ]
     # Next year's New Year's Day observes BACK into Dec 31 of THIS year when
     # Jan 1 of year+1 lands on a Saturday — the office is closed this Dec 31.
@@ -186,14 +188,14 @@ _TW_NAME_KEYS = ("備註", "note", "假別", "description", "Description")
 _TW_HOLIDAY_TRUE = {"2", "是", "true", "True", "1", "y", "Y"}
 
 
-def _first_present(row: dict, keys: tuple[str, ...]) -> Optional[str]:
+def _first_present(row: dict, keys: tuple[str, ...]) -> str | None:
     for k in keys:
         if k in row and row[k] is not None:
             return k
     return None
 
 
-def _normalise_tw_date(raw: str) -> Optional[str]:
+def _normalise_tw_date(raw: str) -> str | None:
     """Accept YYYYMMDD or YYYY/MM/DD or YYYY-MM-DD -> ISO YYYY-MM-DD."""
     s = (raw or "").strip()
     if not s:
@@ -213,7 +215,7 @@ def _normalise_tw_date(raw: str) -> Optional[str]:
         return None
 
 
-def parse_tw_calendar_csv(text: str, year: Optional[int] = None) -> dict[str, str]:
+def parse_tw_calendar_csv(text: str, year: int | None = None) -> dict[str, str]:
     """Parse the DGPA government workday CSV into {ISO-date: name}.
 
     Keeps only rows flagged as a day off (是否放假). Working days are dropped.
@@ -263,7 +265,7 @@ def parse_tw_calendar_csv(text: str, year: Optional[int] = None) -> dict[str, st
 def fetch_tw_holidays(year: int) -> tuple[dict[str, str], str]:
     """Fetch + parse the TW government calendar for `year`. Needs network."""
     candidates = [TW_CSV_URL] + [u.format(year=year) for u in TW_CSV_URLS]
-    last_err: Optional[str] = None
+    last_err: str | None = None
     for url in candidates:
         try:
             text = _http_get_text(url)
@@ -360,8 +362,7 @@ def _parse_nager_holidays(text: str, year: int, *, local_name: bool = True) -> d
         raise FetchError(f"Holiday API returned non-JSON: {exc}") from exc
     if not isinstance(rows, list):
         raise FetchError(
-            "Holiday API JSON was not a list of holidays — upstream format may "
-            "have changed."
+            "Holiday API JSON was not a list of holidays — upstream format may have changed."
         )
     out: dict[str, str] = {}
     for row in rows:
@@ -374,8 +375,7 @@ def _parse_nager_holidays(text: str, year: int, *, local_name: bool = True) -> d
         out[iso] = str(name).strip() or "holiday"
     if not out:
         raise FetchError(
-            f"Holiday API returned no holidays for {year}. The year may not be "
-            "published yet."
+            f"Holiday API returned no holidays for {year}. The year may not be published yet."
         )
     return {k: out[k] for k in sorted(out)}
 
@@ -396,6 +396,7 @@ def fetch_cn_holidays(year: int) -> tuple[dict[str, str], str]:
 # --------------------------------------------------------------------------- #
 # KR — public holidays incl. 설날/추석 + 대체공휴일 (Nager.Date public API)      #
 # --------------------------------------------------------------------------- #
+
 
 def fetch_kr_holidays(year: int) -> tuple[dict[str, str], str]:
     """Fetch KR public holidays for `year` from the Nager.Date public API.
@@ -463,14 +464,14 @@ def fetch_ep_holidays(year: int) -> tuple[dict[str, str], str]:
 # HTTP helper (httpx, with timeout + actionable errors)                       #
 # --------------------------------------------------------------------------- #
 
+
 def _http_get_text(url: str, encodings: tuple[str, ...] = ("utf-8",)) -> str:
     """GET `url` and return decoded text. Raises FetchError (no stack trace)."""
     try:
         import httpx
     except ImportError as exc:  # pragma: no cover - httpx is a declared dep
         raise FetchError(
-            "httpx is not installed but is required for network fetches. "
-            "Run: pip install httpx"
+            "httpx is not installed but is required for network fetches. Run: pip install httpx"
         ) from exc
     try:
         resp = httpx.get(url, timeout=HTTP_TIMEOUT, follow_redirects=True)
@@ -522,15 +523,13 @@ def build_calendar(jurisdiction: str, year: int, version: str) -> dict:
     """Produce the full calendar document for one (jurisdiction, year)."""
     jur = jurisdiction.upper()
     if jur not in FETCHERS:
-        raise FetchError(
-            f"Unsupported jurisdiction {jur!r}. Supported: {', '.join(SUPPORTED)}."
-        )
+        raise FetchError(f"Unsupported jurisdiction {jur!r}. Supported: {', '.join(SUPPORTED)}.")
     holidays, source = FETCHERS[jur](year)
     return {
         "jurisdiction": jur,
         "version": version,
         "source": source,
-        "fetched_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "fetched_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "holidays": holidays,
     }
 
@@ -538,6 +537,7 @@ def build_calendar(jurisdiction: str, year: int, version: str) -> dict:
 # --------------------------------------------------------------------------- #
 # Write path: overwrite-guard + atomic write                                  #
 # --------------------------------------------------------------------------- #
+
 
 def _holidays_of(doc: dict) -> dict[str, str]:
     h = doc.get("holidays")
@@ -581,9 +581,7 @@ def _atomic_write_json(path: Path, doc: dict) -> None:
             os.unlink(tmp)
 
 
-def write_calendar(
-    doc: dict, out_dir: Path, *, force: bool = False
-) -> tuple[str, list[str]]:
+def write_calendar(doc: dict, out_dir: Path, *, force: bool = False) -> tuple[str, list[str]]:
     """Write `doc` to <out_dir>/<jur>_<version>.json with the overwrite guard.
 
     Returns (status, messages) where status is one of:
@@ -630,6 +628,7 @@ def write_calendar(
 # CLI                                                                         #
 # --------------------------------------------------------------------------- #
 
+
 def _print_calendar(doc: dict) -> None:
     print(f"jurisdiction : {doc['jurisdiction']}")
     print(f"version      : {doc['version']}")
@@ -650,19 +649,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("jurisdiction", help=f"one of: {', '.join(SUPPORTED)}")
     p.add_argument("year", type=int, help="calendar year, e.g. 2025")
     p.add_argument(
-        "--version", default=None,
+        "--version",
+        default=None,
         help="version label (default '<YEAR>.1', matching shipped files).",
     )
     p.add_argument(
-        "--out", default=str(DEFAULT_OUT_DIR),
+        "--out",
+        default=str(DEFAULT_OUT_DIR),
         help="output directory (default data/calendars).",
     )
     p.add_argument(
-        "--dry-run", action="store_true",
+        "--dry-run",
+        action="store_true",
         help="print the parsed calendar; write nothing.",
     )
     p.add_argument(
-        "--force", action="store_true",
+        "--force",
+        action="store_true",
         help="overwrite an existing target whose content differs.",
     )
     return p
@@ -707,8 +710,10 @@ def _usage() -> None:
     print("  EP — EPO closure days, hand-curated per year (no network).")
     print()
     print("Usage:")
-    print("  python scripts/fetch_holidays.py <JUR> <YEAR> "
-          "[--version X] [--out DIR] [--dry-run] [--force]")
+    print(
+        "  python scripts/fetch_holidays.py <JUR> <YEAR> "
+        "[--version X] [--out DIR] [--dry-run] [--force]"
+    )
     print()
     print("Examples:")
     print("  python scripts/fetch_holidays.py US 2025 --dry-run")

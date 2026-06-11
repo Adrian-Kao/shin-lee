@@ -13,6 +13,7 @@ NEVER read another's cached answer:
 These tests assert at the KEY level (so they hold regardless of backend) AND at
 the get/set level on the in-memory backend.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -24,6 +25,7 @@ from backend.shared.config import settings
 @pytest.fixture(autouse=True)
 def _fresh_cache(monkeypatch):
     from backend.gateway.cache import _MemoryCache
+
     monkeypatch.setattr(cache_mod, "_cache", _MemoryCache())
     yield
 
@@ -117,6 +119,7 @@ def test_redaction_version_bump_invalidates_stored_response():
 def test_response_ttl_expires(monkeypatch):
     """A response past its TTL must read as a miss."""
     import backend.gateway.cache as c
+
     # Pin a tiny TTL so the entry is already expired at read time.
     monkeypatch.setattr(settings, "CACHE_TTL_RESPONSE_SEC", 1)
     cache_mod.set_response("tenant_a", "alice", "CASE-1", "h", {"v": 1})
@@ -130,6 +133,7 @@ def test_embedding_is_permanent(monkeypatch):
     """Embeddings are set with ttl_sec=0 (never expire) — they survive a large
     clock advance."""
     import backend.gateway.cache as c
+
     cache_mod.set_embedding("widget", [0.5], "tenant_a")
     real_time = c.time.time
     monkeypatch.setattr(c.time, "time", lambda: real_time() + 10_000_000)

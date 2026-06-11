@@ -10,6 +10,7 @@ Covers:
       returning nothing for unrelated tables.
     * Running over the real data/oa_samples/sample_oa_us.txt without crashing.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,10 +23,10 @@ from backend.ai_engine.element_table import (
     extract_elements,
 )
 
-
 # ---------------------------------------------------------------------------
 # English extraction
 # ---------------------------------------------------------------------------
+
 
 def test_en_single_word_element():
     table = extract_element_table("The device includes a heat sink 200 below.")
@@ -61,6 +62,7 @@ def test_en_said_is_stripped():
 # Chinese / TW extraction (incl. NFKC fullwidth digits)
 # ---------------------------------------------------------------------------
 
+
 def test_zh_basic_element():
     table = extract_element_table("如圖所示，基板 10 之上設有結構。", jurisdiction="TW")
     assert table[10] == "基板"
@@ -85,6 +87,7 @@ def test_zh_fullwidth_digits_nfkc():
 # False-positive rejection
 # ---------------------------------------------------------------------------
 
+
 def test_reject_claim_number():
     table = extract_element_table("Claims 1-3 are rejected. See claim 5 also.")
     assert 1 not in table
@@ -93,9 +96,7 @@ def test_reject_claim_number():
 
 
 def test_reject_statute_citation():
-    table = extract_element_table(
-        "rejected under 35 U.S.C. 103 as obvious over the references"
-    )
+    table = extract_element_table("rejected under 35 U.S.C. 103 as obvious over the references")
     assert 35 not in table
     assert 103 not in table
 
@@ -131,6 +132,7 @@ def test_reject_zh_address():
 # Aggregation / tie-break
 # ---------------------------------------------------------------------------
 
+
 def test_most_frequent_phrase_wins():
     # "heat sink" appears twice, "sink" once -> most-frequent wins.
     txt = "the heat sink 200 cools; the heat sink 200 again; a sink 200 here."
@@ -143,14 +145,13 @@ def test_most_frequent_phrase_wins():
 # correlate()
 # ---------------------------------------------------------------------------
 
+
 def test_correlate_matches_obvious_pair():
     app = {102: "heat sink", 104: "copper conductor"}
     cited = {200: "heat sink assembly", 999: "unrelated widget"}
     pairs = correlate(app, cited)
     # 102 (heat sink) should map to 200 (heat sink assembly).
-    assert any(
-        p["app_numeral"] == 102 and p["cited_numeral"] == 200 for p in pairs
-    )
+    assert any(p["app_numeral"] == 102 and p["cited_numeral"] == 200 for p in pairs)
     # The unrelated widget 999 must not be matched to anything.
     assert all(p["cited_numeral"] != 999 for p in pairs)
 
@@ -172,6 +173,7 @@ def test_correlate_accepts_element_tables():
 # ---------------------------------------------------------------------------
 # Real sample smoke test
 # ---------------------------------------------------------------------------
+
 
 def _sample_path(name: str) -> Path:
     root = Path(__file__).resolve().parents[2]

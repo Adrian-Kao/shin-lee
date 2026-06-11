@@ -10,6 +10,7 @@ Covers:
   #4 confidential routing: parse_oa / draft_response route to the local model,
      and oa_analyzer.parse_oa actually forwards security_level to the LLM.
 """
+
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -26,6 +27,7 @@ def _iso_date(s: str):
 
 
 # ---------- #1 deadline: recommended strictly before statutory ----------
+
 
 @pytest.mark.parametrize("offset_days", list(range(0, 40)))
 def test_recommended_internal_is_strictly_before_statutory(offset_days):
@@ -50,21 +52,26 @@ def test_prev_business_day_rolls_backward_over_holiday_block():
 
 # ---------- #2 jurisdiction derivation ----------
 
-@pytest.mark.parametrize("patent_no,expected", [
-    ("US7654321", "US"),
-    ("TW202617461", "TW"),
-    ("EP3210987", "EP"),
-    ("JP2020123456", "JP"),
-    ("CN123456789", "CN"),
-    ("us7654321", "US"),   # case-insensitive
-    ("", "TW"),            # missing → home office
-    ("12345", "TW"),       # no recognizable prefix → home office
-])
+
+@pytest.mark.parametrize(
+    "patent_no,expected",
+    [
+        ("US7654321", "US"),
+        ("TW202617461", "TW"),
+        ("EP3210987", "EP"),
+        ("JP2020123456", "JP"),
+        ("CN123456789", "CN"),
+        ("us7654321", "US"),  # case-insensitive
+        ("", "TW"),  # missing → home office
+        ("12345", "TW"),  # no recognizable prefix → home office
+    ],
+)
 def test_jurisdiction_for_patent(patent_no, expected):
     assert orchestrator._jurisdiction_for_patent(patent_no) == expected
 
 
 # ---------- #3 + #4 routing decisions ----------
+
 
 @pytest.mark.parametrize("intent", ["parse_oa", "draft_response"])
 def test_confidential_routes_to_local(intent):
@@ -73,14 +80,19 @@ def test_confidential_routes_to_local(intent):
 
 
 def test_circuit_open_degrades_draft_model():
-    strong = llm_client.route_model(intent="draft_response", security_level="public", circuit_open=False)
-    degraded = llm_client.route_model(intent="draft_response", security_level="public", circuit_open=True)
+    strong = llm_client.route_model(
+        intent="draft_response", security_level="public", circuit_open=False
+    )
+    degraded = llm_client.route_model(
+        intent="draft_response", security_level="public", circuit_open=True
+    )
     assert strong == settings.LLM_MODEL_REASONING
     assert degraded == settings.LLM_MODEL_CHEAP
     assert degraded != strong
 
 
 # ---------- #4 wiring: oa_analyzer forwards the flags to the LLM ----------
+
 
 def _fake_response():
     return llm_client.LLMResponse(

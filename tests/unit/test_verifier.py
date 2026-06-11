@@ -15,6 +15,7 @@ Two concerns are covered here:
      parse_oa / draft_response. (Confidential routes everything local — that is
      expected and is NOT what we assert here.)
 """
+
 from __future__ import annotations
 
 import json
@@ -91,16 +92,12 @@ def test_confidence_drops_when_invalids_present():
     )
     assert clean["verifier_confidence"] > dirty["verifier_confidence"]
     # More fabrications → strictly lower confidence (monotonic penalty).
-    one_bad = _verify(
-        "Cites [GROUNDED_REF_1] and [GROUNDED_REF_99].", ["[GROUNDED_REF_1]"]
-    )
+    one_bad = _verify("Cites [GROUNDED_REF_1] and [GROUNDED_REF_99].", ["[GROUNDED_REF_1]"])
     assert dirty["verifier_confidence"] < one_bad["verifier_confidence"]
 
 
 def test_ungrounded_external_patent_is_flagged():
-    res = _verify(
-        "Applicant distinguishes US9999999, never retrieved.", ["[GROUNDED_REF_1]"]
-    )
+    res = _verify("Applicant distinguishes US9999999, never retrieved.", ["[GROUNDED_REF_1]"])
     assert any("9999999" in c for c in res["invalid_citations"])
     assert res["valid"] is False
 
@@ -116,16 +113,13 @@ def test_empty_grounded_keys_treats_grounded_ref_as_ungrounded():
 # Verifier-model independence (Q14 FU)
 # ---------------------------------------------------------------------------
 
+
 def test_verifier_model_differs_from_reasoning_on_public_path():
     verifier_model = route_model(
         intent="verify_citations", security_level="public", circuit_open=False
     )
-    parse_model = route_model(
-        intent="parse_oa", security_level="public", circuit_open=False
-    )
-    draft_model = route_model(
-        intent="draft_response", security_level="public", circuit_open=False
-    )
+    parse_model = route_model(intent="parse_oa", security_level="public", circuit_open=False)
+    draft_model = route_model(intent="draft_response", security_level="public", circuit_open=False)
 
     # The verifier must be the dedicated, independent verifier model...
     assert verifier_model == settings.LLM_MODEL_VERIFIER

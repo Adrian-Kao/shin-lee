@@ -35,13 +35,13 @@ draft degrades that one rejection to a manual-draft placeholder instead of
 crashing the whole analysis. The Q14 verifier stays a separate, independent
 wall downstream.
 """
+
 from __future__ import annotations
 
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from uuid import uuid4
-
 
 # ---------------------------------------------------------------------------
 # Canary (Q11 layer 5)
@@ -138,12 +138,12 @@ _GROUNDED_DUMP_THRESHOLD = 4
 # ASCII whitespace and a few visual separators an attacker can sprinkle between
 # canary characters.
 _SEPARATORS_RE = re.compile(
-    r"[\s"                      # all ASCII + unicode whitespace
-    "­᠎"             # soft hyphen, mongolian vowel sep
-    "​-‏"            # ZWSP/ZWNJ/ZWJ/LRM/RLM
-    "‪-‮"            # bidi embed/override
-    "⁠-⁤﻿"      # word joiner, invisible ops, BOM
-    r"\-_.•·*~|/\\]+"          # visual separators commonly abused
+    r"[\s"  # all ASCII + unicode whitespace
+    "­᠎"  # soft hyphen, mongolian vowel sep
+    "​-‏"  # ZWSP/ZWNJ/ZWJ/LRM/RLM
+    "‪-‮"  # bidi embed/override
+    "⁠-⁤﻿"  # word joiner, invisible ops, BOM
+    r"\-_.•·*~|/\\]+"  # visual separators commonly abused
 )
 
 
@@ -166,12 +166,20 @@ def _strip_separators(text: str) -> str:
 # fire on ordinary words like "ignore" or "system".
 _OVERRIDE_PHRASE_RES = [
     # --- English ---
-    re.compile(r"ignor(?:e|ing)\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above|earlier)\s+instructions", re.IGNORECASE),
-    re.compile(r"disregard(?:ing)?\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above)\s+instructions", re.IGNORECASE),
+    re.compile(
+        r"ignor(?:e|ing)\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above|earlier)\s+instructions",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"disregard(?:ing)?\s+(?:all\s+)?(?:the\s+)?(?:previous|prior|above)\s+instructions",
+        re.IGNORECASE,
+    ),
     re.compile(r"reveal\s+(?:your|the)\s+system\s+prompt", re.IGNORECASE),
     re.compile(r"(?:print|output|repeat|show)\s+(?:your|the)\s+system\s+prompt", re.IGNORECASE),
     re.compile(r"you\s+are\s+now\s+in\s+(?:maintenance|developer|debug)\s+mode", re.IGNORECASE),
-    re.compile(r"(?:dump|reveal|output)\s+(?:every|all)\s+(?:chunk|reference|document)", re.IGNORECASE),
+    re.compile(
+        r"(?:dump|reveal|output)\s+(?:every|all)\s+(?:chunk|reference|document)", re.IGNORECASE
+    ),
     re.compile(r"verbatim\s+contents?\s+of\s+(?:any\s+)?tool", re.IGNORECASE),
     re.compile(r"ignore\s+the\s+grounded\s+set", re.IGNORECASE),
     # --- zh-TW / zh-CN ---
@@ -232,7 +240,7 @@ class InjectionDetected(Exception):
     placeholder.
     """
 
-    def __init__(self, verdict: "InjectionVerdict", intent: str | None = None):
+    def __init__(self, verdict: InjectionVerdict, intent: str | None = None):
         self.verdict = verdict
         self.intent = intent
         loc = f" in {intent}" if intent else ""
@@ -319,6 +327,7 @@ def scan_response(text: str, canary: str) -> InjectionVerdict:
 # ---------------------------------------------------------------------------
 # Input pre-screen (Day 12A — defence-in-depth, advisory)
 # ---------------------------------------------------------------------------
+
 
 def scan_input(untrusted_text: str) -> InjectionVerdict:
     """Advisory pre-screen of UNTRUSTED inbound text (the OA body) for known

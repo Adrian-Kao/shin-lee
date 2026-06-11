@@ -10,6 +10,7 @@ Covers:
     structured `extra=` fields, and never emits a raw newline mid-record.
   * RequestIdLogFilter stamps the record with the current id.
 """
+
 from __future__ import annotations
 
 import json
@@ -174,7 +175,12 @@ def test_json_formatter_renders_exception():
         import sys
 
         rec = logging.LogRecord(
-            "patentmind.test", logging.ERROR, __file__, 1, "failed", (),
+            "patentmind.test",
+            logging.ERROR,
+            __file__,
+            1,
+            "failed",
+            (),
             sys.exc_info(),
         )
     obs.RequestIdLogFilter().filter(rec)

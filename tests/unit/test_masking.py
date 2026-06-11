@@ -9,6 +9,7 @@ Covers:
   - per-tenant key isolation: tenant_a ciphertext is undecryptable as tenant_b.
   - graceful degradation when a stored value cannot be decrypted.
 """
+
 from __future__ import annotations
 
 import re
@@ -19,7 +20,6 @@ import pytest
 from backend.gateway import masking
 from backend.gateway.masking import MaskingStore, redact
 
-
 # --- helpers ---------------------------------------------------------------
 
 _PLACEHOLDER_RE = re.compile(r"\[[A-Z_]+_[0-9A-F]{8}\]")
@@ -28,10 +28,7 @@ EMAIL = "john.doe@example.com"
 PHONE = "0912-345-678"
 CASE = "APEX-2024-00123"
 CLIENT = "CL-ABCD12"
-SAMPLE = (
-    f"Please contact {EMAIL} or call {PHONE}. "
-    f"Re case {CASE} for client {CLIENT}."
-)
+SAMPLE = f"Please contact {EMAIL} or call {PHONE}. Re case {CASE} for client {CLIENT}."
 
 
 @pytest.fixture()
@@ -51,6 +48,7 @@ def isolated_module_store(tmp_path, monkeypatch):
 
 
 # --- original rule coverage (preserved from the pre-encryption suite) -------
+
 
 def test_email_is_redacted():
     text = "Please contact alice.chen@apex-ip.com for follow up."
@@ -90,6 +88,7 @@ def test_tenant_dictionary_terms_are_redacted():
 
 # --- round-trip / behaviour preservation -----------------------------------
 
+
 def test_redact_unmask_round_trip_exact():
     redacted, triggered = masking.redact(SAMPLE, "tenant_a")
 
@@ -126,6 +125,7 @@ def test_store_round_trip_via_public_store_api(store):
 
 
 # --- at-rest encryption ----------------------------------------------------
+
 
 def test_original_column_is_encrypted_on_disk(tmp_path):
     db_path = tmp_path / "redaction_mapping.db"
@@ -195,8 +195,7 @@ def test_unmask_keeps_placeholder_when_undecryptable(tmp_path, monkeypatch):
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
-            "INSERT INTO mappings(tenant_id, placeholder, original, rule_id) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO mappings(tenant_id, placeholder, original, rule_id) VALUES (?, ?, ?, ?)",
             ("tenant_a", placeholder, "not-a-valid-fernet-token", "email"),
         )
         conn.commit()

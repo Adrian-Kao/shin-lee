@@ -5,9 +5,8 @@ redirected onto fresh tmp paths so pruning operates on an isolated tree. Backup
 ids are injected via ``now_iso`` so ordering is deterministic (no Date.now
 nondeterminism).
 """
-from __future__ import annotations
 
-from pathlib import Path
+from __future__ import annotations
 
 import pytest
 
@@ -37,15 +36,23 @@ def tmp_stores(tmp_path, monkeypatch):
 
 def _seed(writer: audit.AuditWriter, n: int = 2) -> None:
     user = User(
-        user_id="alice", tenant_id="tenant_a",
-        role=UserRole.ATTORNEY, display_name="alice",
+        user_id="alice",
+        tenant_id="tenant_a",
+        role=UserRole.ATTORNEY,
+        display_name="alice",
     )
     for i in range(n):
         writer.write(
-            user=user, case_id=f"case-{i}", endpoint="/v1/analyze",
-            request_payload={"q": i}, response_payload={"a": i},
-            masked_rules=[], model_used="mock",
-            prompt_tokens=1, completion_tokens=1, latency_ms=1,
+            user=user,
+            case_id=f"case-{i}",
+            endpoint="/v1/analyze",
+            request_payload={"q": i},
+            response_payload={"a": i},
+            masked_rules=[],
+            model_used="mock",
+            prompt_tokens=1,
+            completion_tokens=1,
+            latency_ms=1,
             policy_decisions={"ok": True},
         )
 
@@ -60,8 +67,12 @@ _TS = [
     "2026-06-08T06:00:00+00:00",
 ]
 _IDS = [
-    "20260608T010000", "20260608T020000", "20260608T030000",
-    "20260608T040000", "20260608T050000", "20260608T060000",
+    "20260608T010000",
+    "20260608T020000",
+    "20260608T030000",
+    "20260608T040000",
+    "20260608T050000",
+    "20260608T060000",
 ]
 
 

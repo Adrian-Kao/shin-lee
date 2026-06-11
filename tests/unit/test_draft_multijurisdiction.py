@@ -22,6 +22,7 @@ These tests pin the gap-closing work:
 `_mock_draft` is deterministic + dependency-free, so we drive it directly; the
 e2e check goes through `draft_response` exactly as the orchestrator does.
 """
+
 from __future__ import annotations
 
 import json
@@ -30,10 +31,10 @@ import re
 from backend.ai_engine.llm_client import MockLLM
 from backend.shared.models import Rejection, RejectionType, RetrievalHit
 
-
 # ---------------------------------------------------------------------------
 # Helpers — build the `user` message exactly like oa_analyzer.draft_response.
 # ---------------------------------------------------------------------------
+
 
 def _first_rejection(oa_text: str) -> dict:
     """Parse an OA snippet and return its first rejection dict (realistic
@@ -45,8 +46,7 @@ def _draft_user_msg(rejection: dict, refs=("[GROUNDED_REF_1]", "[GROUNDED_REF_2]
     """Reproduce the `user` message oa_analyzer.draft_response builds:
     REJECTION json + GROUNDED_SET block listing [GROUNDED_REF_N] keys."""
     grounded_block = "\n\n".join(
-        f"{r} patent=XX123 section=spec_para_1 score=0.80\n  some grounded text"
-        for r in refs
+        f"{r} patent=XX123 section=spec_para_1 score=0.80\n  some grounded text" for r in refs
     )
     return (
         f"REJECTION:\n{json.dumps(rejection, ensure_ascii=False, indent=2)}\n\n"
@@ -84,6 +84,7 @@ _ALLOWED = {"[GROUNDED_REF_1]", "[GROUNDED_REF_2]"}
 # CN (CNIPA) — 简体 意见陈述书
 # ---------------------------------------------------------------------------
 
+
 def test_cn_inventive_step_draft_is_simplified_chinese():
     d = _run_draft("权利要求 1-3 不具备创造性，不符合专利法第22条第3款的规定。")
     text = d["draft_text"]
@@ -103,6 +104,7 @@ def test_cn_novelty_draft_argues_novelty():
 # ---------------------------------------------------------------------------
 # KR (KIPO) — 한글 의견서
 # ---------------------------------------------------------------------------
+
 
 def test_kr_inventive_step_draft_is_hangul():
     d = _run_draft(
@@ -126,10 +128,9 @@ def test_kr_novelty_draft_argues_novelty():
 # EP (EPO) — English EPC response
 # ---------------------------------------------------------------------------
 
+
 def test_ep_inventive_step_draft_is_english_epc():
-    d = _run_draft(
-        "Claims 1-3 do not involve an inventive step within the meaning of Art. 56 EPC."
-    )
+    d = _run_draft("Claims 1-3 do not involve an inventive step within the meaning of Art. 56 EPC.")
     text = d["draft_text"]
     assert "Art." in text
     assert "inventive step" in text.lower()
@@ -150,6 +151,7 @@ def test_ep_novelty_draft_argues_novelty():
 # ---------------------------------------------------------------------------
 # JP (JPO) — 日本語 意見書
 # ---------------------------------------------------------------------------
+
 
 def test_jp_inventive_step_draft_is_japanese():
     # Build a JP rejection directly (the parser focuses on TW/US/EP/CN/KR);
@@ -176,6 +178,7 @@ def test_jp_inventive_step_draft_is_japanese():
 # Grounded-set membership: the cited ref tracks the offered keys
 # ---------------------------------------------------------------------------
 
+
 def test_cited_ref_inside_single_ref_grounded_set():
     """When the prompt offers only [GROUNDED_REF_1], the draft must cite that
     one (never a [GROUNDED_REF_2] the verifier would strip)."""
@@ -191,6 +194,7 @@ def test_cited_ref_inside_single_ref_grounded_set():
 # Regression: TW antecedent-basis + US/generic paths unchanged
 # ---------------------------------------------------------------------------
 
+
 def test_tw_antecedent_basis_draft_unchanged():
     # The antecedent-basis branch keys on "antecedent_basis"/"先行詞" and is
     # checked FIRST, so any user msg with that cue still hits the TIPO 申復書.
@@ -204,9 +208,7 @@ def test_tw_antecedent_basis_draft_unchanged():
 def test_us_generic_draft_unchanged():
     # A US §103 rejection (English "obvious", no EP/CN/KR/TW/JP cues) must fall
     # through to the generic English non-obviousness draft.
-    d = _run_draft(
-        "Claims 1-5 are rejected under 35 U.S.C. § 103 as obvious over US7654321."
-    )
+    d = _run_draft("Claims 1-5 are rejected under 35 U.S.C. § 103 as obvious over US7654321.")
     text = d["draft_text"]
     assert "Applicant respectfully traverses the rejection" in text
     assert "[GROUNDED_REF_1]" in d["grounded_citations"]
@@ -216,6 +218,7 @@ def test_us_generic_draft_unchanged():
 # ---------------------------------------------------------------------------
 # END-TO-END via oa_analyzer.draft_response (mock mode)
 # ---------------------------------------------------------------------------
+
 
 def test_e2e_cn_draft_response_is_simplified_and_grounded():
     from backend.ai_engine import oa_analyzer

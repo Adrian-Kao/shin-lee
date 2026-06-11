@@ -7,6 +7,7 @@ Two layers:
      dataset on the mock backend and return the right shapes, and the gate
      actually gates (passes at the mock floor, fails at an impossible floor).
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -114,8 +115,7 @@ def test_load_dataset_returns_labeled_cases():
 def test_evaluate_runs_and_has_expected_shape():
     report = re_mod.evaluate(k=5)
     # Top-level keys.
-    for key in ("k", "n_cases", "recall@k", "mrr", "embedding_backend",
-                "per_case", "failures"):
+    for key in ("k", "n_cases", "recall@k", "mrr", "embedding_backend", "per_case", "failures"):
         assert key in report
     assert report["k"] == 5
     assert report["n_cases"] == len(report["per_case"])
@@ -125,8 +125,16 @@ def test_evaluate_runs_and_has_expected_shape():
     assert 0.0 <= report["mrr"] <= 1.0
     # Per-case shape.
     pc = report["per_case"][0]
-    for key in ("id", "query", "recall@k", "mrr", "n_relevant",
-                "n_retrieved", "top_patent_nos", "hit"):
+    for key in (
+        "id",
+        "query",
+        "recall@k",
+        "mrr",
+        "n_relevant",
+        "n_retrieved",
+        "top_patent_nos",
+        "hit",
+    ):
         assert key in pc
     # Failures are a subset of per_case with zero recall.
     for f in report["failures"]:
@@ -139,12 +147,14 @@ def test_evaluate_mock_backend_label():
 
 
 def test_evaluate_accepts_custom_dataset():
-    custom = [{
-        "id": "custom",
-        "query": "microchannel cooling electric vehicle battery turbulent flow",
-        "tenant_id": "tenant_a",
-        "relevant": ["US7654321"],
-    }]
+    custom = [
+        {
+            "id": "custom",
+            "query": "microchannel cooling electric vehicle battery turbulent flow",
+            "tenant_id": "tenant_a",
+            "relevant": ["US7654321"],
+        }
+    ]
     report = re_mod.evaluate(dataset=custom, k=5)
     assert report["n_cases"] == 1
     assert report["per_case"][0]["id"] == "custom"

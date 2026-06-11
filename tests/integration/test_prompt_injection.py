@@ -16,9 +16,11 @@ We assert:
   3. The per-call canary never surfaces in any returned draft, even on the
      clean path.
 """
+
 from __future__ import annotations
 
 import re
+from datetime import UTC
 
 import pytest
 
@@ -50,9 +52,7 @@ def _real_chat():
     return llm_client.chat
 
 
-def test_injected_draft_fails_closed_and_saga_degrades(
-    monkeypatch, _real_chat, caplog
-):
+def test_injected_draft_fails_closed_and_saga_degrades(monkeypatch, _real_chat, caplog):
     """A jailbroken draft response (echoes the canary) must be rejected by the
     output filter and degraded by the saga — not served to the attorney."""
 
@@ -90,9 +90,7 @@ def test_injected_draft_fails_closed_and_saga_degrades(
 
     # The guard must raise InjectionDetected when the draft echoes the canary.
     with pytest.raises(injection_guard.InjectionDetected) as ei:
-        oa_analyzer.draft_response(
-            rej[0], [], user_hint=None, security_level="public"
-        )
+        oa_analyzer.draft_response(rej[0], [], user_hint=None, security_level="public")
     assert "canary_leak" in ei.value.verdict.signals
     # The leaked canary value itself must NOT appear in the exception message
     # (we log signals, never the secret).
@@ -100,9 +98,7 @@ def test_injected_draft_fails_closed_and_saga_degrades(
 
 
 @pytest.mark.asyncio
-async def test_analyze_flow_degrades_injected_rejection_via_saga(
-    monkeypatch, _real_chat
-):
+async def test_analyze_flow_degrades_injected_rejection_via_saga(monkeypatch, _real_chat):
     """End-to-end through the gateway orchestrator: an injected draft is
     degraded to a placeholder by the saga; the request still returns and the
     leaked content never reaches the response."""
@@ -139,7 +135,8 @@ async def test_analyze_flow_degrades_injected_rejection_via_saga(
     async def _fake_call(self, path, payload):
         if path == "/v1/parse_oa":
             rejections, meta = oa_analyzer.parse_oa(
-                payload["oa_text"], payload["target_patent_no"],
+                payload["oa_text"],
+                payload["target_patent_no"],
                 security_level=payload.get("security_level", "public"),
             )
             oa_doc = oa_analyzer.make_oa_document(
@@ -154,12 +151,15 @@ async def test_analyze_flow_degrades_injected_rejection_via_saga(
             return {"hits": [], "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
         if path == "/v1/draft_response":
             from backend.shared.models import Rejection, RetrievalHit
+
             rej = Rejection(**payload["rejection"])
             grounded = [RetrievalHit(**g) for g in payload["grounded_set"]]
             # This raises InjectionDetected → mimic the FastAPI 500 the real
             # endpoint would surface, which the saga catches as an exception.
             draft, meta = oa_analyzer.draft_response(
-                rej, grounded, payload.get("user_hint"),
+                rej,
+                grounded,
+                payload.get("user_hint"),
                 payload.get("security_level", "public"),
                 circuit_open=payload.get("circuit_open", False),
             )
@@ -173,8 +173,9 @@ async def test_analyze_flow_degrades_injected_rejection_via_saga(
                 "model_used": "mock",
             }
         if path == "/v1/deadline":
-            from datetime import datetime, timedelta, timezone
-            now = datetime(2025, 4, 15, tzinfo=timezone.utc)
+            from datetime import datetime, timedelta
+
+            now = datetime(2025, 4, 15, tzinfo=UTC)
             return {
                 "received_date": now.isoformat(),
                 "statutory_deadline": (now + timedelta(days=90)).isoformat(),
@@ -190,8 +191,10 @@ async def test_analyze_flow_degrades_injected_rejection_via_saga(
     monkeypatch.setattr(orch.AIEngineClient, "call", _fake_call)
 
     user = User(
-        user_id="alice", tenant_id="tenant_a",
-        role=UserRole.ATTORNEY, display_name="Alice",
+        user_id="alice",
+        tenant_id="tenant_a",
+        role=UserRole.ATTORNEY,
+        display_name="Alice",
     )
     req = AnalysisRequest(
         oa_text=_INJECTED_OA,
@@ -224,9 +227,7 @@ def test_clean_path_unaffected_and_no_canary_leaks(monkeypatch, _real_chat):
     )
     assert len(rej) >= 1
 
-    draft, meta = oa_analyzer.draft_response(
-        rej[0], [], user_hint=None, security_level="public"
-    )
+    draft, meta = oa_analyzer.draft_response(rej[0], [], user_hint=None, security_level="public")
     # A real draft was produced.
     assert draft.draft_text
     assert _DEGRADED_NOTE not in draft.draft_text

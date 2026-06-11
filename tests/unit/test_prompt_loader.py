@@ -11,6 +11,7 @@ paste-import them. These tests lock in:
     Python constant. This is the regression guard against an accidental
     YAML edit.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,6 +26,7 @@ PROMPTS_DIR = Path(prompt_loader.__file__).parent / "prompts"
 # ---------------------------------------------------------------------------
 # 1. basic shape
 # ---------------------------------------------------------------------------
+
 
 def test_load_prompt_returns_dict_with_system():
     """parse_oa.yaml loads to a dict and ``system`` is a non-empty str."""
@@ -45,6 +47,7 @@ def test_load_prompt_unknown_intent_raises():
 # ---------------------------------------------------------------------------
 # 2. render_system substitution
 # ---------------------------------------------------------------------------
+
 
 def test_render_system_no_vars():
     """No kwargs → returns the system text verbatim (no .format call)."""
@@ -86,6 +89,7 @@ def test_render_system_with_vars(tmp_path, monkeypatch):
 # 3. list_intents
 # ---------------------------------------------------------------------------
 
+
 def test_list_intents_includes_known_prompts():
     """All three externalized intents must be discoverable."""
     intents = prompt_loader.list_intents()
@@ -99,6 +103,7 @@ def test_list_intents_includes_known_prompts():
 # ---------------------------------------------------------------------------
 # 4. every YAML file is well-formed
 # ---------------------------------------------------------------------------
+
 
 def test_prompt_yaml_files_all_have_system_key():
     """Defence-in-depth: iterate the prompts dir and assert each YAML
@@ -185,6 +190,7 @@ def test_oa_analyzer_constants_match_yaml():
 #    prompts contain literal `{` characters.
 # ---------------------------------------------------------------------------
 
+
 def test_render_system_with_vars_on_prompt_without_format_vars_raises():
     """If a caller passes kwargs but the prompt doesn't declare format_vars,
     we refuse loudly instead of risking a KeyError on a literal `{` in the
@@ -200,11 +206,11 @@ def test_render_system_with_vars_handles_literal_braces(tmp_path, monkeypatch):
     fake_prompts = tmp_path / "prompts"
     fake_prompts.mkdir()
     (fake_prompts / "braced.yaml").write_text(
-        'intent: braced\n'
-        'version: 1\n'
-        'language: en\n'
-        'format_vars: [name]\n'
-        'system: |\n'
+        "intent: braced\n"
+        "version: 1\n"
+        "language: en\n"
+        "format_vars: [name]\n"
+        "system: |\n"
         '  hello {name}, here is JSON: {"k":1}\n',
         encoding="utf-8",
     )
@@ -226,12 +232,12 @@ def test_render_system_with_unknown_var_raises(tmp_path, monkeypatch):
     fake_prompts = tmp_path / "prompts"
     fake_prompts.mkdir()
     (fake_prompts / "demo2.yaml").write_text(
-        'intent: demo2\n'
-        'version: 1\n'
-        'language: en\n'
-        'format_vars: [a]\n'
-        'system: |\n'
-        '  value of a is {a}\n',
+        "intent: demo2\n"
+        "version: 1\n"
+        "language: en\n"
+        "format_vars: [a]\n"
+        "system: |\n"
+        "  value of a is {a}\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(prompt_loader, "_PROMPTS_DIR", fake_prompts)
@@ -251,7 +257,7 @@ def test_load_prompt_missing_required_key_raises(tmp_path, monkeypatch):
     fake_prompts.mkdir()
     # No `version` key → must raise.
     (fake_prompts / "incomplete.yaml").write_text(
-        'intent: incomplete\nlanguage: en\nsystem: |\n  hi\n',
+        "intent: incomplete\nlanguage: en\nsystem: |\n  hi\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(prompt_loader, "_PROMPTS_DIR", fake_prompts)

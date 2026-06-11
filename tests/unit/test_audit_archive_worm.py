@@ -20,6 +20,7 @@ All tests redirect the live audit DB + archive dir to tmp paths via
 monkeypatching ``backend.shared.config`` (mirroring conftest), with a private
 AuditWriter bound to the tmp DB so the session singleton is untouched.
 """
+
 from __future__ import annotations
 
 import json

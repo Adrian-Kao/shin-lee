@@ -10,9 +10,10 @@ process (so the gateway can no longer rely on in-process orchestrator calls):
 All tests reuse the shared `gateway_client` + `alice_token` fixtures from
 `tests/conftest.py`.
 """
+
 from __future__ import annotations
 
-_ALICE_CASE = "CASE-2025-001"   # Alice has ACL for this case (see auth._CASE_ACL)
+_ALICE_CASE = "CASE-2025-001"  # Alice has ACL for this case (see auth._CASE_ACL)
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ def test_audit_append_writes_row(gateway_client, alice_token):
     matching = [r for r in rows if r["endpoint"] == "/v1/audit/append-test"]
     assert matching, f"no audit row for /v1/audit/append-test in {rows!r}"
     row = matching[0]
-    assert row["user_id"] == "alice", row     # gateway-trusted, not body-supplied
+    assert row["user_id"] == "alice", row  # gateway-trusted, not body-supplied
     assert row["case_id"] == _ALICE_CASE, row
     assert row["model_used"] == "mock-llm", row
     assert row["prompt_tokens"] == 42, row
@@ -144,8 +145,8 @@ def test_audit_append_rejects_forgery_with_422(gateway_client, alice_token):
         json={
             "case_id": _ALICE_CASE,
             "endpoint": "/v1/audit/forge-test",
-            "user_id": "bob",            # extra — must trigger 422
-            "tenant_id": "tenant_b",     # extra — must trigger 422
+            "user_id": "bob",  # extra — must trigger 422
+            "tenant_id": "tenant_b",  # extra — must trigger 422
             "prompt_tokens": 1,
             "completion_tokens": 1,
             "latency_ms": 1,
@@ -167,7 +168,7 @@ def test_audit_append_acl_blocks_foreign_case_id(gateway_client, alice_token):
         "/v1/audit/append",
         headers={"Authorization": f"Bearer {alice_token}"},
         json={
-            "case_id": "CASE-9999-CARROT",   # NOT in Alice's ACL
+            "case_id": "CASE-9999-CARROT",  # NOT in Alice's ACL
             "endpoint": "/v1/audit/foreign-case-test",
             "prompt_tokens": 1,
             "completion_tokens": 1,
@@ -190,7 +191,7 @@ def test_audit_append_paralegal_role_gated(gateway_client):
         "/v1/audit/append",
         headers={"Authorization": f"Bearer {bob_token}"},
         json={
-            "case_id": _ALICE_CASE,          # Bob has ACL on this case
+            "case_id": _ALICE_CASE,  # Bob has ACL on this case
             "endpoint": "/v1/audit/paralegal-test",
             "prompt_tokens": 1,
             "completion_tokens": 1,
@@ -209,7 +210,7 @@ def test_audit_append_length_caps_reject_huge_strings(gateway_client, alice_toke
         headers={"Authorization": f"Bearer {alice_token}"},
         json={
             "case_id": _ALICE_CASE,
-            "endpoint": "x" * 10_000,   # exceeds max_length=256
+            "endpoint": "x" * 10_000,  # exceeds max_length=256
             "prompt_tokens": 1,
             "completion_tokens": 1,
             "latency_ms": 1,

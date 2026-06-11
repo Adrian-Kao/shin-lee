@@ -7,6 +7,7 @@ how test_audit_archive.py redirects config. Audit rows are seeded via a private
 AuditWriter bound to the tmp DB (never the global ``audit.writer`` singleton).
 Mapping rows are seeded via a private MaskingStore bound to the tmp mapping DB.
 """
+
 from __future__ import annotations
 
 import json
@@ -162,8 +163,9 @@ def test_restore_detects_corrupted_backup(tmp_stores, tmp_path):
     target = tmp_path / "restore_target"
     result = backup.restore(snap["backup_id"], target)
     assert result["ok"] is False
-    assert any(a["type"] == "sha256_mismatch" and a["path"] == "audit.db"
-               for a in result["anomalies"])
+    assert any(
+        a["type"] == "sha256_mismatch" and a["path"] == "audit.db" for a in result["anomalies"]
+    )
 
 
 def test_restore_detects_missing_backup_file(tmp_stores, tmp_path):
@@ -239,12 +241,8 @@ def test_erase_user_removes_mapping_keeps_audit(tmp_stores):
     # tenant_a's mapping rows are gone; tenant_b's remain.
     conn = sqlite3.connect(tmp_stores["mapping_db"])
     try:
-        a = conn.execute(
-            "SELECT COUNT(*) FROM mappings WHERE tenant_id='tenant_a'"
-        ).fetchone()[0]
-        b = conn.execute(
-            "SELECT COUNT(*) FROM mappings WHERE tenant_id='tenant_b'"
-        ).fetchone()[0]
+        a = conn.execute("SELECT COUNT(*) FROM mappings WHERE tenant_id='tenant_a'").fetchone()[0]
+        b = conn.execute("SELECT COUNT(*) FROM mappings WHERE tenant_id='tenant_b'").fetchone()[0]
     finally:
         conn.close()
     assert a == 0
@@ -279,9 +277,7 @@ def test_erase_user_dry_run_reports_without_deleting(tmp_stores):
     # Nothing was actually deleted.
     conn = sqlite3.connect(tmp_stores["mapping_db"])
     try:
-        n = conn.execute(
-            "SELECT COUNT(*) FROM mappings WHERE tenant_id='tenant_a'"
-        ).fetchone()[0]
+        n = conn.execute("SELECT COUNT(*) FROM mappings WHERE tenant_id='tenant_a'").fetchone()[0]
     finally:
         conn.close()
     assert n == 2

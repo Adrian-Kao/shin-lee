@@ -15,6 +15,7 @@ This is purely an ops convenience — nothing in the app imports it. It honours
 EMBEDDING_MODEL (default BAAI/bge-m3) so an operator who points the app at a
 different multilingual model prefetches the right one.
 """
+
 from __future__ import annotations
 
 import os

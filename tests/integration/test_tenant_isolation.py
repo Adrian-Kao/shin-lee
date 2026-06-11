@@ -31,15 +31,14 @@ something the design intentionally allows):
     per-tenant Qdrant collection (Q5 stub), exercised here via the memory
     backend's ``_tenant_index``.
 """
+
 from __future__ import annotations
 
 import uuid
 
 import numpy as np
-import pytest
 
 from backend.shared.models import Patent, User, UserRole
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -204,9 +203,7 @@ def test_cache_response_not_shared_across_tenants():
 
     # Same user_id, same case_id, same prompt_hash — only the tenant differs.
     leaked = cache.get_response(_TENANT_B, "userX", case_id, prompt_hash)
-    assert leaked is None, (
-        f"CACHE LEAK: tenant_b read tenant_a's cached response: {leaked!r}"
-    )
+    assert leaked is None, f"CACHE LEAK: tenant_b read tenant_a's cached response: {leaked!r}"
 
     # Positive control: tenant_a CAN read its own write back (proves the
     # None above is real isolation, not a write that silently failed).
@@ -341,9 +338,7 @@ def test_audit_verify_chain_only_walks_one_tenant(tmp_path):
     assert res_a["verified"] <= len(a_ids), res_a
     assert res_b["verified"] <= len(b_ids), res_b
     # tenant_a rows are contiguous from genesis, so its sub-chain is intact.
-    assert res_a["broken"] == [], (
-        f"tenant_a contiguous sub-chain reported broken: {res_a!r}"
-    )
+    assert res_a["broken"] == [], f"tenant_a contiguous sub-chain reported broken: {res_a!r}"
 
 
 # ===========================================================================
@@ -367,9 +362,7 @@ def test_masking_mapping_cannot_be_unmasked_cross_tenant():
 
     # Adversarial: tenant_b asks for the SAME placeholder.
     leaked = masking._store.get_original(_TENANT_B, placeholder)
-    assert leaked is None, (
-        f"MASKING LEAK: tenant_b un-masked tenant_a's value: {leaked!r}"
-    )
+    assert leaked is None, f"MASKING LEAK: tenant_b un-masked tenant_a's value: {leaked!r}"
 
     # Positive control: tenant_a can reverse its own mapping.
     assert masking._store.get_original(_TENANT_A, placeholder) == secret
@@ -438,13 +431,13 @@ def test_foreign_tenant_attorney_cannot_reach_tenant_a_case(
     resp = gateway_client.post(
         "/v1/oa/analyze",
         headers={
-            "x-user-id": "mallory_tenant_b",   # unknown user → upstream role honoured
+            "x-user-id": "mallory_tenant_b",  # unknown user → upstream role honoured
             "x-tenant-id": _TENANT_B,
             "x-user-role": UserRole.ATTORNEY.value,  # passes the analyze role gate
         },
         json={
             "oa_text": "irrelevant",
-            "case_id": "CASE-2025-001",          # a tenant_a case
+            "case_id": "CASE-2025-001",  # a tenant_a case
             "target_patent_no": "US17123456",
         },
     )

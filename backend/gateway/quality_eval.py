@@ -40,14 +40,15 @@ and never writes. It does NOT add an HTTP endpoint (kept off ``main.py``); it is
 a thin library an ops cron calls weekly/monthly, with a CLI mirroring
 ``audit_archive.py`` / ``deadline.py`` / ``backup.py``.
 """
+
 from __future__ import annotations
 
 import json
 import sqlite3
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Endpoint constants — the exact strings the gateway writes (main.py).
 EP_ANALYZE = "/v1/oa/analyze"
@@ -93,7 +94,7 @@ def _read_rows() -> list[dict[str, Any]]:
     try:
         cur = conn.execute(_SELECT)
         cols = [c[0] for c in cur.description]
-        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+        rows = [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
     except sqlite3.OperationalError:
         # audit table not created yet (DB file exists but is empty).
         return []
@@ -112,7 +113,7 @@ def _read_rows() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # Time window filtering.
 # ---------------------------------------------------------------------------
-def _parse_ts(ts: Optional[str]) -> Optional[datetime]:
+def _parse_ts(ts: str | None) -> datetime | None:
     """Parse an ISO ``timestamp_utc`` to an aware datetime, or None on failure."""
     if not ts:
         return None
@@ -121,21 +122,21 @@ def _parse_ts(ts: Optional[str]) -> Optional[datetime]:
     except (TypeError, ValueError):
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return dt
 
 
 def _in_window(
     rows: list[dict[str, Any]],
     *,
-    days: Optional[int],
-    tenant: Optional[str],
-    now: Optional[datetime] = None,
+    days: int | None,
+    tenant: str | None,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Filter rows to the last ``days`` (None = all time) and optional tenant."""
-    cutoff: Optional[datetime] = None
+    cutoff: datetime | None = None
     if days is not None:
-        ref = now or datetime.now(timezone.utc)
+        ref = now or datetime.now(UTC)
         cutoff = ref - timedelta(days=days)
     out: list[dict[str, Any]] = []
     for r in rows:
@@ -182,8 +183,13 @@ def _latency_stats(latencies: list[int]) -> dict[str, Any]:
     vals = sorted(float(x) for x in latencies if x is not None)
     if not vals:
         return {
-            "count": 0, "p50_ms": 0.0, "p95_ms": 0.0, "p99_ms": 0.0,
-            "min_ms": 0.0, "max_ms": 0.0, "mean_ms": 0.0,
+            "count": 0,
+            "p50_ms": 0.0,
+            "p95_ms": 0.0,
+            "p99_ms": 0.0,
+            "min_ms": 0.0,
+            "max_ms": 0.0,
+            "mean_ms": 0.0,
         }
     return {
         "count": len(vals),
@@ -199,7 +205,7 @@ def _latency_stats(latencies: list[int]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Cost.
 # ---------------------------------------------------------------------------
-def _estimate_cost(model: Optional[str], prompt: int, completion: int) -> float:
+def _estimate_cost(model: str | None, prompt: int, completion: int) -> float:
     """Per-row $ via rate_limit.estimate_cost (imported read-only).
 
     Cache hits (``model_used == "cache"``) and audit rows with no model
@@ -219,9 +225,7 @@ def _estimate_cost(model: Optional[str], prompt: int, completion: int) -> float:
 # ---------------------------------------------------------------------------
 # The report.
 # ---------------------------------------------------------------------------
-def _zero_report(
-    *, days: Optional[int], tenant: Optional[str], generated_at: str
-) -> dict[str, Any]:
+def _zero_report(*, days: int | None, tenant: str | None, generated_at: str) -> dict[str, Any]:
     """Structurally-complete report over zero rows (never divide-by-zero)."""
     empty_lat = _latency_stats([])
     return {
@@ -287,9 +291,9 @@ def _acceptance(prov: dict[str, int]) -> float:
 
 def build_report(
     *,
-    days: Optional[int] = None,
-    tenant: Optional[str] = None,
-    now: Optional[datetime] = None,
+    days: int | None = None,
+    tenant: str | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Compute the weekly/monthly quality report.
 
@@ -307,24 +311,27 @@ def build_report(
     Returns a structured report dict. Robust to an empty/young audit DB: every
     rate is guarded against division by zero and a no-rows report returns zeros.
     """
-    generated_at = (now or datetime.now(timezone.utc)).isoformat()
+    generated_at = (now or datetime.now(UTC)).isoformat()
     rows = _in_window(_read_rows(), days=days, tenant=tenant, now=now)
 
     if not rows:
         return _zero_report(days=days, tenant=tenant, generated_at=generated_at)
 
     # --- 業務 / 品質 counters -------------------------------------------------
-    oa_analyzed = 0          # successful analyze (not error, not cache hit)
+    oa_analyzed = 0  # successful analyze (not error, not cache hit)
     oa_analyze_errors = 0
     cache_hits = 0
     exports_total = 0
     exports_signed_off = 0
-    exports_refused = 0      # sign-off hard-gate refusals (signoff=False)
+    exports_refused = 0  # sign-off hard-gate refusals (signoff=False)
 
     # Provenance accumulators, overall + per tenant.
     prov_overall = {
-        "total_segments": 0, "accepted_segments": 0, "ai_generated": 0,
-        "attorney_edited": 0, "attorney_added": 0,
+        "total_segments": 0,
+        "accepted_segments": 0,
+        "ai_generated": 0,
+        "attorney_edited": 0,
+        "attorney_added": 0,
     }
     prov_by_tenant: dict[str, dict[str, int]] = {}
 
@@ -339,7 +346,7 @@ def build_report(
     model_mix: dict[str, int] = {}
 
     # --- audit-write health (timestamp monotonicity vs insertion order) ------
-    last_dt: Optional[datetime] = None
+    last_dt: datetime | None = None
     out_of_order = 0
 
     for r in rows:
@@ -408,8 +415,13 @@ def build_report(
                     prov_overall[k] += v
                 pt = prov_by_tenant.setdefault(
                     tid,
-                    {"total_segments": 0, "accepted_segments": 0, "ai_generated": 0,
-                     "attorney_edited": 0, "attorney_added": 0},
+                    {
+                        "total_segments": 0,
+                        "accepted_segments": 0,
+                        "ai_generated": 0,
+                        "attorney_edited": 0,
+                        "attorney_added": 0,
+                    },
                 )
                 for k, v in contrib.items():
                     pt[k] += v
@@ -418,17 +430,11 @@ def build_report(
     acceptance_rate = _acceptance(prov_overall)
     acceptance_by_tenant = {t: _acceptance(p) for t, p in prov_by_tenant.items()}
 
-    signoff_refusal_rate = (
-        round(exports_refused / exports_total, 6) if exports_total else 0.0
-    )
+    signoff_refusal_rate = round(exports_refused / exports_total, 6) if exports_total else 0.0
 
     total_seg = prov_overall["total_segments"]
-    attorney_edit_rate = (
-        round(prov_overall["attorney_edited"] / total_seg, 6) if total_seg else 0.0
-    )
-    attorney_added_rate = (
-        round(prov_overall["attorney_added"] / total_seg, 6) if total_seg else 0.0
-    )
+    attorney_edit_rate = round(prov_overall["attorney_edited"] / total_seg, 6) if total_seg else 0.0
+    attorney_added_rate = round(prov_overall["attorney_added"] / total_seg, 6) if total_seg else 0.0
 
     # per-OA cost = total inference $ / number of OAs analyzed (the unit of
     # business value). Cache hits are excluded from the denominator (no
@@ -594,8 +600,8 @@ def _main(argv: list[str]) -> int:
     except (AttributeError, ValueError):
         pass
 
-    days: Optional[int] = None
-    tenant: Optional[str] = None
+    days: int | None = None
+    tenant: str | None = None
     as_json = False
 
     i = 1
@@ -629,8 +635,7 @@ def _main(argv: list[str]) -> int:
             as_json = True
         elif arg in ("-h", "--help"):
             print(
-                "usage: python -m backend.gateway.quality_eval "
-                "[--days N] [--tenant T] [--json]",
+                "usage: python -m backend.gateway.quality_eval [--days N] [--tenant T] [--json]",
                 file=sys.stderr,
             )
             return 0

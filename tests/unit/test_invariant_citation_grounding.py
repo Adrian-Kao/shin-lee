@@ -4,6 +4,7 @@ that is neither a valid GROUNDED_REF slot nor a whitelisted statute, BEFORE the
 verifier LLM runs (so the wall holds even if the verifier is compromised by an
 injected prompt). These tests exercise the stripping logic directly.
 """
+
 from backend.ai_engine import oa_analyzer
 from backend.shared.models import DraftResponse, RetrievalHit
 
@@ -20,8 +21,12 @@ def _draft(text: str) -> DraftResponse:
 
 def test_ungrounded_citations_are_stripped_grounded_ones_survive():
     grounded = [
-        RetrievalHit(patent_no="US7654321", section="claim_1",
-                     text="microchannel with non-uniform cross-section", score=0.9),
+        RetrievalHit(
+            patent_no="US7654321",
+            section="claim_1",
+            text="microchannel with non-uniform cross-section",
+            score=0.9,
+        ),
     ]
     draft = _draft(
         "Per [GROUNDED_REF_1] the channels differ in cross-section. "

@@ -17,6 +17,7 @@ middleware to "simplify") this module goes red. The header values
 themselves are owned by ``backend/gateway/main.py`` constants — these
 tests assert on the visible HTTP wire.
 """
+
 from __future__ import annotations
 
 # The six headers we set unconditionally. Names match the literal HTTP
@@ -67,9 +68,7 @@ def test_csp_has_default_src_self(gateway_client):
     matches. Without it CSP is effectively decorative."""
     resp = gateway_client.get("/v1/health")
     csp = resp.headers.get("Content-Security-Policy", "")
-    assert "default-src 'self'" in csp, (
-        f"CSP missing `default-src 'self'`; got: {csp!r}"
-    )
+    assert "default-src 'self'" in csp, f"CSP missing `default-src 'self'`; got: {csp!r}"
     # Also assert frame-ancestors 'none' — paired with X-Frame-Options for
     # browsers that support both. Without this, X-Frame-Options DENY alone
     # is bypassable in old Safari builds.
@@ -83,8 +82,7 @@ def test_x_frame_options_deny(gateway_client):
     tolerate."""
     resp = gateway_client.get("/v1/health")
     assert resp.headers.get("X-Frame-Options") == "DENY", (
-        f"X-Frame-Options must be 'DENY'; got: "
-        f"{resp.headers.get('X-Frame-Options')!r}"
+        f"X-Frame-Options must be 'DENY'; got: {resp.headers.get('X-Frame-Options')!r}"
     )
 
 

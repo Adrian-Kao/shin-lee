@@ -44,6 +44,7 @@ Production note: in S3, ``_state.json`` would itself be a versioned object (or
 the high-water mark would be the max ``last_audit_id`` across listed manifest
 objects). The directory layout here maps 1:1 onto an S3 prefix.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -53,9 +54,9 @@ import sqlite3
 import stat
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Coarse process-wide lock. Sealing is an ops/cron operation off the request
 # hot path, so serialising the read-DB → write-segment → update-state sequence
@@ -118,7 +119,7 @@ def _read_live_rows() -> list[dict[str, Any]]:
     try:
         cur = conn.execute(_AUDIT_SELECT)
         cols = [c[0] for c in cur.description]
-        return [dict(zip(cols, r)) for r in cur.fetchall()]
+        return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
     finally:
         conn.close()
 
@@ -227,7 +228,7 @@ def _seg_basename(index: int) -> str:
 # ---------------------------------------------------------------------------
 # Public API.
 # ---------------------------------------------------------------------------
-def seal_next_segment(now_iso: Optional[str] = None) -> dict:
+def seal_next_segment(now_iso: str | None = None) -> dict:
     """Seal all not-yet-archived audit rows into one new immutable segment.
 
     Returns a dict describing what happened. When there are no pending rows
@@ -239,7 +240,7 @@ def seal_next_segment(now_iso: Optional[str] = None) -> dict:
     tests / replaying); defaults to ``datetime.now(timezone.utc)``.
     """
     if now_iso is None:
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
 
     with _lock:
         adir = _archive_dir()
@@ -406,13 +407,12 @@ def verify_archive() -> dict:
 
     expected_prev_root = ""
     expected_offset = 0
-    for manifest, manifest_path, seg_path in segments:
+    for manifest, _manifest_path, seg_path in segments:
         seg_index = manifest.get("segment_index")
 
         if not seg_path.exists():
             anomalies.append(
-                {"type": "missing_segment_file", "segment_index": seg_index,
-                 "path": str(seg_path)}
+                {"type": "missing_segment_file", "segment_index": seg_index, "path": str(seg_path)}
             )
             # Can't verify rows of a missing file; keep chain expectation as-is
             # so subsequent segments still get checked against the prior root.
@@ -425,26 +425,35 @@ def verify_archive() -> dict:
         recorded_prev = manifest.get("prev_root", "")
         if recorded_prev != expected_prev_root:
             anomalies.append(
-                {"type": "segment_chain_break", "segment_index": seg_index,
-                 "expected_prev_root": expected_prev_root,
-                 "recorded_prev_root": recorded_prev}
+                {
+                    "type": "segment_chain_break",
+                    "segment_index": seg_index,
+                    "expected_prev_root": expected_prev_root,
+                    "recorded_prev_root": recorded_prev,
+                }
             )
 
         # --- (2) chain: offset contiguity ---
         recorded_start = manifest.get("row_offset_start")
         if recorded_start != expected_offset:
             anomalies.append(
-                {"type": "segment_offset_gap", "segment_index": seg_index,
-                 "expected_offset": expected_offset,
-                 "recorded_offset": recorded_start}
+                {
+                    "type": "segment_offset_gap",
+                    "segment_index": seg_index,
+                    "expected_offset": expected_offset,
+                    "recorded_offset": recorded_start,
+                }
             )
 
         # --- row_count consistency ---
         if manifest.get("row_count") != len(seg_rows):
             anomalies.append(
-                {"type": "row_count_mismatch", "segment_index": seg_index,
-                 "manifest_row_count": manifest.get("row_count"),
-                 "actual_rows": len(seg_rows)}
+                {
+                    "type": "row_count_mismatch",
+                    "segment_index": seg_index,
+                    "manifest_row_count": manifest.get("row_count"),
+                    "actual_rows": len(seg_rows),
+                }
             )
 
         # --- (1) recompute Merkle root from the segment's own rows ---
@@ -452,9 +461,12 @@ def verify_archive() -> dict:
         recorded_root = manifest.get("merkle_root")
         if recomputed_root != recorded_root:
             anomalies.append(
-                {"type": "merkle_root_mismatch", "segment_index": seg_index,
-                 "recorded_root": recorded_root,
-                 "recomputed_root": recomputed_root}
+                {
+                    "type": "merkle_root_mismatch",
+                    "segment_index": seg_index,
+                    "recorded_root": recorded_root,
+                    "recomputed_root": recomputed_root,
+                }
             )
 
         # --- (3) cross-check each row against the live DB ---
@@ -463,21 +475,25 @@ def verify_archive() -> dict:
             live_hash = live_index.get(aid)
             if live_hash is None:
                 anomalies.append(
-                    {"type": "live_row_missing", "segment_index": seg_index,
-                     "audit_id": aid}
+                    {"type": "live_row_missing", "segment_index": seg_index, "audit_id": aid}
                 )
             elif live_hash != row.get("row_hash"):
                 anomalies.append(
-                    {"type": "live_row_tampered", "segment_index": seg_index,
-                     "audit_id": aid,
-                     "archived_row_hash": row.get("row_hash"),
-                     "live_row_hash": live_hash}
+                    {
+                        "type": "live_row_tampered",
+                        "segment_index": seg_index,
+                        "audit_id": aid,
+                        "archived_row_hash": row.get("row_hash"),
+                        "live_row_hash": live_hash,
+                    }
                 )
 
         # advance chain expectations using the RECOMPUTED root (so a forged
         # manifest root can't quietly re-anchor the rest of the chain)
         expected_prev_root = recomputed_root
-        expected_offset = (recorded_start if recorded_start is not None else expected_offset) + len(seg_rows)
+        expected_offset = (recorded_start if recorded_start is not None else expected_offset) + len(
+            seg_rows
+        )
 
     return {
         "segments": len(segments),

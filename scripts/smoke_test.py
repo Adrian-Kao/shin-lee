@@ -3,11 +3,14 @@
 Usage: python scripts/smoke_test.py
 Requires: Ollama running on localhost:11434 with llama3.1:8b pulled.
 """
+
 import os
+
 os.environ["LLM_MODE"] = "local"
 
 import sys
 import time
+
 from backend.ai_engine.llm_client import chat
 
 print("=== Smoke test: direct Ollama call via llm_client ===")

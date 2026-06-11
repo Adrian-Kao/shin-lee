@@ -18,10 +18,10 @@ These tests are the load-bearing assertions for the Day 12A masking changes.
 The mapping store is isolated per test (autouse fixture) so global on-disk
 state never leaks between tests.
 """
+
 from __future__ import annotations
 
 import re
-import unicodedata
 
 import pytest
 
@@ -109,6 +109,7 @@ def test_zero_width_does_not_remove_legitimate_whitespace():
 # 2. Homoglyph / confusable folding
 # ===========================================================================
 
+
 def test_cyrillic_homoglyph_email_redacted():
     """jоhn@apex-ip.com with a Cyrillic 'о' (U+043E) must be fully redacted."""
     raw = "applicant email: jоhn@apex-ip.com"  # о = Cyrillic
@@ -155,6 +156,7 @@ def test_homoglyph_does_not_fabricate_pii_in_clean_text():
 # ===========================================================================
 # 3. normalize_for_detection ordering
 # ===========================================================================
+
 
 def test_normalize_pipeline_order():
     """strip → fold → NFKC composes: fullwidth digits AND a zero-width split
@@ -263,6 +265,7 @@ def test_round_trip_cross_tenant_does_not_reconstruct():
 # ===========================================================================
 # 5. Expanded PII coverage — TRUE POSITIVES
 # ===========================================================================
+
 
 @pytest.mark.parametrize(
     "text,expected_rule",

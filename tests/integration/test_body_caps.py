@@ -19,6 +19,7 @@ caps can't help if the body is too big to buffer in the first place.
 We test the boundaries explicitly so a future "let's bump the cap" only
 breaks these tests (and not in surprising downstream ways).
 """
+
 from __future__ import annotations
 
 from backend.shared import config as cfg
@@ -29,9 +30,7 @@ _ALICE_CASE = "CASE-2025-001"
 # ---------------------------------------------------------------------------
 # 1. Middleware-layer cap (Content-Length header check, BEFORE Pydantic)
 # ---------------------------------------------------------------------------
-def test_analyze_oversize_body_returns_413_via_middleware(
-    gateway_client, alice_token, monkeypatch
-):
+def test_analyze_oversize_body_returns_413_via_middleware(gateway_client, alice_token, monkeypatch):
     """Pin MAX_BODY_BYTES to a tiny value (4KB) so we can drive the
     middleware without uploading actual megabytes. A request whose
     Content-Length exceeds the cap must 413 BEFORE Pydantic gets a chance
@@ -65,9 +64,7 @@ def test_analyze_oversize_body_returns_413_via_middleware(
     assert "X-Frame-Options" in resp.headers, dict(resp.headers)
 
 
-def test_health_get_with_no_body_is_unaffected_by_cap(
-    gateway_client, monkeypatch
-):
+def test_health_get_with_no_body_is_unaffected_by_cap(gateway_client, monkeypatch):
     """GET requests have no body, so Content-Length is absent or zero.
     The middleware must NOT trip the 413 just because the cap is set
     low — otherwise every health probe breaks under a tight cap."""
@@ -156,7 +153,7 @@ def test_analyze_extra_fields_rejected(gateway_client, alice_token):
             "oa_text": "any",
             "case_id": _ALICE_CASE,
             "target_patent_no": "US-1234567",
-            "force_security_level": "public",   # extra — must 422
+            "force_security_level": "public",  # extra — must 422
         },
     )
     assert resp.status_code == 422, resp.text

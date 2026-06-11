@@ -47,17 +47,16 @@ Run a readable report (mirrors ``python -m backend.ai_engine.deadline``)::
 
     python -m backend.ai_engine.retrieval_eval
 """
+
 from __future__ import annotations
 
 import json
 import math
 from pathlib import Path
-from typing import Optional
 
 from backend.ai_engine import rag
 from backend.shared.config import DATA_DIR, settings
 from backend.shared.models import Patent
-
 
 # ---------------------------------------------------------------------------
 # Thresholds (see module docstring).
@@ -108,7 +107,7 @@ _INLINE_FALLBACK_CASES: list[dict] = [
 ]
 
 
-def load_dataset(path: Optional[Path] = None) -> list[dict]:
+def load_dataset(path: Path | None = None) -> list[dict]:
     """Load the labeled eval cases. Falls back to the inline set if the JSON
     file is absent. Every returned case has ``query``, ``tenant_id``, and a
     non-empty ``relevant`` list."""
@@ -278,7 +277,7 @@ def grounding_coverage(results: list, relevant) -> float:
 # ---------------------------------------------------------------------------
 # End-to-end evaluation
 # ---------------------------------------------------------------------------
-def evaluate(dataset: Optional[list[dict]] = None, k: int = 5) -> dict:
+def evaluate(dataset: list[dict] | None = None, k: int = 5) -> dict:
     """Index the demo patents and score every eval case.
 
     Returns::
@@ -323,19 +322,21 @@ def evaluate(dataset: Optional[list[dict]] = None, k: int = 5) -> dict:
         ndcg_sum += nd
         coverage_sum += cov
 
-        per_case.append({
-            "id": c.get("id", query[:32]),
-            "query": query,
-            "tenant_id": c.get("tenant_id"),
-            "recall@k": r,
-            "mrr": m,
-            "ndcg@k": nd,
-            "grounding_coverage@k": cov,
-            "n_relevant": len(relevant),
-            "n_retrieved": len(hits),
-            "top_patent_nos": [h.patent_no for h in hits[:k]],
-            "hit": r > 0.0,
-        })
+        per_case.append(
+            {
+                "id": c.get("id", query[:32]),
+                "query": query,
+                "tenant_id": c.get("tenant_id"),
+                "recall@k": r,
+                "mrr": m,
+                "ndcg@k": nd,
+                "grounding_coverage@k": cov,
+                "n_relevant": len(relevant),
+                "n_retrieved": len(hits),
+                "top_patent_nos": [h.patent_no for h in hits[:k]],
+                "hit": r > 0.0,
+            }
+        )
 
     n = len(cases)
     agg_recall = recall_sum / n if n else 0.0
@@ -359,7 +360,7 @@ def evaluate(dataset: Optional[list[dict]] = None, k: int = 5) -> dict:
 
 def assert_quality(
     min_recall_at_5: float = DEFAULT_MIN_RECALL_AT_5,
-    dataset: Optional[list[dict]] = None,
+    dataset: list[dict] | None = None,
 ) -> dict:
     """Quality gate. Runs ``evaluate(k=5)`` and checks aggregate recall@5.
 
@@ -397,8 +398,10 @@ def _print_report() -> None:
     print(f"aggregate recall@5: {report['recall@k']:.3f}")
     print(f"aggregate MRR     : {report['mrr']:.3f}")
     print(f"aggregate nDCG@5  : {report['ndcg@k']:.3f}")
-    print(f"aggregate cover@5 : {report['grounding_coverage@k']:.3f}  "
-          f"(fraction of grounded set that is relevant)")
+    print(
+        f"aggregate cover@5 : {report['grounding_coverage@k']:.3f}  "
+        f"(fraction of grounded set that is relevant)"
+    )
     if backend == "mock":
         print()
         print("NOTE: mock embeddings are deterministic SHA-256 noise — these")
@@ -426,19 +429,27 @@ def _print_report() -> None:
     print("-" * 72)
     gate = assert_quality(min_recall_at_5=DEFAULT_MIN_RECALL_AT_5)
     status = "PASS" if gate["passed"] else "FAIL"
-    print(f"mock-floor gate (>= {DEFAULT_MIN_RECALL_AT_5:.2f}): {status} "
-          f"(actual {gate['actual_recall_at_5']:.3f})")
+    print(
+        f"mock-floor gate (>= {DEFAULT_MIN_RECALL_AT_5:.2f}): {status} "
+        f"(actual {gate['actual_recall_at_5']:.3f})"
+    )
     prod_ok = report["recall@k"] >= PROD_TARGET_RECALL_AT_5
-    print(f"prod target     (>= {PROD_TARGET_RECALL_AT_5:.2f}): "
-          f"{'MET' if prod_ok else 'NOT MET (expected on mock backend)'}")
+    print(
+        f"prod target     (>= {PROD_TARGET_RECALL_AT_5:.2f}): "
+        f"{'MET' if prod_ok else 'NOT MET (expected on mock backend)'}"
+    )
     ndcg_ok = report["ndcg@k"] >= PROD_TARGET_NDCG_AT_5
-    print(f"prod nDCG@5     (>= {PROD_TARGET_NDCG_AT_5:.2f}): "
-          f"{'MET' if ndcg_ok else 'NOT MET (expected on mock backend)'}  "
-          f"(actual {report['ndcg@k']:.3f})")
+    print(
+        f"prod nDCG@5     (>= {PROD_TARGET_NDCG_AT_5:.2f}): "
+        f"{'MET' if ndcg_ok else 'NOT MET (expected on mock backend)'}  "
+        f"(actual {report['ndcg@k']:.3f})"
+    )
     cov_ok = report["grounding_coverage@k"] >= PROD_TARGET_COVERAGE_AT_5
-    print(f"prod coverage@5 (>= {PROD_TARGET_COVERAGE_AT_5:.2f}): "
-          f"{'MET' if cov_ok else 'NOT MET (expected on mock backend)'}  "
-          f"(actual {report['grounding_coverage@k']:.3f})")
+    print(
+        f"prod coverage@5 (>= {PROD_TARGET_COVERAGE_AT_5:.2f}): "
+        f"{'MET' if cov_ok else 'NOT MET (expected on mock backend)'}  "
+        f"(actual {report['grounding_coverage@k']:.3f})"
+    )
     print("=" * 72)
 
 

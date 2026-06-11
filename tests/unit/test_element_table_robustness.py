@@ -13,6 +13,7 @@ must survive:
 The perf guard asserts a generous wall-clock ceiling: it is NOT a microbenchmark
 (CI boxes vary), it only catches a reintroduction of the quadratic slicing.
 """
+
 from __future__ import annotations
 
 import time

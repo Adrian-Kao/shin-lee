@@ -2,11 +2,12 @@
 
 No network is hit: US is pure computation; TW/JP HTTP is monkeypatched.
 """
+
 from __future__ import annotations
 
 import importlib.util
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ _SPEC.loader.exec_module(fetch_holidays)  # type: ignore[union-attr]
 # US federal-holiday computation (exact, no network)                          #
 # --------------------------------------------------------------------------- #
 
+
 def test_us_2025_matches_shipped_calendar():
     """The computed US 2025 set must equal the shipped US_2025.1.json holidays."""
     shipped = json.loads(
@@ -36,9 +38,9 @@ def test_us_2025_matches_shipped_calendar():
 def test_us_2025_has_11_named_holidays():
     h = fetch_holidays.compute_us_federal_holidays(2025)
     assert len(h) == 11
-    assert h["2025-01-20"] == "MLK Day"            # 3rd Mon Jan
-    assert h["2025-05-26"] == "Memorial Day"       # last Mon May
-    assert h["2025-11-27"] == "Thanksgiving"       # 4th Thu Nov
+    assert h["2025-01-20"] == "MLK Day"  # 3rd Mon Jan
+    assert h["2025-05-26"] == "Memorial Day"  # last Mon May
+    assert h["2025-11-27"] == "Thanksgiving"  # 4th Thu Nov
 
 
 def test_us_observed_shift_saturday_to_friday():
@@ -75,11 +77,11 @@ def test_us_new_year_saturday_observes_into_prior_year():
 _TW_CSV_SAMPLE = (
     "西元日期,星期,是否放假,備註\n"
     "20250101,3,2,中華民國開國紀念日\n"
-    "20250102,4,0,\n"            # working day -> ignored
+    "20250102,4,0,\n"  # working day -> ignored
     "20250127,1,2,農曆除夕的前一日（彈性放假）\n"
     "20250128,2,2,農曆除夕\n"
-    "20250203,1,0,\n"            # working day -> ignored
-    "20251231,3,0,\n"           # different year working day
+    "20250203,1,0,\n"  # working day -> ignored
+    "20251231,3,0,\n"  # different year working day
 )
 
 
@@ -149,7 +151,7 @@ _JP_CSV_SAMPLE = (
     "国民の祝日・休日月日,国民の祝日・休日名称\n"
     "2025/1/1,元日\n"
     "2025/1/13,成人の日\n"
-    "2024/12/31,大みそか\n"   # different year -> ignored
+    "2024/12/31,大みそか\n"  # different year -> ignored
 )
 
 
@@ -167,19 +169,23 @@ def test_jp_parse_keeps_year_and_adds_jpo_closure():
 # CN / KR Nager.Date JSON parsing (in-memory; HTTP monkeypatched -> no network)#
 # --------------------------------------------------------------------------- #
 
-_NAGER_CN_SAMPLE = json.dumps([
-    {"date": "2025-01-01", "localName": "元旦", "name": "New Year's Day"},
-    {"date": "2025-01-29", "localName": "春节", "name": "Chinese New Year"},
-    {"date": "2025-10-01", "localName": "国庆节", "name": "National Day"},
-    {"date": "2024-12-31", "localName": "旧年", "name": "Prev year"},  # filtered
-])
+_NAGER_CN_SAMPLE = json.dumps(
+    [
+        {"date": "2025-01-01", "localName": "元旦", "name": "New Year's Day"},
+        {"date": "2025-01-29", "localName": "春节", "name": "Chinese New Year"},
+        {"date": "2025-10-01", "localName": "国庆节", "name": "National Day"},
+        {"date": "2024-12-31", "localName": "旧年", "name": "Prev year"},  # filtered
+    ]
+)
 
-_NAGER_KR_SAMPLE = json.dumps([
-    {"date": "2025-01-01", "localName": "신정", "name": "New Year's Day"},
-    {"date": "2025-01-29", "localName": "설날", "name": "Korean New Year"},
-    {"date": "2025-10-07", "localName": "추석", "name": "Chuseok"},
-    {"date": "2026-01-01", "localName": "신정", "name": "Next year"},  # filtered
-])
+_NAGER_KR_SAMPLE = json.dumps(
+    [
+        {"date": "2025-01-01", "localName": "신정", "name": "New Year's Day"},
+        {"date": "2025-01-29", "localName": "설날", "name": "Korean New Year"},
+        {"date": "2025-10-07", "localName": "추석", "name": "Chuseok"},
+        {"date": "2026-01-01", "localName": "신정", "name": "Next year"},  # filtered
+    ]
+)
 
 
 def test_nager_parse_keeps_localname_and_filters_year():
@@ -230,8 +236,10 @@ def test_kr_fetch_monkeypatched_no_network(monkeypatch):
 # EP — hand-curated, no network                                               #
 # --------------------------------------------------------------------------- #
 
+
 def test_ep_fetch_returns_curated_year_no_network(monkeypatch):
     """EP must NOT hit the network: if _http_get_text is called the test fails."""
+
     def boom(*a, **k):
         raise AssertionError("EP fetch must not touch the network")
 
@@ -264,6 +272,7 @@ def test_new_jurisdictions_registered(jur):
 # --------------------------------------------------------------------------- #
 # build_calendar / write_calendar: schema + overwrite-guard + atomicity       #
 # --------------------------------------------------------------------------- #
+
 
 def test_build_calendar_schema_has_required_keys():
     doc = fetch_holidays.build_calendar("US", 2025, "2025.1")
@@ -340,6 +349,7 @@ def test_diff_holidays_added_removed_changed():
 # Round-trip: a written calendar is consumable by deadline.py's loader        #
 # --------------------------------------------------------------------------- #
 
+
 def test_written_calendar_round_trips_through_deadline_loader(tmp_path, monkeypatch):
     """Write a US calendar via the fetcher, point deadline.py's loader at it,
     and assert calculate_deadline uses those holidays (rolls a deadline that
@@ -347,22 +357,20 @@ def test_written_calendar_round_trips_through_deadline_loader(tmp_path, monkeypa
     pytest.importorskip("backend.ai_engine.deadline")
     from backend.ai_engine import deadline
 
-    fetch_holidays.write_calendar(
-        fetch_holidays.build_calendar("US", 2025, "rt"), tmp_path
-    )
+    fetch_holidays.write_calendar(fetch_holidays.build_calendar("US", 2025, "rt"), tmp_path)
 
     # Repoint the loader at our tmp dir and clear its cache.
     monkeypatch.setattr(deadline, "CALENDARS_DIR", tmp_path)
     deadline.reload_calendars()
 
     loaded = deadline.get_holidays("US", "rt")
-    assert date(2025, 7, 4) in loaded          # Independence Day present
+    assert date(2025, 7, 4) in loaded  # Independence Day present
     assert loaded[date(2025, 12, 25)] == "Christmas"
 
     # And the deadline engine actually consumes it: a US deadline landing on
     # July 4 (Friday holiday) must roll forward off it.
     # received + 90 days == 2025-07-04 -> received == 2025-04-05.
-    received = datetime(2025, 4, 5, 9, 0, tzinfo=timezone.utc)
+    received = datetime(2025, 4, 5, 9, 0, tzinfo=UTC)
     res = deadline.calculate_deadline(received, "US", "rt")
     assert not res["statutory_deadline"].startswith("2025-07-04")
     assert not deadline.calendar_is_missing("US", "rt")

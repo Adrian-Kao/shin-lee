@@ -22,10 +22,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
 
 # Cap matching `settings.MAX_BODY_BYTES` / Pydantic v2 default validation
 # semantics. 5MB of OA text is ~1M tokens — far above any real OA document
@@ -37,11 +36,12 @@ _MAX_OA_TEXT_CHARS = 5 * 1024 * 1024
 
 # ---------- Auth / User ----------
 
+
 class UserRole(str, Enum):
-    ATTORNEY = "attorney"        # 律師：可上傳 OA、看分析、簽核
-    PARALEGAL = "paralegal"      # 法務助理：協助上傳、查詢
-    IT_ADMIN = "it_admin"        # 客戶 IT：管理 connector、看儀表板
-    AUDITOR = "auditor"          # 合規：唯讀 audit log
+    ATTORNEY = "attorney"  # 律師：可上傳 OA、看分析、簽核
+    PARALEGAL = "paralegal"  # 法務助理：協助上傳、查詢
+    IT_ADMIN = "it_admin"  # 客戶 IT：管理 connector、看儀表板
+    AUDITOR = "auditor"  # 合規：唯讀 audit log
 
 
 class User(BaseModel):
@@ -61,13 +61,17 @@ class User(BaseModel):
 
 # ---------- OA Document ----------
 
+
 class RejectionType(str, Enum):
     """USPTO 駁回類型；台灣 TIPO 大致對應。"""
-    NOVELTY_102 = "102_novelty"               # 新穎性 (US §102 / TW §22-1)
-    OBVIOUSNESS_103 = "103_obviousness"       # 進步性 / 非顯而易見 (US §103 / TW §22-2)
-    INDEFINITENESS_112 = "112_indefiniteness" # 明確性 (US §112(b) / TW §26-2 之一般情形)
-    ANTECEDENT_BASIS = "antecedent_basis"     # 缺先行詞 (TW §26-2 / US §112(b) 之 antecedent basis 子類)
-    SUBJECT_MATTER_101 = "101_subject_matter" # 適格性
+
+    NOVELTY_102 = "102_novelty"  # 新穎性 (US §102 / TW §22-1)
+    OBVIOUSNESS_103 = "103_obviousness"  # 進步性 / 非顯而易見 (US §103 / TW §22-2)
+    INDEFINITENESS_112 = "112_indefiniteness"  # 明確性 (US §112(b) / TW §26-2 之一般情形)
+    ANTECEDENT_BASIS = (
+        "antecedent_basis"  # 缺先行詞 (TW §26-2 / US §112(b) 之 antecedent basis 子類)
+    )
+    SUBJECT_MATTER_101 = "101_subject_matter"  # 適格性
     DOUBLE_PATENTING = "double_patenting"
     OTHER = "other"
 
@@ -80,7 +84,7 @@ class Rejection(BaseModel):
     affected_claims: list[int]
     cited_prior_art: list[str]  # patent numbers
     examiner_argument: str = Field(..., max_length=_MAX_OA_TEXT_CHARS)  # 審查官論點摘要 (已 redact)
-    confidence: float            # AI 解析的信心度 0-1
+    confidence: float  # AI 解析的信心度 0-1
 
 
 class OADocument(BaseModel):
@@ -89,13 +93,14 @@ class OADocument(BaseModel):
     oa_id: str = Field(..., max_length=128)
     case_id: str = Field(..., max_length=256)
     tenant_id: str = Field(..., max_length=64)
-    received_date: datetime      # Q17: 期日計算起算
-    deadline: datetime           # Q17: 答辯截止
+    received_date: datetime  # Q17: 期日計算起算
+    deadline: datetime  # Q17: 答辯截止
     raw_text_hash: str = Field(..., max_length=128)  # SHA-256，原文不上雲
     rejections: list[Rejection] = []
 
 
 # ---------- Patent / Prior Art ----------
+
 
 class Patent(BaseModel):
     # NOT extra=forbid: external patent feeds (USPTO XML, TIPO API) carry
@@ -107,11 +112,12 @@ class Patent(BaseModel):
     claims: list[str]
     publication_date: datetime
     jurisdiction: str = Field(..., max_length=8)  # US, EP, TW, JP, CN, ...
-    is_local: bool     # True = on-prem 客戶內部專利, False = 公開引證案
+    is_local: bool  # True = on-prem 客戶內部專利, False = 公開引證案
 
 
 class RetrievalHit(BaseModel):
     """RAG retrieval 結果。Q6 / Q14：每個 hit 都要能對回原文。"""
+
     model_config = {"extra": "forbid"}
 
     patent_no: str = Field(..., max_length=64)
@@ -123,6 +129,7 @@ class RetrievalHit(BaseModel):
 
 # ---------- Analysis Request / Response ----------
 
+
 class AnalysisRequest(BaseModel):
     """前端 → Gateway → AI Engine 的請求.
 
@@ -133,25 +140,28 @@ class AnalysisRequest(BaseModel):
     but one specific string is sized to OOM downstream consumers (e.g. the
     audit hash chain, the LLM tokeniser, the cache key hasher).
     """
+
     model_config = {"extra": "forbid"}
 
     oa_text: str = Field(
-        ..., max_length=_MAX_OA_TEXT_CHARS,
+        ...,
+        max_length=_MAX_OA_TEXT_CHARS,
         description="OA 全文，會在 Gateway 被 redact",
     )
     case_id: str = Field(..., max_length=256)
     target_patent_no: str = Field(..., max_length=64)  # 被 OA 的本案專利號
-    user_hint: Optional[str] = Field(default=None, max_length=8000)  # 律師補充說明
+    user_hint: str | None = Field(default=None, max_length=8000)  # 律師補充說明
 
 
 class DraftResponse(BaseModel):
     """AI Engine 對單一 rejection 的答辯草稿。Q14 / Q16。"""
+
     model_config = {"extra": "forbid"}
 
     rejection_id: str = Field(..., max_length=128)
-    strategy: str = Field(..., max_length=8192)               # 答辯策略摘要
+    strategy: str = Field(..., max_length=8192)  # 答辯策略摘要
     draft_text: str = Field(..., max_length=_MAX_OA_TEXT_CHARS)  # 答辯文字草稿
-    grounded_citations: list[str]       # 引用的法條 / prior art，必須在 retrieval set 中
+    grounded_citations: list[str]  # 引用的法條 / prior art，必須在 retrieval set 中
     confidence: float
     requires_attorney_review: bool = True  # Q16: 永遠 True
 
@@ -163,8 +173,10 @@ class DraftResponse(BaseModel):
     # verifier stripped and how confident the (separate) verifier model was —
     # instead of only an anonymous [CITATION_REMOVED] marker in draft_text.
     invalid_citations: list[str] = Field(default_factory=list)  # citations stripped by the verifier
-    verifier_confidence: Optional[float] = None                 # standalone verifier confidence (≠ folded `confidence`)
-    verifier_model: Optional[str] = None                        # which model performed verification
+    verifier_confidence: float | None = (
+        None  # standalone verifier confidence (≠ folded `confidence`)
+    )
+    verifier_model: str | None = None  # which model performed verification
 
 
 # ---------- Q16 — Provenance / human-in-the-loop sign-off ----------
@@ -203,6 +215,7 @@ class ProvenanceSegment(BaseModel):
     regenerated by the AI. `accepted=False` segments are excluded from the
     assembled document (the attorney rejected that sentence outright).
     """
+
     model_config = {"extra": "forbid"}
 
     segment_id: str = Field(..., max_length=128)
@@ -226,11 +239,12 @@ class ExportRequest(BaseModel):
     the export with the analysis that produced it (not enforced as a hard
     constraint to keep older callers working).
     """
+
     model_config = {"extra": "forbid"}
 
     case_id: str = Field(..., max_length=256)
-    rejection_id: Optional[str] = Field(default=None, max_length=128)
-    draft_set_id: Optional[str] = Field(default=None, max_length=128)
+    rejection_id: str | None = Field(default=None, max_length=128)
+    draft_set_id: str | None = Field(default=None, max_length=128)
     # Cap the segment count so a hostile body can't push thousands of
     # max-sized segments through the assembler / hasher.
     segments: list[ProvenanceSegment] = Field(..., max_length=10_000)
@@ -246,6 +260,7 @@ class ProvenanceSummary(BaseModel):
     edit ratios to find where the AI draft is weakest, without needing a full
     training pipeline today.
     """
+
     model_config = {"extra": "forbid"}
 
     total_segments: int = 0
@@ -264,11 +279,12 @@ class ExportResponse(BaseModel):
     returned to the caller but NEVER stored raw in the audit log — only its
     SHA-256 (`content_sha256`) and the provenance summary are persisted.
     """
+
     model_config = {"extra": "forbid"}
 
     case_id: str = Field(..., max_length=256)
-    rejection_id: Optional[str] = Field(default=None, max_length=128)
-    draft_set_id: Optional[str] = Field(default=None, max_length=128)
+    rejection_id: str | None = Field(default=None, max_length=128)
+    draft_set_id: str | None = Field(default=None, max_length=128)
     document: str = Field(..., max_length=_MAX_OA_TEXT_CHARS)
     content_sha256: str = Field(..., max_length=64)
     provenance_summary: ProvenanceSummary
@@ -285,10 +301,11 @@ class ClaimNode(BaseModel):
     `parents` carries all parents for multi-parent claims so the UI can
     surface cascade-risk highlighting when an independent claim is rejected.
     """
+
     model_config = {"extra": "forbid"}
 
     claim_no: int
-    depends_on: Optional[int] = None
+    depends_on: int | None = None
     parents: list[int] = Field(default_factory=list)
     text: str = Field(..., max_length=_MAX_OA_TEXT_CHARS)
     is_independent: bool
@@ -308,6 +325,7 @@ class RedactionSummary(BaseModel):
     — never the matched values. CLAUDE.md invariant #3 forbids the
     matched content from leaving the gateway.
     """
+
     model_config = {"extra": "forbid"}
 
     masked_entity_count: int = 0
@@ -322,8 +340,8 @@ class AnalysisResponse(BaseModel):
     oa: OADocument
     drafts: list[DraftResponse]
     related_prior_art: list[RetrievalHit]
-    deadline_summary: "DeadlineInfo"
-    cost_meta: "CostMeta"
+    deadline_summary: DeadlineInfo
+    cost_meta: CostMeta
     # UX_RESEARCH §5 #2 — claim dependency tree for left-rail rendering.
     # default_factory=list keeps the field optional from the AI Engine's
     # point of view (older engines that don't populate it will still
@@ -337,11 +355,12 @@ class AnalysisResponse(BaseModel):
 
 # ---------- Deadline (Q17) ----------
 
+
 class DeadlineInfo(BaseModel):
     model_config = {"extra": "forbid"}
 
     received_date: datetime
-    statutory_deadline: datetime         # 法定期日（含可延展前）
+    statutory_deadline: datetime  # 法定期日（含可延展前）
     recommended_internal_deadline: datetime  # 內部建議完成日（早 7 天）
     days_remaining: int
     holiday_calendar_version: str = Field(..., max_length=32)  # Q17: 假日表版本
@@ -349,6 +368,7 @@ class DeadlineInfo(BaseModel):
 
 
 # ---------- Cost / Token (Q18) ----------
+
 
 class CostMeta(BaseModel):
     model_config = {"protected_namespaces": (), "extra": "forbid"}
@@ -379,6 +399,7 @@ class CostMeta(BaseModel):
 
 # ---------- Audit (Q13) ----------
 
+
 class AuditEntry(BaseModel):
     # `model_used` collides with Pydantic v2's protected `model_` namespace;
     # disabling the protected-namespace check silences the import-time
@@ -391,14 +412,14 @@ class AuditEntry(BaseModel):
     timestamp_local: datetime
     user_id: str = Field(..., max_length=64)
     tenant_id: str = Field(..., max_length=64)
-    case_id: Optional[str] = Field(default=None, max_length=256)
+    case_id: str | None = Field(default=None, max_length=256)
     endpoint: str = Field(..., max_length=256)
-    request_hash: str = Field(..., max_length=128)               # SHA-256 of request body
-    response_hash: str = Field(..., max_length=128)              # SHA-256 of response
-    masked_field_rules: list[str]   # 哪些 mask 規則被觸發 (rule id, 不存內容)
-    model_used: Optional[str] = Field(default=None, max_length=128)
-    prompt_tokens: Optional[int]
-    completion_tokens: Optional[int]
+    request_hash: str = Field(..., max_length=128)  # SHA-256 of request body
+    response_hash: str = Field(..., max_length=128)  # SHA-256 of response
+    masked_field_rules: list[str]  # 哪些 mask 規則被觸發 (rule id, 不存內容)
+    model_used: str | None = Field(default=None, max_length=128)
+    prompt_tokens: int | None
+    completion_tokens: int | None
     latency_ms: int
     policy_decisions: dict[str, bool]  # {"rate_limit_passed": True, "authz_passed": True}
 

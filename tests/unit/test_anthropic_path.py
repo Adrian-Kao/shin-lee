@@ -25,28 +25,34 @@ Coverage:
 All retry tests set LLM_RETRY_* knobs so backoff is fast and deterministic
 (jitter 0, base 0) — no real sleeping, no flakes.
 """
+
 from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 import anthropic
+import pytest
 
 from backend.ai_engine import llm_client
 from backend.ai_engine.llm_client import AnthropicLLM, LLMResponse
 from backend.shared.config import settings
 
-
 # ---------------------------------------------------------------------------
 # Fakes — a minimal stand-in for AsyncAnthropic.messages.create
 # ---------------------------------------------------------------------------
 
+
 class _Usage:
     """Mimics the SDK usage object surfaced on msg.usage."""
 
-    def __init__(self, *, input_tokens, output_tokens,
-                 cache_read_input_tokens=0, cache_creation_input_tokens=0):
+    def __init__(
+        self,
+        *,
+        input_tokens,
+        output_tokens,
+        cache_read_input_tokens=0,
+        cache_creation_input_tokens=0,
+    ):
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
         self.cache_read_input_tokens = cache_read_input_tokens
@@ -72,11 +78,15 @@ def _make_response_error(cls, status_code):
     exposing .headers / .status_code / .request so the retry helper's
     Retry-After read + status check work.
     """
-    resp = type("_Resp", (), {
-        "status_code": status_code,
-        "headers": {},
-        "request": None,
-    })()
+    resp = type(
+        "_Resp",
+        (),
+        {
+            "status_code": status_code,
+            "headers": {},
+            "request": None,
+        },
+    )()
     return cls("boom", response=resp, body=None)
 
 
@@ -147,17 +157,29 @@ def anthropic_llm(monkeypatch):
 # 1. Successful call + real usage / cost accounting
 # ---------------------------------------------------------------------------
 
-def test_successful_call_accounts_tokens(anthropic_llm):
-    llm = anthropic_llm([_ok_message(
-        text='{"ok": true}',
-        input_tokens=500, output_tokens=120,
-        cache_read_input_tokens=300, cache_creation_input_tokens=40,
-    )])
 
-    resp = asyncio.run(llm.achat(
-        system="sys", user="user", intent="parse_oa",
-        model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-    ))
+def test_successful_call_accounts_tokens(anthropic_llm):
+    llm = anthropic_llm(
+        [
+            _ok_message(
+                text='{"ok": true}',
+                input_tokens=500,
+                output_tokens=120,
+                cache_read_input_tokens=300,
+                cache_creation_input_tokens=40,
+            )
+        ]
+    )
+
+    resp = asyncio.run(
+        llm.achat(
+            system="sys",
+            user="user",
+            intent="parse_oa",
+            model_hint=settings.LLM_MODEL_REASONING,
+            security_level="public",
+        )
+    )
 
     assert isinstance(resp, LLMResponse)
     assert resp.text == '{"ok": true}'
@@ -182,10 +204,15 @@ def test_successful_call_sends_cached_system_block(anthropic_llm):
     """Prompt caching (cost lever) is wired: the system prompt goes out as a
     cache_control ephemeral block and exactly one user message is sent."""
     llm = anthropic_llm([_ok_message()])
-    asyncio.run(llm.achat(
-        system="SYSTEM PROMPT", user="hi", intent="draft_response",
-        model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-    ))
+    asyncio.run(
+        llm.achat(
+            system="SYSTEM PROMPT",
+            user="hi",
+            intent="draft_response",
+            model_hint=settings.LLM_MODEL_REASONING,
+            security_level="public",
+        )
+    )
     kwargs = llm._client.messages.last_kwargs
     assert kwargs["model"] == settings.LLM_MODEL_REASONING
     assert kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
@@ -197,14 +224,19 @@ def test_successful_call_sends_cached_system_block(anthropic_llm):
 # 2. Retry-then-success (each transient class)
 # ---------------------------------------------------------------------------
 
+
 def test_retry_then_success_on_rate_limit(anthropic_llm):
     err = _make_response_error(anthropic.RateLimitError, 429)
-    llm = anthropic_llm([err, err, _ok_message(text='{"after": "retry"}')],
-                        max_retries=3)
-    resp = asyncio.run(llm.achat(
-        system="s", user="u", intent="parse_oa",
-        model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-    ))
+    llm = anthropic_llm([err, err, _ok_message(text='{"after": "retry"}')], max_retries=3)
+    resp = asyncio.run(
+        llm.achat(
+            system="s",
+            user="u",
+            intent="parse_oa",
+            model_hint=settings.LLM_MODEL_REASONING,
+            security_level="public",
+        )
+    )
     assert resp.text == '{"after": "retry"}'
     assert llm._client.messages.calls == 3  # 2 failures + 1 success
     # The successful call still records usage once.
@@ -214,10 +246,15 @@ def test_retry_then_success_on_rate_limit(anthropic_llm):
 def test_retry_then_success_on_server_5xx(anthropic_llm):
     err = _make_response_error(anthropic.InternalServerError, 500)
     llm = anthropic_llm([err, _ok_message()], max_retries=3)
-    asyncio.run(llm.achat(
-        system="s", user="u", intent="parse_oa",
-        model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-    ))
+    asyncio.run(
+        llm.achat(
+            system="s",
+            user="u",
+            intent="parse_oa",
+            model_hint=settings.LLM_MODEL_REASONING,
+            security_level="public",
+        )
+    )
     assert llm._client.messages.calls == 2
 
 
@@ -226,30 +263,45 @@ def test_retry_then_success_on_overloaded_529(anthropic_llm):
     # APIStatusError with status_code 529 exercises the same >=500 retry branch.
     err = _make_response_error(anthropic.APIStatusError, 529)
     llm = anthropic_llm([err, _ok_message()], max_retries=3)
-    asyncio.run(llm.achat(
-        system="s", user="u", intent="parse_oa",
-        model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-    ))
+    asyncio.run(
+        llm.achat(
+            system="s",
+            user="u",
+            intent="parse_oa",
+            model_hint=settings.LLM_MODEL_REASONING,
+            security_level="public",
+        )
+    )
     assert llm._client.messages.calls == 2
 
 
 def test_retry_then_success_on_connection_error(anthropic_llm):
     err = anthropic.APIConnectionError(request=None)  # type: ignore[arg-type]
     llm = anthropic_llm([err, _ok_message()], max_retries=3)
-    asyncio.run(llm.achat(
-        system="s", user="u", intent="parse_oa",
-        model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-    ))
+    asyncio.run(
+        llm.achat(
+            system="s",
+            user="u",
+            intent="parse_oa",
+            model_hint=settings.LLM_MODEL_REASONING,
+            security_level="public",
+        )
+    )
     assert llm._client.messages.calls == 2
 
 
 def test_retry_then_success_on_timeout(anthropic_llm):
     err = anthropic.APITimeoutError(request=None)  # type: ignore[arg-type]
     llm = anthropic_llm([err, _ok_message()], max_retries=3)
-    resp = asyncio.run(llm.achat(
-        system="s", user="u", intent="parse_oa",
-        model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-    ))
+    resp = asyncio.run(
+        llm.achat(
+            system="s",
+            user="u",
+            intent="parse_oa",
+            model_hint=settings.LLM_MODEL_REASONING,
+            security_level="public",
+        )
+    )
     assert resp.text == "{}"
     assert llm._client.messages.calls == 2
 
@@ -258,15 +310,21 @@ def test_retry_then_success_on_timeout(anthropic_llm):
 # 3. Retry exhaustion → the transient error propagates
 # ---------------------------------------------------------------------------
 
+
 def test_retry_exhaustion_raises_last_error(anthropic_llm):
     err = _make_response_error(anthropic.RateLimitError, 429)
     # All attempts fail. With max_retries=2 → 3 attempts total, all raise.
     llm = anthropic_llm([err, err, err], max_retries=2)
     with pytest.raises(anthropic.RateLimitError):
-        asyncio.run(llm.achat(
-            system="s", user="u", intent="parse_oa",
-            model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-        ))
+        asyncio.run(
+            llm.achat(
+                system="s",
+                user="u",
+                intent="parse_oa",
+                model_hint=settings.LLM_MODEL_REASONING,
+                security_level="public",
+            )
+        )
     assert llm._client.messages.calls == 3  # max_retries(2) + 1
     # The exhausting failure is accounted as one error/call.
     usage = llm_client.get_session_usage()
@@ -278,10 +336,15 @@ def test_server_error_exhaustion_raises(anthropic_llm):
     err = _make_response_error(anthropic.APIStatusError, 529)
     llm = anthropic_llm([err, err], max_retries=1)
     with pytest.raises(anthropic.APIStatusError):
-        asyncio.run(llm.achat(
-            system="s", user="u", intent="parse_oa",
-            model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-        ))
+        asyncio.run(
+            llm.achat(
+                system="s",
+                user="u",
+                intent="parse_oa",
+                model_hint=settings.LLM_MODEL_REASONING,
+                security_level="public",
+            )
+        )
     assert llm._client.messages.calls == 2  # max_retries(1) + 1
 
 
@@ -289,14 +352,20 @@ def test_server_error_exhaustion_raises(anthropic_llm):
 # 4. Non-transient 4xx is NOT retried
 # ---------------------------------------------------------------------------
 
+
 def test_bad_request_not_retried(anthropic_llm):
     err = _make_response_error(anthropic.BadRequestError, 400)
     llm = anthropic_llm([err, _ok_message()], max_retries=3)
     with pytest.raises(anthropic.BadRequestError):
-        asyncio.run(llm.achat(
-            system="s", user="u", intent="parse_oa",
-            model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-        ))
+        asyncio.run(
+            llm.achat(
+                system="s",
+                user="u",
+                intent="parse_oa",
+                model_hint=settings.LLM_MODEL_REASONING,
+                security_level="public",
+            )
+        )
     # Exactly ONE attempt — 400 is a caller error; retrying can't help.
     assert llm._client.messages.calls == 1
     assert llm_client.get_session_usage()["errors"] == 1
@@ -308,14 +377,20 @@ def test_context_too_long_bad_request_gives_friendly_error(anthropic_llm):
     resp = type("_Resp", (), {"status_code": 400, "headers": {}, "request": None})()
     err = anthropic.BadRequestError(
         "input is too long for the model context window",
-        response=resp, body=None,
+        response=resp,
+        body=None,
     )
     llm = anthropic_llm([err], max_retries=3)
     with pytest.raises(RuntimeError) as exc:
-        asyncio.run(llm.achat(
-            system="s", user="u", intent="parse_oa",
-            model_hint=settings.LLM_MODEL_REASONING, security_level="public",
-        ))
+        asyncio.run(
+            llm.achat(
+                system="s",
+                user="u",
+                intent="parse_oa",
+                model_hint=settings.LLM_MODEL_REASONING,
+                security_level="public",
+            )
+        )
     assert "context exceeded" in str(exc.value).lower()
     assert llm._client.messages.calls == 1
 
@@ -324,6 +399,7 @@ def test_context_too_long_bad_request_gives_friendly_error(anthropic_llm):
 # 5. Q15 confidential routing — backend refuses before any network call
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("level", settings.LOCAL_LLM_FOR_SECURITY_LEVELS)
 def test_confidential_refused_before_network(anthropic_llm, level):
     # Script a tripwire: if the guard were bypassed, calling create() returns a
@@ -331,11 +407,15 @@ def test_confidential_refused_before_network(anthropic_llm, level):
     # that create() was never reached (calls == 0).
     llm = anthropic_llm([_ok_message()])
     with pytest.raises(RuntimeError) as exc:
-        asyncio.run(llm.achat(
-            system="s", user="privileged invention disclosure",
-            intent="parse_oa", model_hint=settings.LLM_MODEL_REASONING,
-            security_level=level,
-        ))
+        asyncio.run(
+            llm.achat(
+                system="s",
+                user="privileged invention disclosure",
+                intent="parse_oa",
+                model_hint=settings.LLM_MODEL_REASONING,
+                security_level=level,
+            )
+        )
     assert "refusing to call cloud" in str(exc.value).lower()
     assert llm._client.messages.calls == 0
 
@@ -343,6 +423,7 @@ def test_confidential_refused_before_network(anthropic_llm, level):
 # ---------------------------------------------------------------------------
 # 6. Q14 verifier independence guard
 # ---------------------------------------------------------------------------
+
 
 def test_assert_verifier_independence_noop_in_mock(monkeypatch):
     """In mock mode the guard is a no-op even if the model strings coincide —
@@ -400,9 +481,11 @@ def test_verify_citations_invokes_independence_guard(monkeypatch):
     monkeypatch.setattr(settings, "LLM_MODEL_VERIFIER", "claude-sonnet-4-6")
 
     draft = DraftResponse(
-        rejection_id="rej-1", strategy="s",
+        rejection_id="rej-1",
+        strategy="s",
         draft_text="See [GROUNDED_REF_1].",
-        grounded_citations=["[GROUNDED_REF_1]"], confidence=0.8,
+        grounded_citations=["[GROUNDED_REF_1]"],
+        confidence=0.8,
         requires_attorney_review=True,
     )
     hit = RetrievalHit(patent_no="US1", section="spec", text="t", score=0.9)
@@ -414,6 +497,7 @@ def test_verify_citations_invokes_independence_guard(monkeypatch):
 # 7. Q14 hard wall — ungrounded citation rejected regardless of verifier output
 # ---------------------------------------------------------------------------
 
+
 def test_verify_citations_hard_wall_rejects_ungrounded(monkeypatch):
     """Even though the (mock) verifier LLM returns a benign result, an
     ungrounded external patent number is stripped and the result is invalid.
@@ -424,9 +508,11 @@ def test_verify_citations_hard_wall_rejects_ungrounded(monkeypatch):
     monkeypatch.setattr(settings, "LLM_MODE", "mock")  # offline, deterministic
 
     draft = DraftResponse(
-        rejection_id="rej-1", strategy="s",
+        rejection_id="rej-1",
+        strategy="s",
         draft_text="Distinguish over US9999999, never retrieved. See [GROUNDED_REF_1].",
-        grounded_citations=["[GROUNDED_REF_1]"], confidence=0.8,
+        grounded_citations=["[GROUNDED_REF_1]"],
+        confidence=0.8,
         requires_attorney_review=True,
     )
     hit = RetrievalHit(patent_no="US1", section="spec", text="t", score=0.9)
@@ -443,6 +529,7 @@ def test_verify_citations_hard_wall_rejects_ungrounded(monkeypatch):
 # ---------------------------------------------------------------------------
 # 8. Backoff schedule helper — jitter + cap + Retry-After honoured
 # ---------------------------------------------------------------------------
+
 
 def test_backoff_honours_retry_after_and_cap(monkeypatch):
     monkeypatch.setattr(settings, "LLM_RETRY_JITTER_SEC", 0.0)

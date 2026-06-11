@@ -18,56 +18,78 @@ the tree and break cascade-risk highlighting):
 Every case is a (claims, expected_depends_on, expected_parents) row so the
 intent is legible and adding a new phrasing is one line.
 """
+
 from __future__ import annotations
 
 import pytest
 
 from backend.ai_engine.claim_tree import parse_claim_dependencies
 
-
 # Each row: (label, claims, target_index, expected_depends_on, expected_parents)
 _DEP_CASES = [
     (
         "ep-as-claimed-in",
-        ["1. A method, comprising steps.",
-         "2. A method as claimed in claim 1, wherein the step repeats."],
-        1, 1, [1],
+        [
+            "1. A method, comprising steps.",
+            "2. A method as claimed in claim 1, wherein the step repeats.",
+        ],
+        1,
+        1,
+        [1],
     ),
     (
         "ep-any-one-of-range-to",
-        ["1. A m.", "2. A m.", "3. A m.", "4. A m.", "5. A m.",
-         "6. The system of any one of claims 1 to 5, wherein the controller is on."],
-        5, 1, [1, 2, 3, 4, 5],
+        [
+            "1. A m.",
+            "2. A m.",
+            "3. A m.",
+            "4. A m.",
+            "5. A m.",
+            "6. The system of any one of claims 1 to 5, wherein the controller is on.",
+        ],
+        5,
+        1,
+        [1, 2, 3, 4, 5],
     ),
     (
         "ep-any-of-range-through",
-        ["1. A m.", "2. A m.", "3. A m.",
-         "4. The method of any of claims 1 through 3, further comprising sensors."],
-        3, 1, [1, 2, 3],
+        [
+            "1. A m.",
+            "2. A m.",
+            "3. A m.",
+            "4. The method of any of claims 1 through 3, further comprising sensors.",
+        ],
+        3,
+        1,
+        [1, 2, 3],
     ),
     (
         "cn-simplified-genju-quanli",
-        ["1. 一种方法。",
-         "2. 根据权利要求1所述的方法，其中该步骤重复。"],
-        1, 1, [1],
+        ["1. 一种方法。", "2. 根据权利要求1所述的方法，其中该步骤重复。"],
+        1,
+        1,
+        [1],
     ),
     (
         "tw-traditional-quanli",
-        ["1. 一種方法。",
-         "2. 根據權利要求 1 所述之方法，其中該步驟重複。"],
-        1, 1, [1],
+        ["1. 一種方法。", "2. 根據權利要求 1 所述之方法，其中該步驟重複。"],
+        1,
+        1,
+        [1],
     ),
     (
         "tw-chinese-range-zhi",
-        ["1. 一種方法。", "2. 一種方法。", "3. 一種方法。",
-         "4. 如請求項 1 至 3 所述之方法，其中…"],
-        3, 1, [1, 2, 3],
+        ["1. 一種方法。", "2. 一種方法。", "3. 一種方法。", "4. 如請求項 1 至 3 所述之方法，其中…"],
+        3,
+        1,
+        [1, 2, 3],
     ),
     (
         "tw-chinese-range-dao",
-        ["1. 一種方法。", "2. 一種方法。",
-         "3. 如請求項 1 到 2 所述之方法。"],
-        2, 1, [1, 2],
+        ["1. 一種方法。", "2. 一種方法。", "3. 如請求項 1 到 2 所述之方法。"],
+        2,
+        1,
+        [1, 2],
     ),
 ]
 
@@ -80,9 +102,9 @@ def test_dependency_phrasing(claims, idx, exp_depends_on, exp_parents):
     nodes = parse_claim_dependencies(claims)
     node = nodes[idx]
     assert node["depends_on"] == exp_depends_on, (
-        f"depends_on {node['depends_on']} != {exp_depends_on}")
-    assert node["parents"] == exp_parents, (
-        f"parents {node['parents']} != {exp_parents}")
+        f"depends_on {node['depends_on']} != {exp_depends_on}"
+    )
+    assert node["parents"] == exp_parents, f"parents {node['parents']} != {exp_parents}"
     assert node["is_independent"] is False
 
 
@@ -130,7 +152,7 @@ def test_multiple_dependent_depth_takes_first_parent():
     here), since depends_on is the first valid parent."""
     claims = [
         "1. A base method.",
-        "2. The method of claim 1, wherein x.",          # depth 1
+        "2. The method of claim 1, wherein x.",  # depth 1
         "3. The method of any one of claims 1 to 2, y.",  # first parent = 1 -> depth 1
     ]
     nodes = parse_claim_dependencies(claims)

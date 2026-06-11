@@ -8,6 +8,7 @@ the DBA can't tamper inadvertently.  Production must additionally:
 
 Every gateway-handled request produces exactly one audit row.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -15,13 +16,12 @@ import json
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from backend.shared.config import AUDIT_DB_PATH
 from backend.shared.models import User
-
 
 # Code-controlled SYSTEM SENTINEL tenants — legitimate tenant_id values written
 # by the gateway itself for events that occur BEFORE a real tenant identity is
@@ -83,7 +83,7 @@ class AuditWriter:
         s = json.dumps(obj, sort_keys=True, ensure_ascii=False, default=str)
         return hashlib.sha256(s.encode()).hexdigest()
 
-    def _last_row_hash(self) -> Optional[str]:
+    def _last_row_hash(self) -> str | None:
         cur = self._conn.execute("SELECT row_hash FROM audit ORDER BY rowid DESC LIMIT 1")
         row = cur.fetchone()
         return row[0] if row else None
@@ -92,20 +92,19 @@ class AuditWriter:
         self,
         *,
         user: User,
-        case_id: Optional[str],
+        case_id: str | None,
         endpoint: str,
         request_payload: Any,
         response_payload: Any,
         masked_rules: list[str],
-        model_used: Optional[str],
-        prompt_tokens: Optional[int],
-        completion_tokens: Optional[int],
+        model_used: str | None,
+        prompt_tokens: int | None,
+        completion_tokens: int | None,
         latency_ms: int,
         policy_decisions: dict[str, bool],
     ) -> str:
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         # POC: local timezone shown as UTC+8 for Taiwan demo
-        local_offset_hours = 8
         now_local = now_utc.astimezone(tz=None).isoformat()
 
         audit_id = str(uuid.uuid4())
@@ -175,7 +174,7 @@ class AuditWriter:
         cols = [c[0] for c in cur.description]
         rows = []
         for r in cur.fetchall():
-            d = dict(zip(cols, r))
+            d = dict(zip(cols, r, strict=True))
             d["masked_field_rules"] = json.loads(d["masked_field_rules"])
             d["policy_decisions"] = json.loads(d["policy_decisions"])
             rows.append(d)
@@ -204,8 +203,15 @@ class AuditWriter:
             if recorded_prev != prev:
                 broken.append(audit_id)
             payload = {
-                "audit_id": audit_id, "ts": ts, "user": uid, "tenant": tid,
-                "case": cid, "endpoint": ep, "req": rqh, "resp": rph, "prev": recorded_prev,
+                "audit_id": audit_id,
+                "ts": ts,
+                "user": uid,
+                "tenant": tid,
+                "case": cid,
+                "endpoint": ep,
+                "req": rqh,
+                "resp": rph,
+                "prev": recorded_prev,
             }
             recomputed = self._hash_payload(payload)
             if recomputed != recorded_row:
@@ -282,6 +288,7 @@ class AuditWriter:
         # Cross-import settings here (not at module top) so a test that
         # monkeypatches DEMO_TENANTS via settings sees the override.
         from backend.shared.config import settings as _settings
+
         # Known tenants = real demo tenants PLUS code-controlled SYSTEM SENTINEL
         # tenants. Pre-auth audit rows (magic-link request/consume — Q12) are
         # written before any tenant identity exists, under the documented
@@ -302,16 +309,20 @@ class AuditWriter:
         prev = ""
         for row in all_rows:
             (audit_id, ts, uid, tid, cid, ep, rqh, rph, recorded_prev, recorded_row) = row
-            per = by_tenant.setdefault(
-                tid, {"verified": 0, "broken": [], "tenant": tid}
-            )
+            per = by_tenant.setdefault(tid, {"verified": 0, "broken": [], "tenant": tid})
 
             row_broken = False
             if recorded_prev != prev:
                 row_broken = True
             payload = {
-                "audit_id": audit_id, "ts": ts, "user": uid, "tenant": tid,
-                "case": cid, "endpoint": ep, "req": rqh, "resp": rph,
+                "audit_id": audit_id,
+                "ts": ts,
+                "user": uid,
+                "tenant": tid,
+                "case": cid,
+                "endpoint": ep,
+                "req": rqh,
+                "resp": rph,
                 "prev": recorded_prev,
             }
             if self._hash_payload(payload) != recorded_row:
@@ -379,7 +390,7 @@ class AuditWriter:
     # walk once (so the hash chain is reconstructed faithfully — the global
     # chain spans tenants), then layers cross-tenant–only assertions on top.
     # ------------------------------------------------------------------
-    def verify_cross_tenant(self, tenant_ids: Optional[list[str]] = None) -> dict:
+    def verify_cross_tenant(self, tenant_ids: list[str] | None = None) -> dict:
         """Verify two-or-more tenants' chains side by side.
 
         Runs the global walk (authoritative for the spanning hash chain),
@@ -445,9 +456,7 @@ class AuditWriter:
                 "broken": list(rep.get("broken", [])),
             }
             for aid in rep.get("broken", []):
-                anomalies.append(
-                    {"type": "tenant_chain_break", "tenant_id": tid, "audit_id": aid}
-                )
+                anomalies.append({"type": "tenant_chain_break", "tenant_id": tid, "audit_id": aid})
             if rep.get("unknown_tenant"):
                 anomalies.append({"type": "unknown_tenant", "tenant_id": tid})
 

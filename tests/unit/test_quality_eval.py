@@ -15,6 +15,7 @@ The seeded fixture mirrors the REAL handler shapes from main.py:
   * ``/v1/oa/export`` refused → attorney_signoff False, signoff_passed False,
     error True (the 409 hard gate), prov_* still present.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -46,9 +47,7 @@ def _user(user_id: str = "alice", tenant_id: str = "tenant_a") -> User:
     )
 
 
-def _analyze(
-    writer, *, tenant, model, ptok, ctok, latency, error=False, cache=False
-):
+def _analyze(writer, *, tenant, model, ptok, ctok, latency, error=False, cache=False):
     pd = {"authz_passed": True, "cache_hit": cache}
     if error:
         pd["error"] = True
@@ -67,9 +66,7 @@ def _analyze(
     )
 
 
-def _export(
-    writer, *, tenant, latency, signed, total, accepted, ai, edited, added
-):
+def _export(writer, *, tenant, latency, signed, total, accepted, ai, edited, added):
     pd = {
         "authn_passed": True,
         "authz_passed": True,
@@ -133,14 +130,17 @@ def test_acceptance_rate_and_provenance(tmp_audit):
     # tenant_a: two exports.
     #   export 1 (signed): total=10, ai=8, edited=1, added=1, accepted=9
     #   export 2 (signed): total=10, ai=2, edited=5, added=3, accepted=4
-    _export(w, tenant="tenant_a", latency=5, signed=True,
-            total=10, accepted=9, ai=8, edited=1, added=1)
-    _export(w, tenant="tenant_a", latency=5, signed=True,
-            total=10, accepted=4, ai=2, edited=5, added=3)
+    _export(
+        w, tenant="tenant_a", latency=5, signed=True, total=10, accepted=9, ai=8, edited=1, added=1
+    )
+    _export(
+        w, tenant="tenant_a", latency=5, signed=True, total=10, accepted=4, ai=2, edited=5, added=3
+    )
     # tenant_b: one fully-accepted AI export.
     #   total=5, ai=5, edited=0, added=0, accepted=5
-    _export(w, tenant="tenant_b", latency=5, signed=True,
-            total=5, accepted=5, ai=5, edited=0, added=0)
+    _export(
+        w, tenant="tenant_b", latency=5, signed=True, total=5, accepted=5, ai=5, edited=0, added=0
+    )
 
     rep = quality_eval.build_report()
     biz = rep["business"]
@@ -154,8 +154,8 @@ def test_acceptance_rate_and_provenance(tmp_audit):
     prov = biz["provenance_totals"]
     assert prov["total_segments"] == 25
     assert prov["ai_generated"] == 15
-    assert prov["attorney_edited"] == 6   # 1+5+0
-    assert prov["attorney_added"] == 4    # 1+3+0
+    assert prov["attorney_edited"] == 6  # 1+5+0
+    assert prov["attorney_added"] == 4  # 1+3+0
     assert prov["accepted_segments"] == 18  # 9+4+5
 
     # quality edit/added rates: 6/25 = 0.24 ; 4/25 = 0.16
@@ -165,10 +165,12 @@ def test_acceptance_rate_and_provenance(tmp_audit):
 
 def test_tenant_filter_scopes_acceptance(tmp_audit):
     w = tmp_audit
-    _export(w, tenant="tenant_a", latency=5, signed=True,
-            total=10, accepted=9, ai=8, edited=1, added=1)
-    _export(w, tenant="tenant_b", latency=5, signed=True,
-            total=5, accepted=5, ai=5, edited=0, added=0)
+    _export(
+        w, tenant="tenant_a", latency=5, signed=True, total=10, accepted=9, ai=8, edited=1, added=1
+    )
+    _export(
+        w, tenant="tenant_b", latency=5, signed=True, total=5, accepted=5, ai=5, edited=0, added=0
+    )
 
     rep = quality_eval.build_report(tenant="tenant_b")
     # Only tenant_b in scope: 5/5 = 1.0
@@ -183,12 +185,15 @@ def test_tenant_filter_scopes_acceptance(tmp_audit):
 def test_signoff_refusal_rate(tmp_audit):
     w = tmp_audit
     # 3 export attempts: 2 signed, 1 refused.
-    _export(w, tenant="tenant_a", latency=5, signed=True,
-            total=4, accepted=4, ai=4, edited=0, added=0)
-    _export(w, tenant="tenant_a", latency=5, signed=True,
-            total=4, accepted=4, ai=4, edited=0, added=0)
-    _export(w, tenant="tenant_a", latency=5, signed=False,
-            total=4, accepted=0, ai=4, edited=0, added=0)
+    _export(
+        w, tenant="tenant_a", latency=5, signed=True, total=4, accepted=4, ai=4, edited=0, added=0
+    )
+    _export(
+        w, tenant="tenant_a", latency=5, signed=True, total=4, accepted=4, ai=4, edited=0, added=0
+    )
+    _export(
+        w, tenant="tenant_a", latency=5, signed=False, total=4, accepted=0, ai=4, edited=0, added=0
+    )
 
     rep = quality_eval.build_report()
     biz = rep["business"]
@@ -293,6 +298,6 @@ def test_days_window_filters_old_rows(tmp_audit):
     # Push the reference "now" 500 days into the future with a 1-day window:
     # the cutoff (now-1d) is then ~499 days after the row, so the row is older
     # than the cutoff and is excluded — proving the window actually filters.
-    future = _dt.datetime.now(_dt.timezone.utc) + _dt.timedelta(days=500)
+    future = _dt.datetime.now(_dt.UTC) + _dt.timedelta(days=500)
     rep_old = quality_eval.build_report(days=1, now=future)
     assert rep_old["rows_in_window"] == 0

@@ -15,6 +15,7 @@ Threat model under test:
     AUDITOR / IT_ADMIN; a known user pins role/tenant to _USERS.
   * exactly one audit row; the raw assertion is never stored.
 """
+
 from __future__ import annotations
 
 import time
@@ -80,9 +81,7 @@ def test_saml_happy_path_known_user(gateway_client):
     assert body["user_id"] == "alice"
     assert body["role"] == "attorney"
     assert body["tenant_id"] == "tenant_a"
-    resp = gateway_client.get(
-        "/v1/quota", headers={"Authorization": f"Bearer {body['token']}"}
-    )
+    resp = gateway_client.get("/v1/quota", headers={"Authorization": f"Bearer {body['token']}"})
     assert resp.status_code == 200, resp.text
 
 
@@ -176,9 +175,7 @@ def test_saml_unknown_user_cannot_claim_auditor(gateway_client):
     assert r.status_code == 200, r.text
     assert r.json()["role"] == "paralegal", r.text
     token = r.json()["token"]
-    audit = gateway_client.get(
-        "/v1/audit/recent", headers={"Authorization": f"Bearer {token}"}
-    )
+    audit = gateway_client.get("/v1/audit/recent", headers={"Authorization": f"Bearer {token}"})
     assert audit.status_code == 403, audit.text
 
 

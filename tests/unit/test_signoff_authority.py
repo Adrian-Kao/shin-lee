@@ -4,6 +4,7 @@
 unit-testable function reused by the /v1/oa/export handler as defence-in-depth
 behind the require_roles(ATTORNEY) endpoint gate.
 """
+
 from __future__ import annotations
 
 import pytest

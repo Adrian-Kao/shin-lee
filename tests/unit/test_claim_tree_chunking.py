@@ -19,11 +19,10 @@ These tests prove:
     * a bundle chunk is retrievable for a dependent-only limitation query,
     * a no-dependents patent doesn't crash / regress.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from backend.ai_engine import rag
 from backend.ai_engine.rag import chunk_patent
@@ -36,7 +35,7 @@ def _patent(claims: list[str], patent_no: str = "US-TREE-1") -> Patent:
         title="Cooling system test patent",
         abstract="A cooling system abstract.",
         claims=claims,
-        publication_date=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        publication_date=datetime(2024, 1, 1, tzinfo=UTC),
         jurisdiction="US",
         is_local=False,
     )

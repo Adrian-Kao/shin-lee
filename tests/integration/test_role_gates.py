@@ -26,11 +26,12 @@ Demo user roles (from ``backend/gateway/auth.py:_USERS``):
   * carol         → IT_ADMIN  (tenant_b, ACL: ∅)
   * audit_dave    → AUDITOR   (tenant_a, ACL: '*')
 """
+
 from __future__ import annotations
 
 import pytest
 
-_ALICE_CASE = "CASE-2025-001"   # both alice and bob have ACL
+_ALICE_CASE = "CASE-2025-001"  # both alice and bob have ACL
 _PDF_BYTES = b"%PDF-1.4\n%%EOF"  # well-formed enough for the type gate
 
 

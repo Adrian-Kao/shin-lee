@@ -18,6 +18,7 @@ All OCR is stubbed via monkeypatch on `_ocr_page`, so NO tesseract / Vision
 binary is required — the suite stays hermetic. The MockLLM OCR path is the
 default backend; we only swap it where we need to control the returned text.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -27,7 +28,6 @@ import pytest
 
 from backend.ai_engine import pdf_parser
 from backend.shared.config import settings
-
 
 # ---------------------------------------------------------------------------
 # PDF fixture builders (tiny, in-memory, via PyMuPDF — no committed binaries)
@@ -452,9 +452,7 @@ def test_docx_empty_bytes_rejected():
 
 
 def test_figure_regions_stub_returns_empty():
-    res = _run(
-        pdf_parser.extract_figure_regions(_text_pdf("anything"), 0, security_level="public")
-    )
+    res = _run(pdf_parser.extract_figure_regions(_text_pdf("anything"), 0, security_level="public"))
     assert res == []
 
 
@@ -462,19 +460,11 @@ def test_figure_regions_stub_returns_empty():
 def test_figure_regions_confidential_refuses_cloud(monkeypatch, level):
     monkeypatch.setattr(settings, "OCR_BACKEND", "vision")
     with pytest.raises(RuntimeError) as ei:
-        _run(
-            pdf_parser.extract_figure_regions(
-                _text_pdf("x"), 0, security_level=level
-            )
-        )
+        _run(pdf_parser.extract_figure_regions(_text_pdf("x"), 0, security_level=level))
     assert "invariant #7" in str(ei.value) or "forbidden" in str(ei.value)
 
 
 def test_figure_regions_confidential_ok_on_tesseract(monkeypatch):
     monkeypatch.setattr(settings, "OCR_BACKEND", "tesseract")
-    res = _run(
-        pdf_parser.extract_figure_regions(
-            _text_pdf("x"), 0, security_level="confidential"
-        )
-    )
+    res = _run(pdf_parser.extract_figure_regions(_text_pdf("x"), 0, security_level="confidential"))
     assert res == []

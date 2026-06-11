@@ -14,6 +14,7 @@ only handles combining diacritics.
 These tests are the load-bearing assertions that close M-6. Removing
 the NFKC normalisation must turn every one of them red.
 """
+
 from __future__ import annotations
 
 import re

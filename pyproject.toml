@@ -30,15 +30,6 @@ extend-exclude = [
     "ocr_rag_cli",
     "data",
     "frontend",
-    "scripts",
-    # TECH DEBT — TODO(2026-Q3): re-enable backend ruff coverage.
-    # The POC ships with ~80 lint violations across backend/ (unused imports,
-    # legacy `Optional[X]` / `datetime.utc` patterns, unsorted imports, a few
-    # `B023` loop-variable closures). Enumerating each in per-file-ignores
-    # would be louder than the silence and would drift as files move. The
-    # plan is to land a single "ruff-clean backend" PR before Phase 2 wraps;
-    # at that point this line is removed and `ruff check .` covers backend.
-    "backend",
 ]
 
 [tool.ruff.lint]
@@ -47,6 +38,7 @@ ignore = [
     "E501",  # line too long; formatter already enforces
     "B008",  # FastAPI uses function-call defaults (Depends, Query, ...) by design
     "UP007", # keep `Optional[X]` style — matches pydantic v2 examples
+    "UP042", # keep `class X(str, Enum)` — pydantic/json serialization relies on str-subclass behaviour
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -23,6 +23,7 @@ Post-fix behaviour:
 These tests guard those properties. If any of them goes red the security
 hardening for C-3 has regressed.
 """
+
 from __future__ import annotations
 
 # Cases alice does NOT have ACL on. Both are valid case_id strings — the

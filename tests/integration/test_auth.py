@@ -19,6 +19,7 @@ Test fixtures come from ``tests/conftest.py``. The conftest sets
 so the empty-token-permit and disabled-demo-secret paths are the default;
 individual tests monkeypatch ``settings`` on the live module to flip them.
 """
+
 from __future__ import annotations
 
 import os
@@ -94,6 +95,7 @@ def test_login_rate_limit_fires_before_password_check(gateway_client, monkeypatc
 # ---------------------------------------------------------------------------
 # C-1 / H-8 — /v1/auth/login credential checks (original tests below)
 # ---------------------------------------------------------------------------
+
 
 def test_login_without_password_or_demo_secret_returns_401(gateway_client):
     """Body with only `user_id` (the old pre-Chunk-A shape) must now 401.
@@ -203,6 +205,7 @@ def test_login_with_demo_secret_unknown_user_still_401(gateway_client, monkeypat
 # C-2 — AI Engine internal-token middleware
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def ai_engine_client(ai_engine_app):
     """Direct in-process TestClient against the AI Engine app. We need this
@@ -214,9 +217,7 @@ def ai_engine_client(ai_engine_app):
         yield client
 
 
-def test_ai_engine_endpoint_without_internal_token_returns_401(
-    ai_engine_client, monkeypatch
-):
+def test_ai_engine_endpoint_without_internal_token_returns_401(ai_engine_client, monkeypatch):
     """C-2: with INTERNAL_TOKEN configured, a request lacking
     X-Internal-Token must 401 — even in mock mode. The mock-mode "permit"
     rule only applies when the token is EMPTY (the local-dev case).
@@ -235,9 +236,7 @@ def test_ai_engine_endpoint_without_internal_token_returns_401(
     assert resp.json() == {"detail": "Unauthorized"}
 
 
-def test_ai_engine_endpoint_with_internal_token_works(
-    ai_engine_client, monkeypatch
-):
+def test_ai_engine_endpoint_with_internal_token_works(ai_engine_client, monkeypatch):
     """Sanity-check the happy path: token configured + header matches =>
     request reaches the handler. Without this, a future regression that
     broke the comparison logic would silently lock out the gateway entirely.
@@ -290,6 +289,7 @@ def test_ai_engine_mock_mode_empty_token_permits(ai_engine_client, monkeypatch):
 # C-4 — JWT_SECRET placeholder boot guardrail
 # ---------------------------------------------------------------------------
 
+
 def test_jwt_secret_placeholder_refuses_boot(tmp_path):
     """Importing `backend.shared.config` with the published placeholder in
     JWT_SECRET and NO PYTEST_CURRENT_TEST in the env must raise RuntimeError.
@@ -299,9 +299,7 @@ def test_jwt_secret_placeholder_refuses_boot(tmp_path):
     in conftest. The subprocess gets a stripped env so we can prove the
     guard fires in the demo deployment shape (mock mode, no test harness).
     """
-    repo_root = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..")
-    )
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     script = textwrap.dedent(
         """
         import sys

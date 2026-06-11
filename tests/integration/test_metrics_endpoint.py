@@ -6,6 +6,7 @@ Proves:
   * After an /v1/oa/analyze call, oa_analyzed_total increased and an
     http_request_duration_seconds sample was recorded for that endpoint.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -86,8 +87,7 @@ async def test_analyze_increments_business_and_latency_metrics(
 
     # A request-duration sample for /v1/oa/analyze was recorded (count >= 1).
     found_analyze_duration_count = any(
-        ln.startswith("http_request_duration_seconds_count")
-        and '/v1/oa/analyze' in ln
+        ln.startswith("http_request_duration_seconds_count") and "/v1/oa/analyze" in ln
         for ln in after_text.splitlines()
     )
     assert found_analyze_duration_count, after_text

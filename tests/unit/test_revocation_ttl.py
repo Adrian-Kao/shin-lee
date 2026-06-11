@@ -5,6 +5,7 @@ token kill-switch relies on: a revoke with a non-positive TTL must still be
 honoured (clamped to a floor) so a clock-skew or off-by-one can never produce a
 revocation that is silently a no-op.
 """
+
 from __future__ import annotations
 
 import time

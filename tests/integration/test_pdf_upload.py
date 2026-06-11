@@ -13,6 +13,7 @@ orchestrator AND the gateway upload endpoint's outbound httpx calls onto the
 in-process AI Engine app. No socket is opened; LLM_MODE=mock means the OCR
 fallback returns the deterministic MockLLM placeholder.
 """
+
 from __future__ import annotations
 
 import io
@@ -52,17 +53,13 @@ def _make_docx(*paragraphs: str) -> bytes:
 
 
 _PDF_MIME = "application/pdf"
-_DOCX_MIME = (
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-)
+_DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 # ---------- tests -----------------------------------------------------------
 
 
-def test_upload_text_only_pdf_extracts_correctly(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_upload_text_only_pdf_extracts_correctly(gateway_client, alice_token, patched_ai_engine):
     pdf_bytes = _make_text_pdf(
         "Page one body talking about claim 1 of US12345678.",
         "Page two body referencing prior art TW202131234.",
@@ -87,9 +84,7 @@ def test_upload_text_only_pdf_extracts_correctly(
     assert body["cost_meta"]["estimated_cost_usd"] == 0.0
 
 
-def test_upload_docx_extracts_correctly(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_upload_docx_extracts_correctly(gateway_client, alice_token, patched_ai_engine):
     docx_bytes = _make_docx(
         "First paragraph of the answer brief.",
         "Second paragraph discussing claim 1.",
@@ -113,9 +108,7 @@ def test_upload_docx_extracts_correctly(
     assert "TW202131234" in text
 
 
-def test_upload_oversize_returns_413(
-    gateway_client, alice_token, patched_ai_engine, monkeypatch
-):
+def test_upload_oversize_returns_413(gateway_client, alice_token, patched_ai_engine, monkeypatch):
     # Force the limit down to 1 MB so the test doesn't need to allocate 30+ MB.
     from backend.shared import config as cfg
 
@@ -135,9 +128,7 @@ def test_upload_oversize_returns_413(
     assert "exceeds limit" in resp.text or "exceeds" in resp.text
 
 
-def test_upload_wrong_content_type_returns_415(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_upload_wrong_content_type_returns_415(gateway_client, alice_token, patched_ai_engine):
     resp = gateway_client.post(
         "/v1/oa/upload",
         headers={
@@ -169,7 +160,8 @@ def test_upload_confidential_case_returns_403(
     from backend.gateway import auth as auth_mod
 
     monkeypatch.setitem(
-        auth_mod._CASE_ACL, "alice",
+        auth_mod._CASE_ACL,
+        "alice",
         auth_mod._CASE_ACL["alice"] | {"CASE-2025-009-CONF"},
     )
 
@@ -215,9 +207,7 @@ def test_real_text_layer_pdf_round_trips_inserted_text(
     assert "MOCK OCR" not in body["extracted_text"], body
 
 
-def test_real_docx_round_trips_inserted_text(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_real_docx_round_trips_inserted_text(gateway_client, alice_token, patched_ai_engine):
     marker = "DOCX-REAL-PARAGRAPH unique-token-4455 substrate"
     docx_bytes = _make_docx(marker, "Another paragraph.")
     resp = gateway_client.post(
@@ -236,9 +226,7 @@ def test_real_docx_round_trips_inserted_text(
 # ---------- Q8 element table surfaced through the upload response -----------
 
 
-def test_upload_surfaces_element_table(
-    gateway_client, alice_token, patched_ai_engine
-):
+def test_upload_surfaces_element_table(gateway_client, alice_token, patched_ai_engine):
     """A PDF whose text carries reference numerals must surface a
     numeral→description element table in the upload response."""
     pdf_bytes = _make_text_pdf(

@@ -19,6 +19,7 @@ pipeline only computed their deadline. These tests pin the gap-closing work:
 The `_mock_parse_oa` heuristics are deterministic + dependency-free, so we call
 them directly (no network, no LLM mode juggling).
 """
+
 from __future__ import annotations
 
 import json
@@ -56,6 +57,7 @@ def _assert_models_validate(rejections: list[dict]) -> None:
 # EP (EPO) — Art. NN EPC
 # ---------------------------------------------------------------------------
 
+
 def test_ep_sample_maps_inventive_step_novelty_clarity_added_matter():
     rejections = _parse(_sample("sample_oa_ep.txt"))
     _assert_models_validate(rejections)
@@ -91,6 +93,7 @@ def test_ep_added_subject_matter_is_other():
 # CN (CNIPA) — 专利法第N条第M款 (简体)
 # ---------------------------------------------------------------------------
 
+
 def test_cn_sample_maps_creativity_novelty_disclosure():
     rejections = _parse(_sample("sample_oa_cn.txt"))
     _assert_models_validate(rejections)
@@ -116,6 +119,7 @@ def test_cn_inline_inventive_step_only():
 # KR (KIPO) — 특허법 제N조제M항 (한글)
 # ---------------------------------------------------------------------------
 
+
 def test_kr_sample_maps_inventive_step_novelty_description_defect():
     rejections = _parse(_sample("sample_oa_kr.txt"))
     _assert_models_validate(rejections)
@@ -140,6 +144,7 @@ def test_kr_inline_inventive_step_only():
 # ---------------------------------------------------------------------------
 # Cross-fire guards: TW (繁體) vs CN (简体) are mutually exclusive
 # ---------------------------------------------------------------------------
+
 
 def test_cn_simplified_does_not_trigger_tw_argument_text():
     """A pure 简体 CN OA must NOT produce a TW-flavoured examiner_argument.
@@ -174,6 +179,7 @@ def test_tw_traditional_does_not_trigger_cn_argument_text():
 # Regression: US + TW parse EXACTLY as before
 # ---------------------------------------------------------------------------
 
+
 def test_us_sample_unchanged():
     rejections = _parse(_sample("sample_oa_us.txt"))
     _assert_models_validate(rejections)
@@ -204,6 +210,7 @@ def test_tw_sample_unchanged_antecedent_basis():
 # ---------------------------------------------------------------------------
 # Seed corpus: an indexed patent per new jurisdiction
 # ---------------------------------------------------------------------------
+
 
 def test_seed_has_patent_per_new_jurisdiction():
     from backend.patent_db.seed import DEMO_PATENTS

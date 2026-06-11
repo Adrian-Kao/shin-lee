@@ -10,6 +10,7 @@ engine's vector store before issuing the analyze request — that's the
 cheapest way to exercise the lookup without dragging in the seed script's
 HTTP round-trip.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -22,9 +23,7 @@ _SAMPLE_OA_US = _REPO_ROOT / "data" / "oa_samples" / "sample_oa_us.txt"
 
 
 @pytest.mark.asyncio
-async def test_claim_tree_field_present_on_response(
-    gateway_client, alice_token, patched_ai_engine
-):
+async def test_claim_tree_field_present_on_response(gateway_client, alice_token, patched_ai_engine):
     """Even when the target patent is not indexed, the response must carry
     `claim_tree` (empty list). This is the backwards-compat contract — the
     SPA always reads `result.claim_tree` and crashes if the field is missing.

@@ -29,6 +29,7 @@ Hermetic by construction: settings are monkeypatched and restored by pytest's
 mode-mutating test; NO real network call is ever made (the achat guard fires
 before the SDK client is touched).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -37,7 +38,6 @@ import pytest
 
 from backend.ai_engine import llm_client
 from backend.shared.config import settings
-
 
 # Intents the router knows about. classify_security exercises the
 # "everything else → cheap" tail of route_model.
@@ -69,6 +69,7 @@ def anthropic_mode(monkeypatch):
 # ---------------------------------------------------------------------------
 # 1. FULL ROUTING MATRIX
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("security_level", ALL_SECURITY_LEVELS)
 @pytest.mark.parametrize("intent", ALL_INTENTS)
@@ -125,17 +126,13 @@ def test_confidential_every_cell_routes_local():
 
 @pytest.mark.parametrize("intent", REASONING_INTENTS)
 def test_public_reasoning_uses_reasoning_model(intent):
-    model = llm_client.route_model(
-        intent=intent, security_level="public", circuit_open=False
-    )
+    model = llm_client.route_model(intent=intent, security_level="public", circuit_open=False)
     assert model == settings.LLM_MODEL_REASONING
 
 
 @pytest.mark.parametrize("intent", REASONING_INTENTS)
 def test_public_reasoning_degrades_when_circuit_open(intent):
-    model = llm_client.route_model(
-        intent=intent, security_level="public", circuit_open=True
-    )
+    model = llm_client.route_model(intent=intent, security_level="public", circuit_open=True)
     assert model == settings.LLM_MODEL_CHEAP
 
 
@@ -155,6 +152,7 @@ def test_verifier_intent_routes_verifier_and_differs_from_reasoning():
 # 2. HEADLINE ADVERSARIAL CASE — degrade can't leak confidential to cloud
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("level", CONFIDENTIAL_LEVELS)
 @pytest.mark.parametrize("intent", REASONING_INTENTS)
 def test_circuit_breaker_degrade_cannot_leak_confidential(level, intent):
@@ -168,12 +166,8 @@ def test_circuit_breaker_degrade_cannot_leak_confidential(level, intent):
     Prove it cannot: confidential + circuit_open=True still routes LOCAL, and
     crucially does NOT route to the cheap cloud model the degrade path uses.
     """
-    open_model = llm_client.route_model(
-        intent=intent, security_level=level, circuit_open=True
-    )
-    closed_model = llm_client.route_model(
-        intent=intent, security_level=level, circuit_open=False
-    )
+    open_model = llm_client.route_model(intent=intent, security_level=level, circuit_open=True)
+    closed_model = llm_client.route_model(intent=intent, security_level=level, circuit_open=False)
     assert open_model == settings.LLM_MODEL_LOCAL, (
         f"DEGRADE LEAK: {level!r}/{intent!r} with circuit_open=True routed "
         f"{open_model!r} — the cost-breaker degrade overrode the confidential→local "
@@ -188,6 +182,7 @@ def test_circuit_breaker_degrade_cannot_leak_confidential(level, intent):
 # ---------------------------------------------------------------------------
 # 3. BELT-AND-BRACES AT THE CALL LAYER (anthropic mode)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("level", CONFIDENTIAL_LEVELS)
 def test_chat_refuses_confidential_in_anthropic_mode(anthropic_mode, level):
@@ -286,6 +281,7 @@ def test_chat_allows_public_in_anthropic_mode_reaches_client(anthropic_mode, mon
 # 4. vision_ocr refuses confidential
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("level", CONFIDENTIAL_LEVELS)
 def test_vision_ocr_router_refuses_confidential(level):
     """The public vision_ocr router raises for confidential levels regardless
@@ -317,15 +313,14 @@ def test_anthropic_vision_ocr_guard_before_network(level):
     llm._client = _Messages()  # type: ignore[attr-defined]
 
     with pytest.raises(RuntimeError) as exc:
-        asyncio.run(
-            llm.vision_ocr(b"\x89PNG bytes", "image/png", security_level=level)
-        )
+        asyncio.run(llm.vision_ocr(b"\x89PNG bytes", "image/png", security_level=level))
     assert "refusing vision ocr" in str(exc.value).lower() or "must not" in str(exc.value).lower()
 
 
 # ---------------------------------------------------------------------------
 # 5. LLM_MODE="local" short-circuit
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize("security_level", ALL_SECURITY_LEVELS)
 @pytest.mark.parametrize("intent", ALL_INTENTS)

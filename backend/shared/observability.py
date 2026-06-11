@@ -36,6 +36,7 @@ Env vars:
     LOG_FORMAT                 "json" (default) or "text" — text for human dev
     LOG_LEVEL                  defaults to "INFO"
 """
+
 from __future__ import annotations
 
 import contextvars
@@ -43,7 +44,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ _MAX_REQUEST_ID_LEN = 200
 # ContextVar is asyncio-task-local AND thread-local: FastAPI runs sync handlers
 # in a threadpool and async handlers on the loop, and a ContextVar is correct
 # for both (unlike threading.local, which leaks across pooled async tasks).
-_request_id_var: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+_request_id_var: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "patentmind_request_id", default=None
 )
 
@@ -73,7 +74,7 @@ def new_request_id() -> str:
     return uuid.uuid4().hex
 
 
-def _sanitise_request_id(raw: Optional[str]) -> Optional[str]:
+def _sanitise_request_id(raw: str | None) -> str | None:
     """Clean an inbound request id: trim, cap length, drop control chars.
 
     Returns ``None`` for empty/whitespace input so the caller can fall back to
@@ -89,15 +90,13 @@ def _sanitise_request_id(raw: Optional[str]) -> Optional[str]:
     # Strip anything that could break a single-line JSON log record. Keep it
     # liberal (alnum, dash, underscore, dot, colon) — covers UUIDs and W3C
     # traceparents — but reject the rest rather than escape it.
-    cleaned = "".join(
-        ch for ch in cleaned if ch.isalnum() or ch in "-_.:"
-    )
+    cleaned = "".join(ch for ch in cleaned if ch.isalnum() or ch in "-_.:")
     if not cleaned:
         return None
     return cleaned[:_MAX_REQUEST_ID_LEN]
 
 
-def bind_request_id(raw: Optional[str]) -> str:
+def bind_request_id(raw: str | None) -> str:
     """Bind ``raw`` (or a fresh id when absent/invalid) as the current request id.
 
     Returns the bound id so the caller can echo it on the response header.
@@ -107,7 +106,7 @@ def bind_request_id(raw: Optional[str]) -> str:
     return rid
 
 
-def current_request_id() -> Optional[str]:
+def current_request_id() -> str | None:
     """The request id bound to the current context, or ``None`` outside a request."""
     return _request_id_var.get()
 
@@ -117,7 +116,7 @@ def reset_request_id() -> None:
     _request_id_var.set(None)
 
 
-def request_id_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+def request_id_headers(extra: dict[str, str] | None = None) -> dict[str, str]:
     """Headers to propagate the current request id on an outbound call.
 
     Merges onto ``extra`` (e.g. the gateway's ``X-Internal-Token`` headers) so a
@@ -126,7 +125,7 @@ def request_id_headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]
     id is bound (call made outside a request context), one is minted so the
     downstream service still gets *a* trace id rather than none.
     """
-    headers: Dict[str, str] = dict(extra or {})
+    headers: dict[str, str] = dict(extra or {})
     rid = current_request_id() or new_request_id()
     headers[REQUEST_ID_HEADER] = rid
     return headers
@@ -152,10 +151,28 @@ class RequestIdLogFilter(logging.Filter):
 # are either already captured by the formatter or are internal machinery).
 _RESERVED_LOGRECORD_KEYS = frozenset(
     {
-        "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
-        "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
-        "created", "msecs", "relativeCreated", "thread", "threadName",
-        "processName", "process", "request_id", "taskName",
+        "name",
+        "msg",
+        "args",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "lineno",
+        "funcName",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "processName",
+        "process",
+        "request_id",
+        "taskName",
     }
 )
 
@@ -174,7 +191,7 @@ class JsonLogFormatter(logging.Formatter):
         self.service = service
 
     def format(self, record: logging.LogRecord) -> str:
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
             "level": record.levelname,
             "logger": record.name,
@@ -217,9 +234,7 @@ def configure_logging(service: str) -> None:
     handler.addFilter(RequestIdLogFilter())
     if fmt == "text":
         handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s"
-            )
+            logging.Formatter("%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s")
         )
     else:
         handler.setFormatter(JsonLogFormatter(service))

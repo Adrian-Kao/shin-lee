@@ -8,6 +8,7 @@ Three layers of protection:
 
 Production: replace in-memory state with Redis (atomic INCR + TTL).
 """
+
 from __future__ import annotations
 
 import calendar
@@ -15,13 +16,12 @@ import logging
 import threading
 import time
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
 
 from backend.shared.config import settings
 from backend.shared.models import User
-
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,9 @@ class _TokenBucket:
 
 _user_rpm: dict[str, _TokenBucket] = {}
 _user_daily_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (user_id, YYYY-MM-DD) -> tokens
-_tenant_monthly_tokens: dict[tuple[str, str], int] = defaultdict(int)  # (tenant_id, YYYY-MM) -> tokens
+_tenant_monthly_tokens: dict[tuple[str, str], int] = defaultdict(
+    int
+)  # (tenant_id, YYYY-MM) -> tokens
 _daily_cost_usd: dict[str, float] = defaultdict(float)  # YYYY-MM-DD -> usd
 
 
@@ -102,8 +104,11 @@ def _quota_redis():
         _REDIS_CLIENT = _redis_mod.Redis.from_url(settings.REDIS_URL, decode_responses=True)
         return _REDIS_CLIENT
     except Exception as exc:  # noqa: BLE001 — boot must not crash on a bad URL
-        logger.warning("rate_limit: redis backend selected but unavailable (%s); "
-                       "falling back to in-memory counters", exc)
+        logger.warning(
+            "rate_limit: redis backend selected but unavailable (%s); "
+            "falling back to in-memory counters",
+            exc,
+        )
         return None
 
 
@@ -274,11 +279,11 @@ def estimate_cost(model: str, usage: dict[str, int]) -> float:
 
 
 def _today() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 def _this_month() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m")
+    return datetime.now(UTC).strftime("%Y-%m")
 
 
 def check_rpm(user: User) -> None:
@@ -371,7 +376,9 @@ def _redis_reserve(client, key: str, amount: int, limit: int, ttl_sec: int) -> b
         fail_open = settings.RATE_LIMIT_REDIS_DEGRADE == "open"
         logger.warning(
             "rate_limit: redis reserve on %s failed (%s); degrade=%s → %s",
-            key, exc, settings.RATE_LIMIT_REDIS_DEGRADE,
+            key,
+            exc,
+            settings.RATE_LIMIT_REDIS_DEGRADE,
             "ALLOW" if fail_open else "REJECT",
         )
         return fail_open
@@ -411,15 +418,17 @@ def check_quotas(user: User, tokens_about_to_use: int) -> int:
     if client is not None:
         user_key = f"quota:user:{user.user_id}:{day}"
         tenant_key = f"quota:tenant:{user.tenant_id}:{month}"
-        if not _redis_reserve(client, user_key, tokens_about_to_use,
-                              user.daily_token_quota, _DAILY_TTL_SEC):
+        if not _redis_reserve(
+            client, user_key, tokens_about_to_use, user.daily_token_quota, _DAILY_TTL_SEC
+        ):
             raise HTTPException(
                 status.HTTP_402_PAYMENT_REQUIRED,
                 f"daily token quota exceeded (requested={tokens_about_to_use}, "
                 f"limit={user.daily_token_quota})",
             )
-        if not _redis_reserve(client, tenant_key, tokens_about_to_use,
-                              tenant_cap, _MONTHLY_TTL_SEC):
+        if not _redis_reserve(
+            client, tenant_key, tokens_about_to_use, tenant_cap, _MONTHLY_TTL_SEC
+        ):
             # Roll back the user reservation we just took so it isn't
             # double-charged on retry.
             try:
@@ -560,7 +569,7 @@ def project_month_end_cost(tenant_id: str, now: datetime | None = None) -> dict:
       * MTD == 0 — projection is 0.0 (and 0% of any cap).
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     month = now.strftime("%Y-%m")
     mtd = _tenant_monthly_cost[(tenant_id, month)]
     days_in_month = calendar.monthrange(now.year, now.month)[1]
@@ -570,9 +579,7 @@ def project_month_end_cost(tenant_id: str, now: datetime | None = None) -> dict:
     projected = mtd * days_in_month / days_elapsed
 
     cap = _tenant_monthly_cost_cap(tenant_id)
-    projected_vs_cap_pct = (
-        round(projected / cap * 100.0, 2) if cap else None
-    )
+    projected_vs_cap_pct = round(projected / cap * 100.0, 2) if cap else None
 
     return {
         "month": month,
@@ -593,7 +600,7 @@ def tenant_model_breakdown(tenant_id: str, now: datetime | None = None) -> list[
     items first.
     """
     if now is None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
     day = now.strftime("%Y-%m-%d")
     month = now.strftime("%Y-%m")
 
@@ -654,9 +661,7 @@ def get_quota_snapshot(user: User) -> dict:
     """
     forecast = project_month_end_cost(user.tenant_id)
     cap = forecast["tenant_monthly_cap_usd"]
-    will_exceed_cap = bool(
-        cap is not None and forecast["projected_month_end_usd"] > cap
-    )
+    will_exceed_cap = bool(cap is not None and forecast["projected_month_end_usd"] > cap)
     return {
         "user_daily_used": _user_daily_tokens[(user.user_id, _today())],
         "user_daily_limit": user.daily_token_quota,

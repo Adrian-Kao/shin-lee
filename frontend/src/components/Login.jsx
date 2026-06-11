@@ -88,7 +88,9 @@ export default function Login({ onLogin }) {
 
       <main className="flex flex-1 justify-center px-6 py-10">
         <div className="w-full max-w-2xl">
-          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{t('landing.tagline')}</h1>
+          <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            {t('landing.tagline')}
+          </h1>
           <div className="mt-4 h-px w-full bg-slate-200 dark:bg-slate-700" />
 
           <h2 className="mb-1 mt-6 text-base font-semibold text-slate-900 dark:text-slate-100">
@@ -120,10 +122,16 @@ export default function Login({ onLogin }) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="font-medium text-slate-900 dark:text-slate-100">{u.name}</span>
-                      <span className="truncate text-xs text-slate-500 dark:text-slate-400">{u.role}</span>
+                      <span className="font-medium text-slate-900 dark:text-slate-100">
+                        {u.name}
+                      </span>
+                      <span className="truncate text-xs text-slate-500 dark:text-slate-400">
+                        {u.role}
+                      </span>
                     </div>
-                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{t(u.descKey)}</div>
+                    <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      {t(u.descKey)}
+                    </div>
                   </div>
                   {isBusy ? (
                     <Loader2
@@ -223,12 +231,18 @@ function MagicLink({ onLogin, disabled }) {
   return (
     <div className="mt-6 rounded-md border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
-        <Mail className="h-4 w-4 text-navy-700 dark:text-navy-200" strokeWidth={1.75} aria-hidden="true" />
+        <Mail
+          className="h-4 w-4 text-navy-700 dark:text-navy-200"
+          strokeWidth={1.75}
+          aria-hidden="true"
+        />
         {t('magic.link_cta')}
       </div>
 
       <form onSubmit={requestLink} className="space-y-2">
-        <label className="block text-xs text-slate-500 dark:text-slate-400">{t('magic.user_label')}</label>
+        <label className="block text-xs text-slate-500 dark:text-slate-400">
+          {t('magic.user_label')}
+        </label>
         <div className="flex gap-2">
           <input
             value={userId}
@@ -271,9 +285,7 @@ function MagicLink({ onLogin, disabled }) {
                 ) : (
                   <LogIn className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                 )}
-                {phase === 'consuming'
-                  ? t('magic.consuming')
-                  : t('magic.sign_in_with_link')}
+                {phase === 'consuming' ? t('magic.consuming') : t('magic.sign_in_with_link')}
               </button>
             </div>
           )}

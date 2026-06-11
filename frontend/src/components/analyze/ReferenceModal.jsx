@@ -44,9 +44,9 @@ export default function ReferenceModal({ hit, onClose }) {
     <dialog
       ref={dialogRef}
       onClick={onBackdropClick}
-      className="w-full max-w-2xl rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-0 shadow-2xl backdrop:bg-slate-900/40"
+      className="w-full max-w-2xl rounded-lg border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-900/40 dark:border-slate-700 dark:bg-slate-900"
     >
-      <div className="flex items-baseline justify-between gap-3 border-b dark:border-slate-700 px-5 py-3">
+      <div className="flex items-baseline justify-between gap-3 border-b px-5 py-3 dark:border-slate-700">
         <div className="min-w-0">
           <div className="truncate font-mono text-sm font-semibold text-slate-800 dark:text-slate-200">
             {hit.patent_no}
@@ -67,7 +67,9 @@ export default function ReferenceModal({ hit, onClose }) {
         </Button>
       </div>
       <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">{hit.text}</p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+          {hit.text}
+        </p>
       </div>
     </dialog>
   );

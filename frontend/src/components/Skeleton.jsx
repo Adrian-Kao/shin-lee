@@ -22,7 +22,9 @@ export function SkeletonBar({ className = '' }) {
 
 export function SkeletonCard({ className = '' }) {
   return (
-    <div className={`space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 ${className}`}>
+    <div
+      className={`space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900 ${className}`}
+    >
       <Skeleton className="h-4 w-1/3" />
       <SkeletonText lines={3} />
       <SkeletonBar />

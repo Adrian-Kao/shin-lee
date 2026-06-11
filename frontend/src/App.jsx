@@ -79,10 +79,7 @@ export default function App() {
             />
           }
         />
-        <Route
-          path="/audit"
-          element={<AuditRoute session={session} onLogout={handleLogout} />}
-        />
+        <Route path="/audit" element={<AuditRoute session={session} onLogout={handleLogout} />} />
         <Route path="/cases" element={<CasesPlaceholder />} />
         <Route path="*" element={<Navigate to={landingPath} replace />} />
       </Routes>
@@ -157,7 +154,7 @@ function CasesPlaceholderInner() {
   const { t } = useTranslation();
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-6 py-12">
-      <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm md:p-12 dark:border-slate-700 dark:bg-slate-900">
+      <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900 md:p-12">
         <Folder
           className="mx-auto mb-3 h-12 w-12 text-navy-700 dark:text-navy-200"
           strokeWidth={1.5}
@@ -166,7 +163,9 @@ function CasesPlaceholderInner() {
         <h1 className="mb-1 text-xl font-semibold text-slate-900 dark:text-slate-100">
           {t('placeholder.cases_title')}
         </h1>
-        <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">{t('placeholder.cases_subtitle')}</p>
+        <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
+          {t('placeholder.cases_subtitle')}
+        </p>
 
         <ul className="mb-6 space-y-2 text-left text-sm text-slate-600 dark:text-slate-300">
           {[

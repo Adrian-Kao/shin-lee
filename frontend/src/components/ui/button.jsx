@@ -14,15 +14,15 @@ const buttonVariants = cva(
       variant: {
         // `primary` and `default` are aliases so existing/new call sites can
         // use either name interchangeably.
-        primary:
-          'bg-navy-900 text-white shadow-sm hover:bg-navy-700 disabled:bg-slate-400',
-        default:
-          'bg-navy-900 text-white shadow-sm hover:bg-navy-700 disabled:bg-slate-400',
+        primary: 'bg-navy-900 text-white shadow-sm hover:bg-navy-700 disabled:bg-slate-400',
+        default: 'bg-navy-900 text-white shadow-sm hover:bg-navy-700 disabled:bg-slate-400',
         destructive: 'bg-rose-600 text-white shadow-sm hover:bg-rose-700',
         outline:
           'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800/50 dark:hover:text-slate-100',
-        secondary: 'bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600',
-        ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100',
+        secondary:
+          'bg-slate-200 text-slate-800 hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600',
+        ghost:
+          'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100',
         link: 'text-navy-700 underline-offset-4 hover:underline dark:text-navy-200',
       },
       size: {

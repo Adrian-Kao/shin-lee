@@ -50,7 +50,13 @@ export default function ReferencesPane({ result, activeRejectionId, selectedCita
         <PaneHeader title={t('analyze.pane_refs', { defaultValue: '引證 / References' })} />
         <div className="flex-1 overflow-y-auto p-4">
           <EmptyState
-            icon={<Link2 className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />}
+            icon={
+              <Link2
+                className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              />
+            }
             title={t('analyze.refs.empty_title')}
             description={t('analyze.refs.empty_desc')}
           />
@@ -91,7 +97,7 @@ export default function ReferencesPane({ result, activeRejectionId, selectedCita
             {t('analyze.refs.rag_title')}
           </div>
           {hits.length === 0 && (
-            <div className="rounded border border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 p-3 text-xs text-slate-500 dark:text-slate-400">
+            <div className="rounded border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500 dark:border-slate-600 dark:bg-slate-800/50 dark:text-slate-400">
               {t('analyze.refs.no_hits')}
             </div>
           )}
@@ -119,7 +125,7 @@ export default function ReferencesPane({ result, activeRejectionId, selectedCita
 
 function PaneHeader({ title, children }) {
   return (
-    <div className="sticky top-0 z-10 border-b dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 px-4 py-2 backdrop-blur">
+    <div className="sticky top-0 z-10 border-b bg-white/90 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
       <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
       {children}
     </div>
@@ -133,13 +139,17 @@ function ReferenceCard({ hit, onOpen, highlighted, cardRef }) {
   return (
     <div
       ref={cardRef}
-      className={`rounded border dark:border-slate-700 bg-white dark:bg-slate-900 p-3 text-xs transition-colors ${
-        highlighted ? 'border-navy-400 ring-2 ring-navy-300' : 'border-slate-200 dark:border-slate-700'
+      className={`rounded border bg-white p-3 text-xs transition-colors dark:border-slate-700 dark:bg-slate-900 ${
+        highlighted
+          ? 'border-navy-400 ring-2 ring-navy-300'
+          : 'border-slate-200 dark:border-slate-700'
       }`}
     >
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <div className="min-w-0">
-          <span className="font-mono font-medium text-slate-800 dark:text-slate-200">{hit.patent_no}</span>
+          <span className="font-mono font-medium text-slate-800 dark:text-slate-200">
+            {hit.patent_no}
+          </span>
           <span className="ml-1 text-slate-500 dark:text-slate-400">· {hit.section}</span>
         </div>
         <span className="font-mono text-slate-500 dark:text-slate-400">

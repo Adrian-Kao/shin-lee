@@ -89,7 +89,9 @@ export default function StackStatus() {
     STACK_SERVICES.forEach((service) => {
       probeService(service).then((status) => {
         if (!aliveRef.current) return;
-        setStatuses((prev) => (prev[service.id] === status ? prev : { ...prev, [service.id]: status }));
+        setStatuses((prev) =>
+          prev[service.id] === status ? prev : { ...prev, [service.id]: status }
+        );
       });
     });
   }, []);

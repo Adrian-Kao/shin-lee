@@ -54,24 +54,30 @@ export default function InputPane({
       <PaneHeader title={t('analyze.pane_input', { defaultValue: '輸入 OA / Input' })} />
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
-          <label htmlFor="analyze-case-id" className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
+        <div className="rounded-lg border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <label
+            htmlFor="analyze-case-id"
+            className="mb-1 block text-xs text-slate-500 dark:text-slate-400"
+          >
             {t('analyze.input.case_id')}
           </label>
           <input
             id="analyze-case-id"
             value={caseId}
             onChange={(e) => setCaseId(e.target.value)}
-            className="mb-3 w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+            className="mb-3 w-full rounded border px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 dark:border-slate-700 dark:bg-slate-800"
           />
-          <label htmlFor="analyze-target-patent" className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
+          <label
+            htmlFor="analyze-target-patent"
+            className="mb-1 block text-xs text-slate-500 dark:text-slate-400"
+          >
             {t('analyze.input.target_patent')}
           </label>
           <input
             id="analyze-target-patent"
             value={targetPatent}
             onChange={(e) => setTargetPatent(e.target.value)}
-            className="mb-3 w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+            className="mb-3 w-full rounded border px-2 py-1.5 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 dark:border-slate-700 dark:bg-slate-800"
           />
 
           {showUpload && (
@@ -85,7 +91,7 @@ export default function InputPane({
               <button
                 type="button"
                 onClick={() => setShowUpload(false)}
-                className="mt-2 inline-flex items-center gap-1 rounded text-xs text-navy-700 dark:text-navy-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+                className="mt-2 inline-flex items-center gap-1 rounded text-xs text-navy-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 dark:text-navy-200"
               >
                 <ClipboardPaste className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
                 {t('upload.switch_to_paste')}
@@ -96,7 +102,7 @@ export default function InputPane({
             <button
               type="button"
               onClick={() => setShowUpload(true)}
-              className="mb-2 inline-flex items-center gap-1 rounded text-xs text-navy-700 dark:text-navy-200 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+              className="mb-2 inline-flex items-center gap-1 rounded text-xs text-navy-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 dark:text-navy-200"
             >
               <Paperclip className="h-3 w-3" strokeWidth={1.75} aria-hidden="true" />
               {t('upload.switch_to_upload')}
@@ -104,7 +110,7 @@ export default function InputPane({
           )}
 
           {loadedMeta && (
-            <div className="mb-2 inline-block rounded border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-1 text-xs text-emerald-800 dark:text-emerald-300">
+            <div className="mb-2 inline-block rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
               {t('upload.loaded_chip', {
                 filename: loadedMeta.fileName,
                 pages: loadedMeta.pages ?? 0,
@@ -116,7 +122,7 @@ export default function InputPane({
               {uploadWarnings.map((w, i) => (
                 <div
                   key={i}
-                  className="flex items-start gap-1.5 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-2 py-1 text-xs text-amber-800 dark:text-amber-300"
+                  className="flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
                 >
                   <AlertTriangle
                     className="mt-0.5 h-3 w-3 shrink-0"
@@ -129,7 +135,10 @@ export default function InputPane({
             </div>
           )}
 
-          <label htmlFor="analyze-oa-text" className="mb-1 block text-xs text-slate-500 dark:text-slate-400">
+          <label
+            htmlFor="analyze-oa-text"
+            className="mb-1 block text-xs text-slate-500 dark:text-slate-400"
+          >
             {t('analyze.input.oa_full_text')}
           </label>
           <textarea
@@ -137,7 +146,7 @@ export default function InputPane({
             value={oaText}
             onChange={(e) => setOaText(e.target.value)}
             rows={12}
-            className="w-full rounded border dark:border-slate-700 dark:bg-slate-800 px-2 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500"
+            className="w-full rounded border px-2 py-1.5 font-mono text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 dark:border-slate-700 dark:bg-slate-800"
           />
           <div className="mt-3 flex gap-2">
             <Button
@@ -191,20 +200,22 @@ export default function InputPane({
         )}
 
         {redactPreview && (
-          <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+          <div className="rounded-lg border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <h3 className="mb-2 text-sm font-semibold">
               {t('analyze.input.redaction_preview_title')}{' '}
               <span className="text-xs text-slate-500 dark:text-slate-400">(Q10)</span>
             </h3>
-            <div className="mb-2 whitespace-pre-wrap rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-2 font-mono text-xs">
+            <div className="mb-2 whitespace-pre-wrap rounded border border-amber-200 bg-amber-50 p-2 font-mono text-xs dark:border-amber-800 dark:bg-amber-950/40">
               {redactPreview.redacted}
             </div>
             <div className="text-xs">
-              <span className="text-slate-500 dark:text-slate-400">{t('analyze.input.rules_triggered')}</span>
+              <span className="text-slate-500 dark:text-slate-400">
+                {t('analyze.input.rules_triggered')}
+              </span>
               {redactPreview.rules_triggered.map((r) => (
                 <span
                   key={r}
-                  className="mr-1 inline-block rounded bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 font-mono"
+                  className="mr-1 inline-block rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800"
                 >
                   {r}
                 </span>
@@ -214,18 +225,20 @@ export default function InputPane({
         )}
 
         {!quota && (
-          <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+          <div className="rounded-lg border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <h3 className="mb-2 text-sm font-semibold">
-              {t('analyze.input.quota')} <span className="text-xs text-slate-500 dark:text-slate-400">(Q18)</span>
+              {t('analyze.input.quota')}{' '}
+              <span className="text-xs text-slate-500 dark:text-slate-400">(Q18)</span>
             </h3>
             <SkeletonText lines={3} />
           </div>
         )}
 
         {quota && (
-          <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+          <div className="rounded-lg border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
             <h3 className="mb-2 text-sm font-semibold">
-              {t('analyze.input.quota')} <span className="text-xs text-slate-500 dark:text-slate-400">(Q18)</span>
+              {t('analyze.input.quota')}{' '}
+              <span className="text-xs text-slate-500 dark:text-slate-400">(Q18)</span>
             </h3>
             <Bar
               label={t('analyze.input.token_today')}
@@ -257,7 +270,7 @@ export default function InputPane({
 
 function PaneHeader({ title, subtitle }) {
   return (
-    <div className="sticky top-0 z-10 border-b dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 px-4 py-2 backdrop-blur">
+    <div className="sticky top-0 z-10 border-b bg-white/90 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
       <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
       {subtitle && <p className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>}
     </div>
@@ -277,19 +290,29 @@ function BudgetPanel({ budget, t }) {
 
   const badge =
     status === 'will_exceed'
-      ? { cls: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300', label: t('budget.will_exceed') }
+      ? {
+          cls: 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300',
+          label: t('budget.will_exceed'),
+        }
       : status === 'on_track'
-        ? { cls: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300', label: t('budget.on_track') }
-        : { cls: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300', label: t('budget.no_cap') };
+        ? {
+            cls: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300',
+            label: t('budget.on_track'),
+          }
+        : {
+            cls: 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
+            label: t('budget.no_cap'),
+          };
 
   const fmt = (n) => `$${Number(n ?? 0).toFixed(2)}`;
   const cap = forecast.tenant_monthly_cap_usd;
 
   return (
-    <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+    <div className="rounded-lg border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold">
-          {t('budget.title')} <span className="text-xs text-slate-500 dark:text-slate-400">(Q18)</span>
+          {t('budget.title')}{' '}
+          <span className="text-xs text-slate-500 dark:text-slate-400">(Q18)</span>
         </h3>
         <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
           {badge.label}
@@ -297,13 +320,13 @@ function BudgetPanel({ budget, t }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-2">
+        <div className="rounded border border-slate-100 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50">
           <div className="text-slate-500 dark:text-slate-400">{t('budget.month_to_date')}</div>
           <div className="font-mono text-sm text-slate-800 dark:text-slate-200">
             {fmt(forecast.month_to_date_usd)}
           </div>
         </div>
-        <div className="rounded border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-2">
+        <div className="rounded border border-slate-100 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50">
           <div className="text-slate-500 dark:text-slate-400">{t('budget.projected')}</div>
           <div className="font-mono text-sm text-slate-800 dark:text-slate-200">
             {fmt(forecast.projected_month_end_usd)}

@@ -59,10 +59,8 @@ export const api = {
   // (the token is a DEMO-ONLY escape hatch — production emails the link and
   // returns no token). `magicConsume` exchanges that token for the SAME
   // LoginResponse shape as password login.
-  magicRequest: (user_id) =>
-    call('/v1/auth/magic/request', { method: 'POST', body: { user_id } }),
-  magicConsume: (token) =>
-    call('/v1/auth/magic/consume', { method: 'POST', body: { token } }),
+  magicRequest: (user_id) => call('/v1/auth/magic/request', { method: 'POST', body: { user_id } }),
+  magicConsume: (token) => call('/v1/auth/magic/consume', { method: 'POST', body: { token } }),
   quota: (token, case_id) =>
     call(`/v1/quota?case_id=${encodeURIComponent(case_id || '')}`, { token }),
   analyze: (token, payload) =>

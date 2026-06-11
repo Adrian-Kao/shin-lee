@@ -225,10 +225,10 @@ export default function Analyze({
   };
 
   return (
-    <div className={`flex flex-col bg-slate-50 dark:bg-slate-800/50 ${embedded ? 'min-h-0 flex-1' : 'min-h-screen'}`}>
-      {!embedded && (
-        <Header session={session} onLogout={onLogout} onSwitchView={onSwitchView} />
-      )}
+    <div
+      className={`flex flex-col bg-slate-50 dark:bg-slate-800/50 ${embedded ? 'min-h-0 flex-1' : 'min-h-screen'}`}
+    >
+      {!embedded && <Header session={session} onLogout={onLogout} onSwitchView={onSwitchView} />}
 
       {result && <ResultSummaryBar result={result} />}
 
@@ -260,10 +260,10 @@ export default function Analyze({
 
       {/* Desktop (≥ xl): three-pane side-by-side. Each pane scrolls independently. */}
       <main className="hidden flex-1 xl:grid xl:grid-cols-[3fr_4fr_3fr]">
-        <div className="min-h-0 border-r dark:border-slate-700 bg-white dark:bg-slate-900">
+        <div className="min-h-0 border-r bg-white dark:border-slate-700 dark:bg-slate-900">
           <InputPane {...inputPaneProps} />
         </div>
-        <div className="min-h-0 border-r dark:border-slate-700 bg-white dark:bg-slate-900">
+        <div className="min-h-0 border-r bg-white dark:border-slate-700 dark:bg-slate-900">
           <DraftsPane {...draftsPaneProps} />
         </div>
         <div className="min-h-0 bg-white dark:bg-slate-900">
@@ -280,7 +280,7 @@ export default function Analyze({
 function Header({ session, onLogout, onSwitchView }) {
   const { t } = useTranslation();
   return (
-    <header className="border-b dark:border-slate-700 bg-white dark:bg-slate-900">
+    <header className="border-b bg-white dark:border-slate-700 dark:bg-slate-900">
       <div className="mx-auto flex max-w-[1920px] items-center gap-4 px-6 py-3">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded bg-navy-900 text-sm font-bold text-white">
@@ -291,7 +291,7 @@ function Header({ session, onLogout, onSwitchView }) {
         <nav className="ml-6 flex gap-1" aria-label={t('nav.analyze')}>
           <button
             onClick={() => onSwitchView('analyze')}
-            className="rounded bg-navy-50 dark:bg-navy-900/40 px-3 py-1.5 text-sm font-medium text-navy-700 dark:text-navy-200"
+            className="rounded bg-navy-50 px-3 py-1.5 text-sm font-medium text-navy-700 dark:bg-navy-900/40 dark:text-navy-200"
           >
             {t('nav.analyze')}
           </button>
@@ -349,7 +349,7 @@ function ResultSummaryBar({ result }) {
   const warnings = Array.isArray(ds.warnings) ? ds.warnings : [];
 
   return (
-    <div className="border-b dark:border-slate-700 bg-white dark:bg-slate-900">
+    <div className="border-b bg-white dark:border-slate-700 dark:bg-slate-900">
       <div className="mx-auto flex max-w-[1920px] flex-wrap items-center gap-4 px-6 py-2 text-xs">
         <div className="flex flex-wrap gap-1.5">
           {policyChips.map(([k, v]) => {
@@ -361,10 +361,10 @@ function ResultSummaryBar({ result }) {
                 key={k}
                 className={`rounded px-2 py-0.5 font-mono ${
                   k === 'cache_hit'
-                    ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
                     : pos
-                      ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300'
-                      : 'bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      : 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300'
                 }`}
               >
                 {label}
@@ -382,7 +382,7 @@ function ResultSummaryBar({ result }) {
           </span>
           {warnings.length > 0 && (
             <span
-              className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 font-semibold text-amber-800 dark:text-amber-300"
+              className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
               title={warnings.join('\n')}
             >
               <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
@@ -395,7 +395,7 @@ function ResultSummaryBar({ result }) {
             size="xs"
             onClick={() => setShowDeadlineDetail((s) => !s)}
             aria-expanded={showDeadlineDetail}
-            className="px-1.5 py-0.5 text-slate-500 dark:text-slate-400 underline-offset-2 hover:underline"
+            className="px-1.5 py-0.5 text-slate-500 underline-offset-2 hover:underline dark:text-slate-400"
           >
             {showDeadlineDetail ? t('analyze.result.collapse') : t('analyze.result.why')}
           </Button>
@@ -405,20 +405,28 @@ function ResultSummaryBar({ result }) {
       {showDeadlineDetail && (
         <div
           data-testid="deadline-details"
-          className="mx-auto max-w-[1920px] border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 px-6 py-2 text-xs text-slate-600 dark:text-slate-300"
+          className="mx-auto max-w-[1920px] border-t border-slate-100 bg-slate-50 px-6 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300"
         >
           <dl className="flex flex-wrap gap-x-6 gap-y-1">
             <div className="flex gap-1">
               <dt className="text-slate-400 dark:text-slate-500">{t('analyze.result.received')}</dt>
-              <dd className="font-mono text-slate-700 dark:text-slate-200">{fmt(ds.received_date)}</dd>
+              <dd className="font-mono text-slate-700 dark:text-slate-200">
+                {fmt(ds.received_date)}
+              </dd>
             </div>
             <div className="flex gap-1">
-              <dt className="text-slate-400 dark:text-slate-500">{t('analyze.result.statutory')}</dt>
-              <dd className="font-mono text-slate-700 dark:text-slate-200">{fmt(ds.statutory_deadline)}</dd>
+              <dt className="text-slate-400 dark:text-slate-500">
+                {t('analyze.result.statutory')}
+              </dt>
+              <dd className="font-mono text-slate-700 dark:text-slate-200">
+                {fmt(ds.statutory_deadline)}
+              </dd>
             </div>
             {ds.recommended_internal_deadline && (
               <div className="flex gap-1">
-                <dt className="text-slate-400 dark:text-slate-500">{t('analyze.result.internal')}</dt>
+                <dt className="text-slate-400 dark:text-slate-500">
+                  {t('analyze.result.internal')}
+                </dt>
                 <dd className="font-mono text-slate-700 dark:text-slate-200">
                   {fmt(ds.recommended_internal_deadline)}
                 </dd>
@@ -426,8 +434,12 @@ function ResultSummaryBar({ result }) {
             )}
             {ds.holiday_calendar_version && (
               <div className="flex gap-1">
-                <dt className="text-slate-400 dark:text-slate-500">{t('analyze.result.calendar')}</dt>
-                <dd className="font-mono text-slate-700 dark:text-slate-200">{ds.holiday_calendar_version}</dd>
+                <dt className="text-slate-400 dark:text-slate-500">
+                  {t('analyze.result.calendar')}
+                </dt>
+                <dd className="font-mono text-slate-700 dark:text-slate-200">
+                  {ds.holiday_calendar_version}
+                </dd>
               </div>
             )}
           </dl>
@@ -452,7 +464,11 @@ function MobileTabBar({ activeTab, setActiveTab, hasResult }) {
     { id: 'refs', label: t('analyze.result.tab_refs'), disabled: !hasResult },
   ];
   return (
-    <div className="sticky top-0 z-10 flex border-b dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur" role="tablist" aria-label={t('analyze.pane_input')}>
+    <div
+      className="sticky top-0 z-10 flex border-b bg-white/95 backdrop-blur dark:border-slate-700 dark:bg-slate-900/95"
+      role="tablist"
+      aria-label={t('analyze.pane_input')}
+    >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
@@ -467,7 +483,7 @@ function MobileTabBar({ activeTab, setActiveTab, hasResult }) {
                 ? 'border-navy-600 text-navy-700 dark:text-navy-200'
                 : tab.disabled
                   ? 'cursor-not-allowed border-transparent text-slate-300 dark:text-slate-600'
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
             {tab.label}

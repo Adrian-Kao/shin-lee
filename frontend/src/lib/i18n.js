@@ -115,8 +115,7 @@ const resources = {
         source_paralegal_edited: '助理改寫',
         source_paralegal_added: '助理新增',
         decided_count: '{{decided}}/{{total}} 已決定',
-        signoff_required:
-          '需律師簽核：請先勾選「我已逐項確認」再匯出。系統未產生任何文件。',
+        signoff_required: '需律師簽核：請先勾選「我已逐項確認」再匯出。系統未產生任何文件。',
         export_success: '已匯出答辯稿（已簽核）',
         export_failed: '匯出失敗',
         download: '下載 .txt',
@@ -301,7 +300,8 @@ const resources = {
         // they are the auditor-facing technical column names AND the e2e
         // selectors key off them. The rest are localised.
         log_title: 'Audit Log',
-        log_desc: '唯讀附加式 SQLite，UPDATE／DELETE 由觸發器阻擋；正式環境另以 S3 Object Lock 每小時封存。',
+        log_desc:
+          '唯讀附加式 SQLite，UPDATE／DELETE 由觸發器阻擋；正式環境另以 S3 Object Lock 每小時封存。',
         refresh: '重新整理',
         col_time: '時間 (UTC)',
         col_user: 'User',
@@ -399,7 +399,8 @@ const resources = {
         switch_to_paste: 'Paste text instead',
         switch_to_upload: 'Upload file instead',
         docx_no_preview: 'DOCX preview not supported; extracted text will appear below',
-        pdf_no_inline: 'This browser cannot preview PDFs inline — use the link below to download and view',
+        pdf_no_inline:
+          'This browser cannot preview PDFs inline — use the link below to download and view',
         preview_pages: '{{count}} pages',
         preview_chars: '{{count}} chars',
         preview_ocr: "{{count}} pages OCR'd",
@@ -608,7 +609,8 @@ const resources = {
       },
       audit_table: {
         log_title: 'Audit Log',
-        log_desc: 'Append-only SQLite with UPDATE/DELETE triggers blocking edits. Production adds hourly S3 Object Lock archival.',
+        log_desc:
+          'Append-only SQLite with UPDATE/DELETE triggers blocking edits. Production adds hourly S3 Object Lock archival.',
         refresh: 'Refresh',
         col_time: 'Time (UTC)',
         col_user: 'User',

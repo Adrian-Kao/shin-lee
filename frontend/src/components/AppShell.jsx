@@ -71,7 +71,12 @@ export default function AppShell({ session, onLogout, children, trustContext }) 
   const auditState = useMemo(() => {
     if (!canCallAudit) return { status: 'idle', verified: 0, broken: 0, error: null };
     if (verifyQ.error) {
-      return { status: 'fail', verified: 0, broken: 0, error: verifyQ.error?.message || 'verify failed' };
+      return {
+        status: 'fail',
+        verified: 0,
+        broken: 0,
+        error: verifyQ.error?.message || 'verify failed',
+      };
     }
     if (!verifyQ.data) return { status: 'idle', verified: 0, broken: 0, error: null };
     // verify_global_chain returns broken as list[tuple]; verify_chain returns
@@ -134,7 +139,7 @@ function ShellFooter({ t }) {
     <footer className="sticky bottom-0 z-20 border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
       <div className="mx-auto flex max-w-[1920px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5 sm:px-6">
         <StackStatus />
-        <span className="ml-auto hidden text-2xs text-slate-400 sm:inline dark:text-slate-500">
+        <span className="ml-auto hidden text-2xs text-slate-400 dark:text-slate-500 sm:inline">
           {t('landing.footer')}
         </span>
       </div>
@@ -322,7 +327,9 @@ function ChainChip({ state, canCallAudit, onClick, t }) {
     >
       <Icon className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
       <span>{label}</span>
-      {rowsText && <span className="hidden font-mono text-2xs opacity-80 sm:inline">·{' '}{rowsText}</span>}
+      {rowsText && (
+        <span className="hidden font-mono text-2xs opacity-80 sm:inline">· {rowsText}</span>
+      )}
     </button>
   );
 }
@@ -333,8 +340,7 @@ function ChainChip({ state, canCallAudit, onClick, t }) {
 
 function TrustBand({ session, trustContext, t }) {
   const caseId = trustContext?.caseId || '';
-  const isConfidential =
-    typeof caseId === 'string' && caseId.toUpperCase().endsWith('-CONF');
+  const isConfidential = typeof caseId === 'string' && caseId.toUpperCase().endsWith('-CONF');
   const maskedCount = trustContext?.maskedEntityCount ?? 0;
 
   return (
@@ -366,9 +372,7 @@ function TrustBand({ session, trustContext, t }) {
           Icon={isConfidential ? Lock : Cloud}
           tone={isConfidential ? 'confidential' : 'success'}
           label={
-            isConfidential
-              ? t('shell.trust.routing_confidential')
-              : t('shell.trust.routing_auto')
+            isConfidential ? t('shell.trust.routing_confidential') : t('shell.trust.routing_auto')
           }
           title={
             isConfidential
@@ -442,12 +446,14 @@ function NavRail({ items, collapsed, setCollapsed, activePath, onNavigate, t }) 
                 strokeWidth={1.75}
                 aria-hidden="true"
               />
-              <span className={`truncate ${collapsed ? 'hidden' : 'hidden sm:inline'}`}>{label}</span>
+              <span className={`truncate ${collapsed ? 'hidden' : 'hidden sm:inline'}`}>
+                {label}
+              </span>
             </Button>
           );
         })}
       </div>
-      <div className="hidden border-t border-slate-200 p-2 sm:block dark:border-slate-700">
+      <div className="hidden border-t border-slate-200 p-2 dark:border-slate-700 sm:block">
         <Button
           type="button"
           variant="ghost"

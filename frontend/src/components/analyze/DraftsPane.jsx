@@ -1,6 +1,14 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ShieldCheck, ShieldAlert, AlertTriangle, Loader2, CheckCircle2, Circle, FileText } from 'lucide-react';
+import {
+  ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
+  Loader2,
+  CheckCircle2,
+  Circle,
+  FileText,
+} from 'lucide-react';
 import DraftEditor from '../DraftEditor.jsx';
 import EmptyState from '../EmptyState.jsx';
 
@@ -39,7 +47,13 @@ export default function DraftsPane({
         <PaneHeader title={t('analyze.pane_drafts', { defaultValue: '草稿 / Drafts' })} />
         <div className="flex-1 overflow-y-auto p-4">
           <EmptyState
-            icon={<FileText className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />}
+            icon={
+              <FileText
+                className="mx-auto h-10 w-10 text-slate-400 dark:text-slate-500"
+                strokeWidth={1.5}
+                aria-hidden="true"
+              />
+            }
             title={t('empty.no_result_title')}
             description={t('empty.no_result_desc')}
             hint={t('empty.no_result_hint')}
@@ -105,7 +119,7 @@ export default function DraftsPane({
 
 function PaneHeader({ title, children }) {
   return (
-    <div className="sticky top-0 z-10 border-b dark:border-slate-700 bg-white/90 dark:bg-slate-900/90 px-4 py-2 backdrop-blur">
+    <div className="sticky top-0 z-10 border-b bg-white/90 px-4 py-2 backdrop-blur dark:border-slate-700 dark:bg-slate-900/90">
       <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{title}</h2>
       {children}
     </div>
@@ -124,11 +138,13 @@ function RejectionTabs({ rejections, activeRejectionId, setActiveRejectionId }) 
             className={`whitespace-nowrap border-b-2 px-2 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-navy-500 ${
               isActive
                 ? 'border-navy-600 text-navy-700 dark:text-navy-200'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600 hover:text-slate-700 dark:hover:text-slate-200'
+                : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200'
             }`}
           >
             <span className="font-mono">{shortType(r.rejection_type)}</span>
-            <span className="ml-1 text-slate-400 dark:text-slate-500">claims {r.affected_claims.join(',')}</span>
+            <span className="ml-1 text-slate-400 dark:text-slate-500">
+              claims {r.affected_claims.join(',')}
+            </span>
           </button>
         );
       })}
@@ -162,7 +178,7 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
   const typeChip = REJECTION_TYPE_CHIP[rejection.rejection_type] || REJECTION_TYPE_CHIP._default;
 
   return (
-    <div className="space-y-4 rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
+    <div className="space-y-4 rounded-lg border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div>
           <span className={`mr-2 rounded px-2 py-0.5 font-mono text-xs ${typeChip}`}>
@@ -175,7 +191,7 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
         </div>
       </div>
 
-      <div className="rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-3 text-sm text-slate-700 dark:text-slate-200">
+      <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-200">
         <div className="mb-1 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
           {t('analyze.drafts.examiner_argument')}
         </div>
@@ -183,7 +199,7 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
       </div>
 
       {draft && (
-        <div className="border-t dark:border-slate-700 pt-4">
+        <div className="border-t pt-4 dark:border-slate-700">
           {/* ★3 防幻覺面板：把後端 verifier 的把關結果畫成看得見的牆 */}
           <VerificationBanner draft={draft} />
           <div className="mb-1 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -204,8 +220,12 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
             role={session?.role}
           />
           <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
-            <span>{t('analyze.drafts_meta.grounded', { count: draft.grounded_citations.length })}</span>
-            <span>{t('analyze.drafts_meta.verifier_conf', { pct: (draft.confidence * 100).toFixed(0) })}</span>
+            <span>
+              {t('analyze.drafts_meta.grounded', { count: draft.grounded_citations.length })}
+            </span>
+            <span>
+              {t('analyze.drafts_meta.verifier_conf', { pct: (draft.confidence * 100).toFixed(0) })}
+            </span>
             <span className="ml-auto">
               {t('analyze.drafts_meta.requires_review', {
                 value: draft.requires_attorney_review ? t('yes') : t('no'),
@@ -231,9 +251,7 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
  */
 function VerificationBanner({ draft }) {
   const { t } = useTranslation();
-  const invalidCitations = Array.isArray(draft?.invalid_citations)
-    ? draft.invalid_citations
-    : null;
+  const invalidCitations = Array.isArray(draft?.invalid_citations) ? draft.invalid_citations : null;
   const removedCount =
     invalidCitations != null
       ? invalidCitations.length
@@ -267,8 +285,10 @@ function VerificationBanner({ draft }) {
 
   const toneCls = {
     rose: 'border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300',
-    emerald: 'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300',
-    slate: 'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300',
+    emerald:
+      'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300',
+    slate:
+      'border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300',
   }[tone];
 
   return (
@@ -283,7 +303,9 @@ function VerificationBanner({ draft }) {
         </span>
         <span className="font-medium">{title}</span>
         <span className="ml-auto flex items-center gap-2 font-mono">
-          {groundedCount != null && <span>{t('analyze.verifier.grounded', { count: groundedCount })}</span>}
+          {groundedCount != null && (
+            <span>{t('analyze.verifier.grounded', { count: groundedCount })}</span>
+          )}
           {removedCount > 0 && (
             <span className="text-rose-700 dark:text-rose-300">
               {t('analyze.verifier.removed', { count: removedCount })}
@@ -357,11 +379,17 @@ function RunningPanel() {
   const safeIdx = currentIdx === -1 ? STAGES.length - 1 : currentIdx;
 
   return (
-    <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-8">
+    <div className="rounded-lg border bg-white p-8 dark:border-slate-700 dark:bg-slate-900">
       <div className="mb-4 flex items-baseline justify-between">
         <div className="flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin text-navy-600 dark:text-navy-300" strokeWidth={1.75} aria-hidden="true" />
-          <span className="font-semibold text-slate-700 dark:text-slate-200">{t('analyze.drafts.analyzing')}</span>
+          <Loader2
+            className="h-4 w-4 animate-spin text-navy-600 dark:text-navy-300"
+            strokeWidth={1.75}
+            aria-hidden="true"
+          />
+          <span className="font-semibold text-slate-700 dark:text-slate-200">
+            {t('analyze.drafts.analyzing')}
+          </span>
         </div>
         <div className="font-mono text-2xl tabular-nums text-navy-700 dark:text-navy-200">
           {fmtElapsed(elapsedMs)}
@@ -376,13 +404,21 @@ function RunningPanel() {
             <div key={stage.name} className="flex items-center gap-3 text-sm">
               <span
                 className={`inline-flex w-5 justify-center ${
-                  done ? 'text-emerald-600 dark:text-emerald-400' : active ? 'text-navy-600 dark:text-navy-300' : 'text-slate-300 dark:text-slate-600'
+                  done
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : active
+                      ? 'text-navy-600 dark:text-navy-300'
+                      : 'text-slate-300 dark:text-slate-600'
                 }`}
               >
                 {done ? (
                   <CheckCircle2 className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
                 ) : active ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} aria-hidden="true" />
+                  <Loader2
+                    className="h-3.5 w-3.5 animate-spin"
+                    strokeWidth={1.75}
+                    aria-hidden="true"
+                  />
                 ) : (
                   <Circle className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
                 )}
@@ -390,7 +426,7 @@ function RunningPanel() {
               <span
                 className={
                   done
-                    ? 'text-slate-500 dark:text-slate-400 line-through decoration-emerald-300/60'
+                    ? 'text-slate-500 line-through decoration-emerald-300/60 dark:text-slate-400'
                     : active
                       ? 'font-medium text-slate-800 dark:text-slate-200'
                       : 'text-slate-400 dark:text-slate-500'

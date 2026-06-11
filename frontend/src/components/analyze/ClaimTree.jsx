@@ -109,7 +109,10 @@ export default function ClaimTree({
   //   [#10] independent ─────────────  ▌  charging management system...
   //     [#11] dep. 10   ───────────                  ...                   (cascade)
   return (
-    <div className="rounded-lg border dark:border-slate-700 bg-white dark:bg-slate-900 p-4" data-testid="claim-tree">
+    <div
+      className="rounded-lg border bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+      data-testid="claim-tree"
+    >
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold">
           {t('analyze.claim_tree.title', { defaultValue: '請求項依賴樹 / Claim tree' })}{' '}

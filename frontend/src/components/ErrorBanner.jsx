@@ -62,7 +62,7 @@ export default function ErrorBanner({ error, onRetry, onDismiss, onLogin }) {
   return (
     <div
       role="alert"
-      className="flex flex-col gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-700 sm:flex-row sm:items-start sm:gap-3 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300"
+      className="flex flex-col gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300 sm:flex-row sm:items-start sm:gap-3"
     >
       <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" aria-hidden="true" />
 

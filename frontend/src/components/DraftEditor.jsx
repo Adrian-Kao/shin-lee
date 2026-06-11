@@ -56,9 +56,7 @@ export default function DraftEditor({
 
   function accept(i) {
     setLines((ls) =>
-      ls.map((l, idx) =>
-        idx === i ? { ...l, accepted: true, ts: new Date().toISOString() } : l
-      )
+      ls.map((l, idx) => (idx === i ? { ...l, accepted: true, ts: new Date().toISOString() } : l))
     );
   }
   function startEdit(i) {
@@ -164,7 +162,7 @@ export default function DraftEditor({
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="w-full rounded border border-emerald-300 dark:border-emerald-800 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300"
+                className="w-full rounded border border-emerald-300 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300 dark:border-emerald-800"
                 rows={3}
               />
               <div className="mt-1 flex gap-2">
@@ -216,7 +214,7 @@ export default function DraftEditor({
             value={addingValue}
             onChange={(e) => setAddingValue(e.target.value)}
             placeholder={t('signoff.new_line_placeholder')}
-            className="w-full rounded border border-slate-200 dark:border-slate-700 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="w-full rounded border border-slate-200 p-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 dark:border-slate-700"
             rows={2}
           />
           <Button
@@ -233,7 +231,7 @@ export default function DraftEditor({
 
       {/* Sign-off gate (Q16) */}
       {canExport && (
-        <div className="mt-4 space-y-3 border-t dark:border-slate-700 pt-3">
+        <div className="mt-4 space-y-3 border-t pt-3 dark:border-slate-700">
           <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
             <input
               type="checkbox"
@@ -261,7 +259,9 @@ export default function DraftEditor({
             </Button>
           </div>
           {acceptedCount === 0 && (
-            <div className="text-xs text-amber-700 dark:text-amber-300">{t('signoff.no_accepted')}</div>
+            <div className="text-xs text-amber-700 dark:text-amber-300">
+              {t('signoff.no_accepted')}
+            </div>
           )}
         </div>
       )}
@@ -282,11 +282,13 @@ function ExportResultPanel({ result, onDownload, onClose, t }) {
   const s = result.provenance_summary || {};
   return (
     <div
-      className="mt-3 space-y-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 p-3"
+      className="mt-3 space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-800 dark:bg-emerald-950/40"
       data-testid="export-result"
     >
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">{t('signoff.result_title')}</h4>
+        <h4 className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+          {t('signoff.result_title')}
+        </h4>
         <Button
           type="button"
           variant="link"
@@ -300,7 +302,7 @@ function ExportResultPanel({ result, onDownload, onClose, t }) {
       <div className="text-xs text-slate-600 dark:text-slate-300">
         {t('signoff.signed_off_by')}: <span className="font-medium">{result.signed_off_by}</span>
       </div>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-900 p-2 text-xs text-slate-800 dark:text-slate-200">
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-emerald-200 bg-white p-2 text-xs text-slate-800 dark:border-emerald-800 dark:bg-slate-900 dark:text-slate-200">
         {result.document}
       </pre>
       <div className="flex flex-wrap gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -364,10 +366,7 @@ function splitIntoLines(text) {
 
 /** Q14: render [GROUNDED_REF_N] as hover-able citation pill linking to source. */
 function CitationHighlighter({ text, citationLookup }) {
-  const parts = useMemo(
-    () => text.split(/(\[GROUNDED_REF_\d+\]|\[CITATION_REMOVED\])/g),
-    [text]
-  );
+  const parts = useMemo(() => text.split(/(\[GROUNDED_REF_\d+\]|\[CITATION_REMOVED\])/g), [text]);
   return (
     <span>
       {parts.map((p, i) => {
@@ -377,7 +376,7 @@ function CitationHighlighter({ text, citationLookup }) {
             <span
               key={i}
               title={hit ? `${hit.patent_no} / ${hit.section}\n\n${hit.text}` : p}
-              className="mx-0.5 inline-block cursor-help rounded border border-navy-300 dark:border-navy-700 bg-navy-100 dark:bg-navy-900/40 px-1.5 py-0.5 font-mono text-xs text-navy-800 dark:text-navy-200"
+              className="mx-0.5 inline-block cursor-help rounded border border-navy-300 bg-navy-100 px-1.5 py-0.5 font-mono text-xs text-navy-800 dark:border-navy-700 dark:bg-navy-900/40 dark:text-navy-200"
             >
               {p}
             </span>
@@ -387,7 +386,7 @@ function CitationHighlighter({ text, citationLookup }) {
           return (
             <span
               key={i}
-              className="mx-0.5 inline-block rounded border border-rose-300 dark:border-rose-800 bg-rose-100 dark:bg-rose-900/40 px-1.5 py-0.5 font-mono text-xs text-rose-800 dark:text-rose-300"
+              className="mx-0.5 inline-block rounded border border-rose-300 bg-rose-100 px-1.5 py-0.5 font-mono text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-900/40 dark:text-rose-300"
             >
               CITATION_REMOVED
             </span>

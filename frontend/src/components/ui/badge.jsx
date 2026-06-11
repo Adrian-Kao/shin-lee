@@ -29,7 +29,8 @@ const STATUS_TONE = {
   success: {
     soft: 'bg-emerald-50 text-emerald-800 ring-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:ring-emerald-800',
     solid: 'bg-emerald-600 text-white ring-emerald-700',
-    outline: 'bg-transparent text-emerald-700 ring-emerald-300 dark:text-emerald-300 dark:ring-emerald-800',
+    outline:
+      'bg-transparent text-emerald-700 ring-emerald-300 dark:text-emerald-300 dark:ring-emerald-800',
   },
   warning: {
     soft: 'bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-800',
@@ -54,7 +55,8 @@ const STATUS_TONE = {
   confidential: {
     soft: 'bg-purple-50 text-purple-800 ring-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:ring-purple-800',
     solid: 'bg-purple-600 text-white ring-purple-700',
-    outline: 'bg-transparent text-purple-700 ring-purple-300 dark:text-purple-300 dark:ring-purple-800',
+    outline:
+      'bg-transparent text-purple-700 ring-purple-300 dark:text-purple-300 dark:ring-purple-800',
   },
   neutral: {
     soft: 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-700',

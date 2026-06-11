@@ -254,7 +254,10 @@ function ElementTable({ table, t }) {
     return na - nb;
   });
   return (
-    <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900" data-testid="element-table">
+    <div
+      className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900"
+      data-testid="element-table"
+    >
       <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
         {t('upload.element_table_title')}
       </div>
@@ -334,8 +337,14 @@ function PreviewPane({ file, blobUrl, t }) {
           className="h-96 w-full rounded border dark:border-slate-700"
         />
         <div className="flex h-96 w-full flex-col items-center justify-center rounded border bg-slate-50 px-6 text-center dark:border-slate-700 dark:bg-slate-800/50">
-          <FileText className="mb-2 h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />
-          <div className="text-sm text-slate-600 dark:text-slate-300">{t('upload.pdf_no_inline')}</div>
+          <FileText
+            className="mb-2 h-10 w-10 text-slate-400 dark:text-slate-500"
+            strokeWidth={1.5}
+            aria-hidden="true"
+          />
+          <div className="text-sm text-slate-600 dark:text-slate-300">
+            {t('upload.pdf_no_inline')}
+          </div>
           <a
             href={blobUrl}
             download={file.name}
@@ -350,9 +359,17 @@ function PreviewPane({ file, blobUrl, t }) {
   }
   return (
     <div className="flex h-96 w-full flex-col items-center justify-center rounded border bg-slate-50 px-6 text-center dark:border-slate-700 dark:bg-slate-800/50">
-      <FileText className="mb-2 h-10 w-10 text-slate-400 dark:text-slate-500" strokeWidth={1.5} aria-hidden="true" />
-      <div className="text-sm text-slate-600 dark:text-slate-300">{t('upload.docx_no_preview')}</div>
-      <div className="mt-2 break-all font-mono text-xs text-slate-400 dark:text-slate-500">{file.name}</div>
+      <FileText
+        className="mb-2 h-10 w-10 text-slate-400 dark:text-slate-500"
+        strokeWidth={1.5}
+        aria-hidden="true"
+      />
+      <div className="text-sm text-slate-600 dark:text-slate-300">
+        {t('upload.docx_no_preview')}
+      </div>
+      <div className="mt-2 break-all font-mono text-xs text-slate-400 dark:text-slate-500">
+        {file.name}
+      </div>
     </div>
   );
 }
@@ -376,7 +393,10 @@ function ExtractedTextPreview({ result, t }) {
   const warnings = Array.isArray(result?.warnings) ? result.warnings : [];
 
   return (
-    <div className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900" data-testid="extracted-text-preview">
+    <div
+      className="rounded border border-slate-200 bg-white p-2 dark:border-slate-700 dark:bg-slate-900"
+      data-testid="extracted-text-preview"
+    >
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <Badge tone="brand" variant="soft">
           {t('upload.preview_pages', { count: pageCount })}
@@ -442,7 +462,9 @@ function StatusPane({
           {t('upload.file_selected')}
         </div>
         <div className="mt-0.5 break-all font-mono text-sm">{file?.name}</div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">{file ? fmtSize(file.size) : ''}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-400">
+          {file ? fmtSize(file.size) : ''}
+        </div>
       </div>
 
       {status === 'file-selected' && (
@@ -467,7 +489,12 @@ function StatusPane({
               style={{ width: `${Math.round(progress * 100)}%` }}
             />
           </div>
-          <Button variant="secondary" size="xs" onClick={onCancel} className="mt-3 px-3 py-1.5 text-sm">
+          <Button
+            variant="secondary"
+            size="xs"
+            onClick={onCancel}
+            className="mt-3 px-3 py-1.5 text-sm"
+          >
             {t('upload.cancel_button')}
           </Button>
         </div>
@@ -475,7 +502,11 @@ function StatusPane({
 
       {status === 'server-extracting' && (
         <div className="flex items-start gap-2">
-          <Loader2 className="h-5 w-5 shrink-0 animate-spin text-navy-600 dark:text-navy-300" strokeWidth={1.75} aria-hidden="true" />
+          <Loader2
+            className="h-5 w-5 shrink-0 animate-spin text-navy-600 dark:text-navy-300"
+            strokeWidth={1.75}
+            aria-hidden="true"
+          />
           <div className="text-sm text-slate-700 dark:text-slate-200">{t('upload.extracting')}</div>
         </div>
       )}

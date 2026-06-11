@@ -902,3 +902,21 @@ agent merge 都發生在 worktree 的同名 ref 上。
 - **最終驗證: pytest 1232/0、e2e 73/0、經 digiRunner 的 Dify 全鏈路 28s。**
 - **Push 已修好**（credential 已在 Windows credential manager）— `feature/patentmind-poc`
   與 `rescue/working-tree-20260611` 都已推上 origin。
+
+---
+
+# 2026-06-11 — 簡報改版 + 交付前驗證
+
+## 25. Deck rework + deploy-verification pass
+
+- **簡報改版**：`presentation/` 重整為 **17 張投影片**（render/ 有 17 張 PNG），
+  並依回饋重做 **4 張圖**（`assets/`: architecture / flow_user / flow_data /
+  flow_ai，由 `make_diagram.py` + `make_flow_diagrams.py` 產生，可重跑）。
+- **交付驗證 pass（全套全綠）**：backend pytest **1232 passed / 2 skipped**、
+  Playwright **73 passed**、`smoke_demo.sh` / `smoke_digirunner.sh` /
+  `smoke_dify.sh` 全綠；實機鏈路 SPA :5173 → digiRunner :18080 →
+  gateway :8010 → ai_engine :8011 → Dify :8088 → Ollama qwen2.5:7b，
+  全鏈路 analyze 約 25–28s。
+- 同日將 `CLAUDE.md` / `README.md` / `README.zh-TW.md` 對齊實際程式碼
+  （§3 stub 表改為 done/remaining 兩段、repo tree 與 How-to-run 更新、
+  README 實作狀態與測試基準更新）。

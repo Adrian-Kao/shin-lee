@@ -42,7 +42,7 @@
 - `backend/shared/config.py:MAPPING_DB_PATH` — mapping table 路徑強制在 `data/` (on-prem)
 - 機密案件 → Q15 自動切地端模型
 
-**TODO(claude-code):** 加 egress filter，每次 LLM call 前再 sanity check「sent payload 真的全是 placeholder」。
+**已實作（2026-06）:** egress guard — `EGRESS_GUARD_ENABLED`（預設開）在 `AIEngineClient.call` 這個唯一出口遞迴掃描所有 outbound 字串是否含未遮罩 PII；命中即丟 `EgressGuardError` 擋下呼叫（fail-closed），invariant #3 從 grep 慣例變成技術強制點。
 
 ---
 
@@ -108,7 +108,7 @@
 **Code (POC stub):**
 - `backend/ai_engine/oa_analyzer.py` — 目前只接受文字輸入；vision pipeline 在 README 的「TODO」清單
 
-**TODO(claude-code):** 加 `vision_analyze_figure(image_b64) → str` 介面。
+**TODO(claude-code):** 加 `vision_analyze_figure(image_b64) → str` 介面（圖式區域萃取 stub 在 `backend/ai_engine/pdf_parser.py` 的 TODO；文字 PDF/DOCX + Tesseract OCR fallback 已實作於 `pdf_parser.py` / `ocr_local.py`）。
 
 ---
 
@@ -185,7 +185,7 @@
 
 **Test:** `verify.sh` 步驟 7，分析後 audit_dave login 看到 row + 驗 chain。
 
-**TODO(claude-code):** S3 Object Lock 每小時 archive task。
+**已實作（2026-06）:** WORM archiver — `backend/gateway/audit_archive.py` 以 Merkle root 串接批次封存稽核列（配合 `audit_outbox.py` 的 at-least-once 出口）。仍待辦：把封存目標從本地目錄換成真 S3 Object Lock bucket。
 
 ---
 
@@ -276,7 +276,7 @@
 - 業務：DraftEditor 紀錄 line provenance，未來 batch 算「律師接受率」
 - 成本：`get_quota_snapshot` 即時看每個 user/tenant
 
-**TODO(claude-code):** Prometheus metrics endpoint + Grafana dashboards JSON。
+**已實作（2026-06）:** Prometheus metrics — gateway `GET /metrics`（`backend/shared/metrics.py`）。仍待辦：Grafana dashboards JSON（見 `docs/observability/`）。
 
 ---
 

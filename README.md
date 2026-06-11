@@ -57,14 +57,20 @@ Prerequisites: **Python 3.11+**, **Node 20+**. Runs fully in **mock mode** — n
 API keys required.
 
 ```bash
+# One-click (backend + frontend + seed + auto-generated secrets)
+bash scripts/start_demo.sh
+
+# …or piece by piece:
 # Backend (full POC) — gateway :8010 + ai_engine :8011, seeds demo data
 bash scripts/start_backend.sh
+# Frontend
+cd frontend && npm install && npm run dev   # http://localhost:5173
 
 # End-to-end verification — must print "ALL CHECKS PASSED"
 bash scripts/verify.sh
 
-# Frontend
-cd frontend && npm install && npm run dev   # http://localhost:5173
+# Full delivery stack (Docker infra + digiRunner/Dify probes, LLM_MODE=dify capable)
+bash scripts/start_delivery.sh
 ```
 
 Demo login passwords are `demo-<user>` (e.g. `demo-alice`); see `.env.example`.
@@ -144,9 +150,18 @@ production swaps by env (`LLM_MODE`, `VECTOR_BACKEND`, `CACHE_BACKEND`).
 
 This is a **proof of concept**. It is **not safe to expose beyond localhost**
 without the hardening in [`SECURITY.md`](SECURITY.md) and [`CLAUDE.md`](CLAUDE.md)
-§3/§5. Mocked/stubbed for now: real LLM backend, Qdrant, Redis, OIDC/SAML,
-S3 Object Lock audit archive, Redis-backed JWT revocation + RS256. Changes are
-tracked in [`CHANGELOG.md`](CHANGELOG.md).
+§3/§5. Most of the original stubs are now implemented behind env knobs:
+real LLM backends (`LLM_MODE=anthropic | local | dify`), Qdrant
+(`VECTOR_BACKEND=qdrant`), Redis cache/rate-limit/revocation
+(`CACHE_BACKEND=redis` etc.), OIDC/SAML/magic-link endpoints (stub IdP),
+local WORM audit archiver, Prometheus `/metrics`, backup + DR drill, and a
+holiday-calendar fetcher. Still stubbed: vision figure extraction, a real
+IdP (Keycloak), a real S3 Object Lock target, Postgres audit migration, and
+streaming replication. Test baseline (2026-06-11): **pytest 1232 passed /
+2 skipped**, **Playwright 73 passed**; the full live chain
+(SPA :5173 → digiRunner :18080 → gateway :8010 → ai_engine :8011 →
+Dify :8088 → Ollama qwen2.5:7b) completes an analyze in **~25–28 s**.
+Changes are tracked in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Contributing & security
 

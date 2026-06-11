@@ -25,6 +25,12 @@ PatentMind 把這個流程半自動化，律師仍對最終 draft 負完全責�
 ## 快速開始
 
 ```bash
+# 0. 一鍵 demo（後端 + 前端 + seed + 自動產 secrets）
+bash scripts/start_demo.sh
+
+# 0a. 交付版全 stack（Docker infra + digiRunner/Dify 探測，可跑 LLM_MODE=dify 真模型）
+bash scripts/start_delivery.sh
+
 # 1. 後端（完整 POC）— 啟動 gateway :8010 + ai_engine :8011，並 seed demo patent
 bash scripts/start_backend.sh
 
@@ -56,7 +62,10 @@ cd frontend && npm install && npm run dev   # http://localhost:5173
 ## 架構速覽
 
 ```
-Vite SPA  ──/api──▶  Gateway :8010 (digiRunner mock, 厚)
+Vite SPA  ──/api──▶  [可選: digiRunner OSS :18080 前線 gateway]
+                       │
+                       ▼
+                     Gateway :8010 (厚 Gateway)
                        │
                        ├─ Auth (Q12)         │ JWT + case_id ACL + 撤銷/logout
                        ├─ RateLimit (Q18)    │ RPM + quota + circuit breaker
@@ -66,15 +75,22 @@ Vite SPA  ──/api──▶  Gateway :8010 (digiRunner mock, 厚)
                        └─ Audit (Q13)        │ append-only + hash chain
                        │
                        ▼ HTTP
-                  AI Engine :8011 (Dify mock)
+                  AI Engine :8011 (single-step inference)
                        ├─ parse_oa (Q11 spotlight)
                        ├─ retrieve (Q6+Q7 hierarchical+claim-tree)
                        ├─ draft   (Q14 grounded)
                        ├─ verify  (Q14 verifier)
                        └─ deadline (Q17 multi-jurisdiction)
                        │
-                       └─ llm_client (Q15 router + Q11 canary)
+                       └─ llm_client (Q15 router: mock | anthropic | local | dify)
+                       │  LLM_MODE=dify
+                       ▼
+                  Dify CE :8088 (patentmind-analyze-oa workflow → Ollama qwen2.5:7b)
 ```
+
+**實機鏈路（2026-06-11 驗證全綠）**：SPA :5173 → digiRunner :18080（`/dgrc`）→
+gateway :8010 → ai_engine :8011 → Dify :8088 → Ollama `qwen2.5:7b`，
+全鏈路 analyze 約 25–28 秒。起停見 `docs/DELIVERY_RUNBOOK.md`。
 
 完整 Q→code 對應請見 `docs/ARCHITECTURE.md`。
 
@@ -95,16 +111,25 @@ Vite SPA  ──/api──▶  Gateway :8010 (digiRunner mock, 厚)
 | `carol` | it_admin | tenant_b | (無) | 看儀表板、配額 |
 | `audit_dave` | auditor | tenant_a | * (全 tenant_a) | 審計、驗 chain |
 
-## 已知未實作（POC 範圍外）
+## 實作狀態
 
-- 真實 LLM 後端（目前 mock；改 `LLM_MODE=anthropic` 切換）
-- 真實 Qdrant（目前 numpy in-memory）／真實 Redis cache（目前 in-process dict）
-- OIDC / SAML（magic link 已實作；OIDC/SAML 待接）
-- S3 Object Lock audit archive（目前只有本地 SQLite）
-- JWT 撤銷與 rate-limit 的 Redis 化、RS256（目前為 in-process / HS256）
-- 真 PDF/Vision 圖示分析強化、Prometheus metrics endpoint
+多數原始 stub 已在 Day 8–14 衝刺實作完成，由 env knob 切換：
 
-> 完整 TODO 看 `CLAUDE.md` § 3「What's stubbed」與 `docs/SECURITY_AUDIT.md`。
+- 真實 LLM 後端：`LLM_MODE=anthropic | local`（Ollama）`| dify`（Dify CE → qwen2.5:7b）
+- 真實 Qdrant：`VECTOR_BACKEND=qdrant`；真實 Redis：`CACHE_BACKEND=redis`
+  （rate-limit / JWT 撤銷亦可 `=redis`）
+- OIDC / SAML / magic link endpoints（stub IdP）已上
+- 本地 WORM audit 封存（`audit_archive.py`，Object Lock 語意）+ audit outbox
+- PDF/DOCX 上傳 + Tesseract 地端 OCR + Vision OCR fallback
+- Prometheus `/metrics`（兩個 service）、備份/還原/DR drill、假日行事曆 fetcher
+
+**測試基準（2026-06-11）**：pytest **1232 passed / 2 skipped**、Playwright **73 passed**。
+
+仍未實作（POC 範圍外）：Vision 圖示區域萃取（`pdf_parser.py:476`）、真 IdP
+（Keycloak）、真 S3 Object Lock 目標、audit 遷移 Postgres、RS256、
+streaming replication、Grafana dashboards。
+
+> 完整清單看 `CLAUDE.md` §3「Hardening status」與 `docs/SECURITY_AUDIT.md`。
 
 ## 貢獻與安全
 

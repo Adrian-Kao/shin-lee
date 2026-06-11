@@ -53,3 +53,4 @@ tmp/
 
 # Eval harness output (timestamped per run, not for commit)
 data/eval_results/
+frontend/demo_video_out/

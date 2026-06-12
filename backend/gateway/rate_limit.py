@@ -466,6 +466,43 @@ def check_quotas(user: User, tokens_about_to_use: int) -> int:
     return tokens_about_to_use
 
 
+def gate_rpm(user: User, policy_decisions: dict | None = None) -> None:
+    """Layer-1 gate with policy bookkeeping — the single call sites use.
+
+    Wraps :func:`check_rpm` and flips ``policy_decisions["rate_limit_passed"]``
+    only after the check passes, so the audit row records exactly which gate
+    rejected the request. Deliberately NOT a FastAPI dependency / ASGI
+    middleware: a 429 raised before the handler's try/finally audit bracket
+    would skip the endpoint's one-audit-row-per-request guarantee
+    (invariant #4) — the gate must run INSIDE the handler.
+    """
+    check_rpm(user)
+    if policy_decisions is not None:
+        policy_decisions["rate_limit_passed"] = True
+
+
+def reserve_llm_budget(
+    user: User, estimated_tokens: int, policy_decisions: dict | None = None
+) -> int:
+    """Layers 1→2→3 in the mandated order (invariant #8), one entry point.
+
+    RPM first (cheapest, per-user), then the single-request hard cap, then the
+    ATOMIC quota reserve. Centralising the sequence here means a future
+    endpoint that talks to the LLM cannot accidentally reorder the gates or
+    skip the reserve — main.py used to repeat this block per handler.
+
+    Returns the reserved token amount; the caller owns settling it exactly
+    once via :func:`record_usage` (success), or a full release on cache hit /
+    error — the same contract as calling :func:`check_quotas` directly.
+    """
+    gate_rpm(user, policy_decisions)
+    check_request_size(estimated_tokens)
+    reserved = check_quotas(user, estimated_tokens)
+    if policy_decisions is not None:
+        policy_decisions["quota_passed"] = True
+    return reserved
+
+
 def record_usage(
     user: User,
     prompt_tokens: int,

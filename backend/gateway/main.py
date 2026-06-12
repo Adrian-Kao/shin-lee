@@ -345,6 +345,31 @@ class LoginResponse(BaseModel):
     display_name: str
 
 
+def _client_ip(request: Request) -> str:
+    """Client address for the pre-auth login buckets.
+
+    Deliberately the direct peer (`request.client.host`), NOT X-Forwarded-For:
+    behind digiRunner the gateway sees the proxy's address, but trusting XFF
+    without a trusted-proxy allowlist would let any direct caller mint fresh
+    buckets per spoofed header value — a worse failure mode than shared
+    buckets. Revisit alongside a trusted-proxy config if the LOGIN_RPM bucket
+    granularity ever matters behind the proxy.
+    """
+    return request.client.host if request.client else ""
+
+
+def _login_rpm_gate(request: Request) -> None:
+    """Shared brute-force gate for every pre-auth login-family door.
+
+    All six doors (login, magic request/consume, oidc begin/callback,
+    saml acs) draw from the SAME per-IP bucket so an attacker can't split
+    their budget across doors. Must be called INSIDE each handler's
+    try/finally audit bracket — not a FastAPI dependency — so a 429 still
+    produces the endpoint's one audit row (invariant #4).
+    """
+    rate_limit.check_login_rpm(_client_ip(request))
+
+
 @app.post("/v1/auth/login", response_model=LoginResponse)
 def login(
     req: LoginRequest,
@@ -381,10 +406,9 @@ def login(
       - magic link:  POST /v1/auth/magic/request + /v1/auth/magic/consume
     """
     # Pre-auth brute-force defence (Day 8 post-review Important #1):
-    # bucket by client IP, default 10 attempts/min. Runs BEFORE the dummy
-    # hash + sha256 round so a flood doesn't burn CPU on hash computation.
-    client_ip = request.client.host if request.client else ""
-    rate_limit.check_login_rpm(client_ip)
+    # runs BEFORE the dummy hash + argon2 round so a flood doesn't burn CPU
+    # on hash computation.
+    _login_rpm_gate(request)
 
     user = _get_user(req.user_id)
     stored_hash = _get_password_hash(req.user_id)
@@ -524,15 +548,11 @@ def magic_request(req: MagicRequestBody, request: Request):
     Per-IP rate limit (shared login bucket) runs first so this endpoint can't
     be used to brute-force the user roster or to flood token issuance.
     """
-    client_ip = request.client.host if request.client else ""
     error: BaseException | None = None
     issued_jti: str | None = None
     user_known = False
     try:
-        # Pre-auth brute-force / enumeration-flood defence — same bucket as
-        # /v1/auth/login so an attacker can't split their budget across the
-        # two pre-auth doors.
-        rate_limit.check_login_rpm(client_ip)
+        _login_rpm_gate(request)
 
         token: str | None = None
         try:
@@ -593,14 +613,13 @@ def magic_consume(req: MagicConsumeBody, request: Request):
     login bucket) bounds token-guessing. Exactly one audit row; the raw token
     is never stored — only its jti + outcome.
     """
-    client_ip = request.client.host if request.client else ""
     error: BaseException | None = None
     consumed_user_id: str | None = None
     # jti for the audit row — derived WITHOUT trusting signature/expiry, purely
     # a correlation handle. Never the raw token.
     jti = magic_token_jti(req.token)
     try:
-        rate_limit.check_login_rpm(client_ip)
+        _login_rpm_gate(request)
         consumed_user_id = consume_magic_token(req.token)
         user = _get_user(consumed_user_id)
         if user is None:
@@ -674,11 +693,11 @@ def oidc_begin(request: Request):
     """
     if not settings.OIDC_ENABLED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "OIDC is not enabled")
-    client_ip = request.client.host if request.client else ""
+    client_ip = _client_ip(request)  # reused in the audit payload below
     error: BaseException | None = None
     minted_state: str | None = None
     try:
-        rate_limit.check_login_rpm(client_ip)
+        _login_rpm_gate(request)
         state, nonce = begin_oidc_login()
         minted_state = state
         if settings.OIDC_MODE == "keycloak":
@@ -750,11 +769,10 @@ def oidc_callback(req: OIDCCallbackBody, request: Request):
     401 so the specific reason is never an oracle. Exactly one audit row; the
     raw code is never stored.
     """
-    client_ip = request.client.host if request.client else ""
     error: BaseException | None = None
     user: User | None = None
     try:
-        rate_limit.check_login_rpm(client_ip)
+        _login_rpm_gate(request)
         try:
             user = authenticate_oidc_callback(req.code, req.state)
         except IdpError as exc:
@@ -807,11 +825,10 @@ def saml_acs(req: SAMLACSBody, request: Request):
     inside its validity window. On success returns the SAME ``LoginResponse``
     shape as /v1/auth/login; on ANY failure a uniform 401. Exactly one audit row.
     """
-    client_ip = request.client.host if request.client else ""
     error: BaseException | None = None
     user: User | None = None
     try:
-        rate_limit.check_login_rpm(client_ip)
+        _login_rpm_gate(request)
         try:
             user = authenticate_saml_acs(req.saml_response)
         except IdpError as exc:
@@ -1001,24 +1018,20 @@ async def analyze_oa(
         authorize_case_access(user, body.case_id)
         policy_decisions["authz_passed"] = True
 
-        # 1. RPM
-        rate_limit.check_rpm(user)
-        policy_decisions["rate_limit_passed"] = True
-
-        # 2. Hard cap
-        estimated_tokens = max(1, len(body.oa_text) // 3)
-        rate_limit.check_request_size(estimated_tokens)
-
-        # 3. Quota — ATOMIC reserve (13I contract): check_quotas() already
-        # incremented the counters by `estimated_tokens`. Every exit path
-        # below MUST settle the reservation exactly once:
+        # 1–3. RPM → hard cap → ATOMIC quota reserve, in the invariant-#8
+        # order, via the single gate entry point. The reservation contract
+        # (13I) is unchanged: counters are already incremented by
+        # `estimated_tokens`, and every exit path below MUST settle exactly
+        # once:
         #   - cache hit   -> release in full (no LLM work happened)
         #   - success     -> record_usage(..., reserved_tokens=...) adjusts
         #                    counters by (actual - reserved)
         #   - error       -> release in full (except-block below)
-        reserved_quota_tokens = rate_limit.check_quotas(user, estimated_tokens)
+        estimated_tokens = max(1, len(body.oa_text) // 3)
+        reserved_quota_tokens = rate_limit.reserve_llm_budget(
+            user, estimated_tokens, policy_decisions
+        )
         quota_reservation_settled = False
-        policy_decisions["quota_passed"] = True
 
         # 4. Cache (Q9) — M-7 fix: hash POST-redaction text, not raw input.
         # Pre-fix the cache key used `body.oa_text` directly. That meant:
@@ -1252,8 +1265,7 @@ async def upload_oa(
         policy_decisions["upload_type_passed"] = True
 
         # RPM check before any heavy work.
-        rate_limit.check_rpm(user)
-        policy_decisions["rate_limit_passed"] = True
+        rate_limit.gate_rpm(user, policy_decisions)
 
         # Read the file into memory and enforce the byte cap. Reading in one
         # shot is fine because the cap is single-digit MB by default; we

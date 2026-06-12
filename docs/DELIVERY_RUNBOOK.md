@@ -13,7 +13,7 @@
 | OS | Windows 11（Git Bash for scripts）or Linux/macOS |
 | Python | 3.11+，`pip install -r backend/requirements.txt`（含 test deps） |
 | Node | 18+（`frontend/` vite dev server） |
-| Docker Desktop | 已啟動 / running（qdrant、redis、postgres via `docker-compose.yml`） |
+| Docker Desktop | 已啟動 / running（qdrant、redis、postgres、minio via `docker-compose.yml`） |
 | Port 注意 | 主機 **5432 已被外部容器（pulse-db）佔用** — 本專案 Postgres 對外綁 **15432**（`POSTGRES_HOST_PORT`，預設即 15432，勿改回 5432） |
 | `.env` | 首次啟動會自動產生 `JWT_SECRET` / `INTERNAL_TOKEN` / `DEMO_LOGIN_SECRET`（需 `openssl`） |
 | （選用）bge-m3 | 真實 RAG 模式需先 `python scripts/prefetch_bge_m3.py`（一次性下載；之後完全離線載入） |
@@ -27,7 +27,8 @@
 | 8011 | AI Engine（FastAPI） |
 | 6333 / 6334 | Qdrant（REST / gRPC） |
 | 6379 | Redis |
-| 15432 | Postgres（本專案；選用 audit backend） |
+| 15432 | Postgres（本專案；選用 audit backend：`AUDIT_BACKEND=postgres`） |
+| 19000 / 19001 | MinIO（S3 API / console；Q13 WORM 封存：`ARCHIVE_BACKEND=s3`） |
 | 18080 | digiRunner（外部團隊部署，選用 hop） |
 | 8088 | Dify CE（外部團隊部署，選用 hop） |
 
@@ -104,6 +105,38 @@ bash scripts/smoke_dify.sh                                   # 驗證 model_used
 - Dify 不可達時自動降級 mock 並在 audit 標 `dify/qwen2.5:7b-DEGRADED-mock`（demo 不會死）。
 - Console：<http://localhost:8088>（帳密見 `.env` 的 `DIFY_ADMIN_*`）；細節：`scripts/setup_dify.md`
 - E2E 證明：`data/dify_e2e_proof.json`（完整 gateway 鏈路 27.2s，真模型 zh-TW 申復書）
+
+### 稽核存放層選項 / Audit storage options（Q13，皆為選用 — 預設零依賴）
+
+**Audit DB → Postgres**（`AUDIT_BACKEND=postgres`）
+
+```bash
+docker compose up -d postgres          # host :15432（5432 被佔，勿改回）
+# .env：
+#   AUDIT_BACKEND=postgres
+#   POSTGRES_URL=postgresql://patentmind:patentmind@localhost:15432/patentmind
+```
+
+- 與 SQLite 完全同語意：append-only（plpgsql trigger 阻擋 UPDATE/DELETE）、
+  同 hash-chain 格式、`/v1/audit/verify` 的驗證邏輯兩個 backend 共用同一套程式。
+- Postgres 不可達時 gateway **拒絕啟動**（invariant #4 — 沒有稽核就不該服務）；
+  運行中寫入失敗則照舊落入 write-ahead outbox（`audit_outbox.py`）等待 replay。
+
+**WORM 封存 → MinIO Object Lock**（`ARCHIVE_BACKEND=s3`）
+
+```bash
+docker compose up -d minio             # S3 API :19000，console :19001
+python scripts/init_minio.py           # 一鍵建 bucket（Object Lock 必須在建立時啟用）
+# .env：ARCHIVE_BACKEND=s3（其餘 ARCHIVE_S3_* 預設即對應 compose MinIO）
+python -m backend.gateway.audit_archive seal     # 封存
+python -m backend.gateway.audit_archive verify   # 從 bucket 拉回驗 Merkle chain
+```
+
+- 每個 sealed segment / manifest 上傳時帶 per-object retention
+  （`ARCHIVE_S3_RETENTION_MODE`，dev 預設 GOVERNANCE；正式上線改 **COMPLIANCE**
+  + `ARCHIVE_S3_RETENTION_DAYS=2555`＝7 年）。物件版本在 retention 期內
+  **連 root 都刪不掉**（COMPLIANCE）；覆寫只會疊新版本，封存版本永遠可取回。
+- 換真 AWS S3 / 相容服務：只改 `ARCHIVE_S3_ENDPOINT` + credentials。
 
 ---
 

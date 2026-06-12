@@ -35,7 +35,7 @@ inf "Starting services via: $COMPOSE up -d"
 $COMPOSE up -d
 
 # Services we wait for + their container names from docker-compose.yml.
-SERVICES="patentmind-postgres patentmind-redis patentmind-qdrant"
+SERVICES="patentmind-postgres patentmind-redis patentmind-qdrant patentmind-minio"
 TIMEOUT=60
 
 wait_healthy() {
@@ -88,5 +88,7 @@ ok "All services are up. Connection URLs:"
 echo "  Postgres : postgresql://${POSTGRES_USER_VAL}:<password>@localhost:${POSTGRES_HOST_PORT:-15432}/${POSTGRES_DB_VAL}"
 echo "  Redis    : redis://localhost:6379/0"
 echo "  Qdrant   : http://localhost:6333 (REST), grpc://localhost:6334"
+echo "  MinIO    : http://localhost:19000 (S3 API), http://localhost:19001 (console)"
+echo "             WORM bucket init (once): python scripts/init_minio.py"
 echo
 echo "Next: bash scripts/check_docker.sh"

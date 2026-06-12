@@ -190,10 +190,41 @@ class Settings:
 
     # Storage (Q13 archive / Q20 backups)
     AUDIT_BACKEND: str = os.getenv("AUDIT_BACKEND", "sqlite")  # sqlite | postgres
+    # Postgres DSN for AUDIT_BACKEND=postgres. NB: the compose container binds
+    # host port 15432 on the delivery box (5432 is taken) — set
+    # POSTGRES_URL=postgresql://patentmind:patentmind@localhost:15432/patentmind
+    # in .env when enabling the postgres audit backend.
     POSTGRES_URL: str = os.getenv(
         "POSTGRES_URL",
         "postgresql://patentmind:patentmind@localhost:5432/patentmind",
     )
+
+    # ------------------------------------------------------------------
+    # Q13 WORM archive target (audit_archive.py).
+    #   "local" (default) — sealed segments in AUDIT_ARCHIVE_DIR, files
+    #                       flipped read-only (Object Lock simulation; zero infra).
+    #   "s3"              — real S3-compatible Object Lock bucket (MinIO in the
+    #                       delivery compose on :19000; AWS S3 in production).
+    #                       Bucket MUST be created with Object Lock enabled:
+    #                       python scripts/init_minio.py
+    # ------------------------------------------------------------------
+    ARCHIVE_BACKEND: str = os.getenv("ARCHIVE_BACKEND", "local")  # local | s3
+    ARCHIVE_S3_ENDPOINT: str = os.getenv("ARCHIVE_S3_ENDPOINT", "http://localhost:19000")
+    ARCHIVE_S3_ACCESS_KEY: str = os.getenv("ARCHIVE_S3_ACCESS_KEY", "patentmind")
+    ARCHIVE_S3_SECRET_KEY: str = os.getenv("ARCHIVE_S3_SECRET_KEY", "patentmind-minio")
+    ARCHIVE_S3_BUCKET: str = os.getenv("ARCHIVE_S3_BUCKET", "patentmind-audit-worm")
+    ARCHIVE_S3_REGION: str = os.getenv("ARCHIVE_S3_REGION", "us-east-1")
+    # Object Lock retention applied to every sealed segment/manifest object.
+    # GOVERNANCE: a principal with s3:BypassGovernanceRetention can still
+    #             remove (safe default for dev/MinIO — buckets stay cleanable).
+    # COMPLIANCE: NOBODY (not even root) can remove until expiry — the
+    #             production posture for the Q13 7-year retention.
+    ARCHIVE_S3_RETENTION_MODE: str = os.getenv(
+        "ARCHIVE_S3_RETENTION_MODE", "GOVERNANCE"
+    )  # GOVERNANCE | COMPLIANCE
+    # Retention period in days (mirrors AUDIT_WORM_RETENTION_DAYS' intent;
+    # default = the Q13 7-year requirement).
+    ARCHIVE_S3_RETENTION_DAYS: int = int(os.getenv("ARCHIVE_S3_RETENTION_DAYS", str(7 * 365)))
 
     # Holiday calendar (Q17)
     HOLIDAY_CALENDAR_VERSION: str = "2025.1"

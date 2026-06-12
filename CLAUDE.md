@@ -24,8 +24,10 @@ patentmind-poc/
 │   │   ├── auth.py       — Q12 JWT + case ACL + upstream-header auth (digiRunner)
 │   │   ├── rate_limit.py — Q18 RPM + quota + cost circuit breaker (memory | redis)
 │   │   ├── masking.py    — Q10 PII + per-tenant uploadable dict (data/tenant_dicts/)
-│   │   ├── audit.py      — Q13 append-only SQLite + hash chain (+ global verify)
+│   │   ├── audit.py      — Q13 append-only audit + hash chain (+ global verify)
+│   │   │                   AUDIT_BACKEND=sqlite | postgres（同 trigger/同鏈，verify 共用）
 │   │   ├── audit_archive.py / audit_outbox.py — Q13 WORM 封存 + write-ahead outbox
+│   │   │                   ARCHIVE_BACKEND=local | s3（MinIO Object Lock，scripts/init_minio.py）
 │   │   ├── cache.py / redis_cache.py — Q9 CACHE_BACKEND=memory | redis
 │   │   ├── revocation.py — H-5 JWT jti 撤銷 (memory | redis)
 │   │   ├── signoff.py    — Q16 sign-off / provenance / export-gate helpers
@@ -86,7 +88,8 @@ bash scripts/smoke_dify.sh        # LLM_MODE=dify 真模型路徑（需 Dify up 
 bash scripts/start_backend.sh               # 只起兩個 backend service
 cd frontend && npm install && npm run dev   # http://localhost:5173
 
-# 測試 suites（2026-06-11 基準：pytest 1232 passed / 2 skipped；Playwright 73 passed）
+# 測試 suites（2026-06-12 基準：pytest 1252 passed（postgres/minio/qdrant 容器全開時；
+# 容器沒開時對應測試 cleanly skip — qdrant 18、postgres 11、minio 6）；Playwright 73 passed）
 python -m pytest
 cd frontend && npx playwright test
 ```
@@ -109,7 +112,7 @@ invariant has broken.
 | Q9 | Redis cache（graceful degradation；JSON 序列化） | `CACHE_BACKEND=redis`（另有 `RATE_LIMIT_BACKEND` / `REVOCATION_BACKEND=redis`） |
 | Q10 | Per-tenant uploadable JSON dictionary（file drop + reload，不用重啟） | `data/tenant_dicts/<tenant_id>.json` + `reload_tenant_dictionary()` |
 | Q12 | `/auth/oidc/begin` + `/auth/oidc/callback`、`/auth/saml/acs`、`/auth/magic/request` + `/consume` + JWT 撤銷（`revocation.py`）。OIDC 可走**真 Keycloak**（discovery + code→token + JWKS 驗章 + role/tenant claim 映射，`backend/gateway/oidc_keycloak.py`；realm 匯入檔 `keycloak/realm-patentmind.json`，compose 服務 :8081） | `OIDC_MODE=stub\|keycloak`；smoke: `bash scripts/smoke_keycloak.sh` |
-| Q13 | WORM archiver（`audit_archive.py`：sealed segments + Merkle root chain，本地 Object-Lock 語意）+ write-ahead outbox（`audit_outbox.py`，invariant #4 backstop） | 自動；驗證走 `verify_archive` |
+| Q13 | WORM archiver（`audit_archive.py`：sealed segments + Merkle root chain；`ARCHIVE_BACKEND=local` 本地唯讀目錄 / `=s3` 真 MinIO **Object Lock** bucket，per-object retention GOVERNANCE\|COMPLIANCE）+ write-ahead outbox（`audit_outbox.py`，invariant #4 backstop）；audit DB 可切 Postgres（`AUDIT_BACKEND=postgres`，同 trigger 阻擋 UPDATE/DELETE + 同 hash chain，verify 邏輯兩 backend 共用） | `ARCHIVE_BACKEND=s3` + `python scripts/init_minio.py`（MinIO :19000/:19001）；`AUDIT_BACKEND=postgres` + `POSTGRES_URL`（:15432）；驗證走 `verify_archive` |
 | Q14 | Verifier 是獨立第二 model call（`assert_verifier_independence()`；anthropic 模式 = Haiku） | `LLM_MODEL_VERIFIER`（必 ≠ REASONING） |
 | Q15 | 真地端 LLM：Ollama OpenAI-compat endpoint | `LLM_MODE=local` + `LLM_MODEL_LOCAL`（這台機器用 `qwen2.5:7b`，**無** llama3.1:8b） |
 | Q17 | Holiday producer（`scripts/fetch_holidays.py`：TW data.gov.tw / US 法定規則 / JP 内閣府）+ versioned `data/calendars/*.json`；deadline.py 讀檔，硬編表僅 fallback | `HOLIDAY_SOURCE=bundled|jsonfile|remote` |
@@ -126,8 +129,8 @@ invariant has broken.
 | Q4 — No SSR landing page | Build separate Next.js app (out of POC repo) |
 | Q8 — figure 區域偵測已實作（PyMuPDF layout：影像/向量聚類 + FIG. N／第 N 圖 caption 對應）| 後續：把每個 bbox crop 丟 Vision 模型做「描述圖 2」問答（機密案僅限地端 vision）|
 | Q12 — SAML IdP 是 stub（OIDC 已接真 Keycloak ✅，`OIDC_MODE=keycloak`） | SAML 換 python3-saml + 真 ADFS/Azure AD；OIDC 換企業級 IdP 只需改 issuer/client（`digirunner/oidc.yaml` 模板已對齊 realm `patentmind`） |
-| Q13 — WORM 封存目標是本地唯讀目錄 | 換成真 S3 Object Lock / Azure Immutable Blob bucket |
-| Audit DB 仍是 SQLite | Postgres 容器已在 compose（:15432）但 audit 未遷移 |
+| Q13 — WORM s3 模式目前對 MinIO（`ARCHIVE_BACKEND=s3` ✅，Object Lock + versioning + retention 已驗） | 換 AWS S3 / Azure 只是 endpoint+credentials 設定；COMPLIANCE mode 上線前確認法遵期間 |
+| Q13 — audit Postgres backend 已實作（`AUDIT_BACKEND=postgres` ✅） | backup.py / quality_eval.py 的離線讀取仍走 SQLite 檔案快照 — postgres 模式的備份要改走 pg_dump / streaming replication |
 | Q20 — 排程 wrapper 已出（`scripts/run_backup.py` + `backup_cron.sh` + schtasks，見 DELIVERY_RUNBOOK §7）| **must upgrade to streaming replication before prod**（snapshot cron 達不到 RPO<5min）|
 
 ## 4. Design invariants — never violate these
@@ -145,7 +148,7 @@ invariant has broken.
 
 ### P0 — production readiness
 - [x] ✅ Real Anthropic client in `llm_client.py` (`LLM_MODE=anthropic`; Dify/Ollama path via `LLM_MODE=dify` / `local`)
-- [ ] Replace SQLite audit with Postgres + **real** S3 Object Lock target（本地 WORM archiver 已做 ✅，見 §3a Q13）
+- [x] ✅ Replace SQLite audit with Postgres（`AUDIT_BACKEND=postgres`）+ real S3 Object Lock target（`ARCHIVE_BACKEND=s3` → MinIO，`scripts/init_minio.py`；AWS S3 只差 endpoint/credentials）
 - [x] ✅ Redis cache (`CACHE_BACKEND=redis`)
 - [x] ✅ Qdrant vector store (`VECTOR_BACKEND=qdrant`)
 - [x] ✅ Real PDF/DOCX OA upload（`/v1/oa/upload` + PyMuPDF + Tesseract/Vision OCR）

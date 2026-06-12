@@ -7,12 +7,30 @@ the DBA can't tamper inadvertently.  Production must additionally:
     - Replicate to a 2nd tenant for compliance independence.
 
 Every gateway-handled request produces exactly one audit row.
+
+Backends (``AUDIT_BACKEND`` in backend/shared/config.py):
+
+  * ``sqlite``   (default) — :class:`AuditWriter`. Append-only local file,
+    UPDATE/DELETE blocked by SQLite triggers. Zero infra; what the demo and
+    the entire test suite run on.
+  * ``postgres`` — :class:`PostgresAuditWriter`. Same schema, same hash-chain
+    format, same append-only semantics enforced by a plpgsql trigger that
+    RAISEs on UPDATE/DELETE. Point ``POSTGRES_URL`` at the compose container
+    (host port **15432** on the delivery box — 5432 is taken).
+
+The hash-chain *format* is identical across backends (the chain payload and
+``_hash_payload`` live on the shared base class), and ALL verification logic
+(``verify_chain`` / ``verify_global_chain`` / ``verify_cross_tenant``) is
+implemented ONCE on :class:`_BaseAuditWriter` against an abstract ordered-row
+fetch — so a chain written by one backend and migrated row-for-row to the
+other still verifies.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -67,15 +85,96 @@ CREATE TRIGGER IF NOT EXISTS audit_no_delete
     BEGIN SELECT RAISE(ABORT, 'audit table is append-only'); END;
 """
 
+# Postgres twin of _DDL. Differences are mechanical, not semantic:
+#   * an explicit BIGSERIAL ``row_seq`` stands in for SQLite's implicit rowid
+#     as the strictly-monotonic insertion-order column (the chain walks it);
+#   * the append-only guard is a plpgsql trigger function that RAISEs — the
+#     exact Postgres equivalent of SQLite's RAISE(ABORT, ...) triggers.
+# Everything the hash chain commits to (column set, value shapes) is identical.
+# Kept as discrete statements: psycopg3's extended query protocol executes one
+# statement per ``execute()`` (unlike sqlite3's executescript).
+_PG_DDL_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS audit (
+        row_seq            BIGSERIAL PRIMARY KEY,
+        audit_id           TEXT UNIQUE NOT NULL,
+        timestamp_utc      TEXT NOT NULL,
+        timestamp_local    TEXT NOT NULL,
+        user_id            TEXT NOT NULL,
+        tenant_id          TEXT NOT NULL,
+        case_id            TEXT,
+        endpoint           TEXT NOT NULL,
+        request_hash       TEXT NOT NULL,
+        response_hash      TEXT,
+        masked_field_rules TEXT NOT NULL,
+        model_used         TEXT,
+        prompt_tokens      INTEGER,
+        completion_tokens  INTEGER,
+        latency_ms         INTEGER,
+        policy_decisions   TEXT NOT NULL,
+        prev_row_hash      TEXT,
+        row_hash           TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_audit_user ON audit(user_id, timestamp_utc DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_tenant ON audit(tenant_id, timestamp_utc DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_case ON audit(case_id, timestamp_utc DESC)",
+    """
+    CREATE OR REPLACE FUNCTION audit_no_tamper() RETURNS trigger AS $$
+    BEGIN
+        RAISE EXCEPTION 'audit table is append-only';
+    END;
+    $$ LANGUAGE plpgsql
+    """,
+    """
+    CREATE OR REPLACE TRIGGER audit_no_update
+        BEFORE UPDATE ON audit
+        FOR EACH ROW EXECUTE FUNCTION audit_no_tamper()
+    """,
+    """
+    CREATE OR REPLACE TRIGGER audit_no_delete
+        BEFORE DELETE ON audit
+        FOR EACH ROW EXECUTE FUNCTION audit_no_tamper()
+    """,
+)
 
-class AuditWriter:
-    def __init__(self, path: Path = AUDIT_DB_PATH):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        self._conn = sqlite3.connect(path, check_same_thread=False)
-        self._conn.executescript(_DDL)
-        self._conn.commit()
+# The 10 chain-relevant columns, in the canonical order every fetch uses.
+_CHAIN_COLS = (
+    "audit_id, timestamp_utc, user_id, tenant_id, case_id, "
+    "endpoint, request_hash, response_hash, prev_row_hash, row_hash"
+)
 
+_LIST_COLS = (
+    "audit_id, timestamp_utc, user_id, case_id, endpoint, "
+    "model_used, prompt_tokens, completion_tokens, latency_ms, "
+    "masked_field_rules, policy_decisions"
+)
+
+
+class _BaseAuditWriter:
+    """Backend-agnostic audit writer / verifier.
+
+    Subclasses provide:
+      * ``_ORDER_COL``       — the strictly-monotonic insertion-order column
+                               (SQLite: implicit ``rowid``; Postgres: ``row_seq``).
+      * ``_fetchall(sql, params)`` — run a read query (``?`` placeholders,
+                               translated by the subclass) and return tuples.
+      * ``_insert_row(values)``    — insert one audit row durably (commit).
+
+    Everything else — the write flow, the hash-chain format, and ALL THREE
+    verify functions — lives here, shared verbatim by both backends.
+    """
+
+    _ORDER_COL: str = "rowid"
+
+    # -- abstract storage hooks -------------------------------------------
+    def _fetchall(self, sql: str, params: tuple = ()) -> list[tuple]:
+        raise NotImplementedError
+
+    def _insert_row(self, values: tuple) -> None:
+        raise NotImplementedError
+
+    # -- shared hash / chain primitives -----------------------------------
     @staticmethod
     def _hash_payload(obj: Any) -> str:
         if obj is None:
@@ -84,10 +183,33 @@ class AuditWriter:
         return hashlib.sha256(s.encode()).hexdigest()
 
     def _last_row_hash(self) -> str | None:
-        cur = self._conn.execute("SELECT row_hash FROM audit ORDER BY rowid DESC LIMIT 1")
-        row = cur.fetchone()
-        return row[0] if row else None
+        rows = self._fetchall(
+            f"SELECT row_hash FROM audit ORDER BY {self._ORDER_COL} DESC LIMIT 1"  # noqa: S608
+        )
+        return rows[0][0] if rows else None
 
+    def _fetch_chain_rows(self, tenant_id: str | None = None) -> list[tuple]:
+        """All chain-relevant rows in insertion order (optionally one tenant)."""
+        if tenant_id is None:
+            return self._fetchall(
+                f"SELECT {_CHAIN_COLS} FROM audit ORDER BY {self._ORDER_COL} ASC"  # noqa: S608
+            )
+        return self._fetchall(
+            f"SELECT {_CHAIN_COLS} FROM audit "  # noqa: S608
+            f"WHERE tenant_id = ? ORDER BY {self._ORDER_COL} ASC",
+            (tenant_id,),
+        )
+
+    def read_all_rows(self) -> list[dict[str, Any]]:
+        """Every audit row (chain columns) as dicts, in insertion order.
+
+        This is the read surface the WORM archiver (audit_archive.py) seals
+        from, so it MUST be insertion-ordered and backend-agnostic.
+        """
+        cols = [c.strip() for c in _CHAIN_COLS.split(",")]
+        return [dict(zip(cols, r, strict=True)) for r in self._fetch_chain_rows()]
+
+    # -- write -------------------------------------------------------------
     def write(
         self,
         *,
@@ -110,32 +232,29 @@ class AuditWriter:
         audit_id = str(uuid.uuid4())
         request_hash = self._hash_payload(request_payload)
         response_hash = self._hash_payload(response_payload)
-        prev_hash = self._last_row_hash() or ""
 
-        # Tamper-evident chain: hash includes prev_row_hash
-        row_payload = {
-            "audit_id": audit_id,
-            "ts": now_utc.isoformat(),
-            "user": user.user_id,
-            "tenant": user.tenant_id,
-            "case": case_id,
-            "endpoint": endpoint,
-            "req": request_hash,
-            "resp": response_hash,
-            "prev": prev_hash,
-        }
-        row_hash = self._hash_payload(row_payload)
-
+        # The read-prev → compute → insert sequence runs under the writer
+        # lock so two concurrent writes can't both chain off the same prev
+        # (which would fork the chain). The lock is an RLock because
+        # _last_row_hash → _fetchall re-enters it on some backends.
         with self._lock:
-            self._conn.execute(
-                """
-                INSERT INTO audit (
-                    audit_id, timestamp_utc, timestamp_local, user_id, tenant_id, case_id,
-                    endpoint, request_hash, response_hash, masked_field_rules,
-                    model_used, prompt_tokens, completion_tokens, latency_ms,
-                    policy_decisions, prev_row_hash, row_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
+            prev_hash = self._last_row_hash() or ""
+
+            # Tamper-evident chain: hash includes prev_row_hash
+            row_payload = {
+                "audit_id": audit_id,
+                "ts": now_utc.isoformat(),
+                "user": user.user_id,
+                "tenant": user.tenant_id,
+                "case": case_id,
+                "endpoint": endpoint,
+                "req": request_hash,
+                "resp": response_hash,
+                "prev": prev_hash,
+            }
+            row_hash = self._hash_payload(row_payload)
+
+            self._insert_row(
                 (
                     audit_id,
                     now_utc.isoformat(),
@@ -154,51 +273,36 @@ class AuditWriter:
                     json.dumps(policy_decisions),
                     prev_hash,
                     row_hash,
-                ),
+                )
             )
-            self._conn.commit()
         return audit_id
 
+    # -- reads -------------------------------------------------------------
     def list_for_tenant(self, tenant_id: str, limit: int = 100) -> list[dict]:
-        cur = self._conn.execute(
-            """
-            SELECT audit_id, timestamp_utc, user_id, case_id, endpoint,
-                   model_used, prompt_tokens, completion_tokens, latency_ms,
-                   masked_field_rules, policy_decisions
-            FROM audit
-            WHERE tenant_id = ?
-            ORDER BY rowid DESC LIMIT ?
-            """,
+        raw = self._fetchall(
+            f"SELECT {_LIST_COLS} FROM audit "  # noqa: S608
+            f"WHERE tenant_id = ? ORDER BY {self._ORDER_COL} DESC LIMIT ?",
             (tenant_id, limit),
         )
-        cols = [c[0] for c in cur.description]
+        cols = [c.strip() for c in _LIST_COLS.split(",")]
         rows = []
-        for r in cur.fetchall():
+        for r in raw:
             d = dict(zip(cols, r, strict=True))
             d["masked_field_rules"] = json.loads(d["masked_field_rules"])
             d["policy_decisions"] = json.loads(d["policy_decisions"])
             rows.append(d)
         return rows
 
+    # -- verification (SHARED across backends — Q13) ------------------------
     def verify_chain(self, tenant_id: str) -> dict:
         """Walk the chain, recompute hashes, report any tamper detected.
 
         For production: run nightly + alert on mismatch.
         """
-        cur = self._conn.execute(
-            """
-            SELECT audit_id, timestamp_utc, user_id, tenant_id, case_id,
-                   endpoint, request_hash, response_hash, prev_row_hash, row_hash
-            FROM audit
-            WHERE tenant_id = ?
-            ORDER BY rowid ASC
-            """,
-            (tenant_id,),
-        )
         ok = 0
         broken: list[str] = []
         prev = ""
-        for row in cur.fetchall():
+        for row in self._fetch_chain_rows(tenant_id):
             (audit_id, ts, uid, tid, cid, ep, rqh, rph, recorded_prev, recorded_row) = row
             if recorded_prev != prev:
                 broken.append(audit_id)
@@ -222,7 +326,7 @@ class AuditWriter:
         return {"verified": ok, "broken": broken, "tenant": tenant_id}
 
     def verify_global_chain(self) -> dict:
-        """Walk every audit row in global rowid order + run cross-cutting
+        """Walk every audit row in global insertion order + run cross-cutting
         checks no per-tenant walk can perform (H-4 fix — CLAUDE.md §7
         pitfall #4).
 
@@ -233,7 +337,7 @@ class AuditWriter:
         ``WHERE tenant_id = 'tenant_b'`` and expecting tenant_b's first
         row to have ``prev=''`` is therefore wrong in the multi-tenant
         case — it flags an intact chain as broken. Global verify walks
-        every row in rowid order so the chain is reconstructed faithfully.
+        every row in insertion order so the chain is reconstructed faithfully.
 
         This verifier surfaces THREE classes of anomaly:
 
@@ -251,7 +355,7 @@ class AuditWriter:
         3. **prev_row_hash referential integrity** — every non-empty
            ``prev_row_hash`` must reference a ``row_hash`` that exists
            somewhere in the table. Dangling prev = row was tampered with
-           after insert OR written by a process bypassing AuditWriter.
+           after insert OR written by a process bypassing the audit writer.
 
         Returns:
 
@@ -272,17 +376,11 @@ class AuditWriter:
               }
             }
         """
-        # Load every row in rowid (insertion) order so we reconstruct the
-        # GLOBAL chain rather than a per-tenant view. We also need the full
-        # set of row_hashes to validate prev_row_hash references in pass
-        # two; the same fetchall serves both.
-        cur = self._conn.execute(
-            "SELECT audit_id, timestamp_utc, user_id, tenant_id, case_id, "
-            "       endpoint, request_hash, response_hash, prev_row_hash, row_hash "
-            "FROM audit "
-            "ORDER BY rowid ASC"
-        )
-        all_rows = cur.fetchall()
+        # Load every row in insertion order so we reconstruct the GLOBAL
+        # chain rather than a per-tenant view. The same fetch serves the
+        # referential-integrity pass (full set of row_hashes) so the whole
+        # verify is one storage round-trip on either backend.
+        all_rows = self._fetch_chain_rows()
         all_row_hashes: set[str] = {r[9] for r in all_rows}
 
         # Cross-import settings here (not at module top) so a test that
@@ -344,26 +442,20 @@ class AuditWriter:
         for tid, per in by_tenant.items():
             if tid not in known_tenants:
                 per["unknown_tenant"] = True
-                cur2 = self._conn.execute(
-                    "SELECT audit_id FROM audit WHERE tenant_id = ? ORDER BY rowid ASC",
-                    (tid,),
-                )
-                for (audit_id,) in cur2.fetchall():
-                    pair = (tid, audit_id)
+                for row in all_rows:
+                    if row[3] != tid:
+                        continue
+                    pair = (tid, row[0])
                     if pair not in broken:
                         broken.append(pair)
 
         # Pass 3 — prev_row_hash referential integrity. Every non-empty
         # prev_row_hash MUST point to some row's row_hash. Catches the
-        # case where a row was written outside the AuditWriter (which is
+        # case where a row was written outside the audit writer (which is
         # the only thing that calls ``_last_row_hash`` to set prev).
-        cur = self._conn.execute(
-            "SELECT audit_id, tenant_id, prev_row_hash FROM audit "
-            "WHERE prev_row_hash IS NOT NULL AND prev_row_hash != '' "
-            "ORDER BY rowid ASC"
-        )
-        for audit_id, tenant_id, prev_hash in cur.fetchall():
-            if prev_hash not in all_row_hashes:
+        for row in all_rows:
+            audit_id, tenant_id, prev_hash = row[0], row[3], row[8]
+            if prev_hash and prev_hash not in all_row_hashes:
                 pair = (tenant_id, audit_id)
                 if pair not in broken:
                     broken.append(pair)
@@ -378,7 +470,7 @@ class AuditWriter:
     # Cross-tenant verification helper (CLAUDE.md §7 pitfall #4).
     #
     # ``verify_chain`` walks ONE tenant. ``verify_global_chain`` walks the
-    # whole table in rowid order. Neither answers the specific auditor
+    # whole table in insertion order. Neither answers the specific auditor
     # question "are tenant A and tenant B each internally well-formed, and
     # is there any structural anomaly that ONLY shows up when you compare
     # two tenants side by side?" — e.g. a row of tenant B whose row_hash
@@ -462,14 +554,12 @@ class AuditWriter:
 
         # (2) row_hash uniqueness across tenants. Build (row_hash ->
         # {tenant_id, ...}) over ALL rows and flag any hash seen under >1
-        # tenant. We scan the table directly rather than re-walking so this is
-        # O(rows) regardless of how many tenants were requested.
-        cur = self._conn.execute(
-            "SELECT row_hash, tenant_id, audit_id FROM audit ORDER BY rowid ASC"
-        )
+        # tenant. One ordered scan keeps this O(rows) regardless of how many
+        # tenants were requested.
         hash_owners: dict[str, set[str]] = {}
         hash_to_audit_ids: dict[str, list[tuple[str, str]]] = {}
-        for row_hash, tid, audit_id in cur.fetchall():
+        for row in self._fetch_chain_rows():
+            audit_id, tid, row_hash = row[0], row[3], row[9]
             hash_owners.setdefault(row_hash, set()).add(tid)
             hash_to_audit_ids.setdefault(row_hash, []).append((tid, audit_id))
         for row_hash, owners in hash_owners.items():
@@ -493,4 +583,199 @@ class AuditWriter:
         }
 
 
-writer = AuditWriter()
+class AuditWriter(_BaseAuditWriter):
+    """SQLite audit backend (default — ``AUDIT_BACKEND=sqlite``)."""
+
+    _ORDER_COL = "rowid"
+
+    def __init__(self, path: Path = AUDIT_DB_PATH):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
+        self._conn = sqlite3.connect(path, check_same_thread=False)
+        self._conn.executescript(_DDL)
+        self._conn.commit()
+
+    def _fetchall(self, sql: str, params: tuple = ()) -> list[tuple]:
+        cur = self._conn.execute(sql, params)
+        return cur.fetchall()
+
+    def _insert_row(self, values: tuple) -> None:
+        self._conn.execute(
+            """
+            INSERT INTO audit (
+                audit_id, timestamp_utc, timestamp_local, user_id, tenant_id, case_id,
+                endpoint, request_hash, response_hash, masked_field_rules,
+                model_used, prompt_tokens, completion_tokens, latency_ms,
+                policy_decisions, prev_row_hash, row_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            values,
+        )
+        self._conn.commit()
+
+    def close(self) -> None:
+        self._conn.close()
+
+
+_PG_IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+class PostgresAuditWriter(_BaseAuditWriter):
+    """Postgres audit backend (``AUDIT_BACKEND=postgres``).
+
+    Same append-only semantics as the SQLite backend, enforced server-side:
+    a plpgsql trigger RAISEs on any UPDATE or DELETE, so even a connection
+    holding the app credentials cannot rewrite history (a *superuser* can
+    still ``ALTER TABLE ... DISABLE TRIGGER`` — which is exactly the tamper
+    scenario the hash chain + the WORM archive cross-check then detect).
+
+    Connection model mirrors the SQLite writer: ONE long-lived connection
+    guarded by an RLock (psycopg connections are not safe for concurrent
+    cursors across threads). The audit write is off the LLM hot path, so
+    serialising it is fine. A dropped connection surfaces loudly — main.py's
+    ``_safe_audit_write`` catches the exception and enqueues the row in the
+    durable outbox (invariant #4 backstop), exactly as for a failed SQLite
+    write.
+
+    ``schema`` exists so the test suite can run each session in a throwaway
+    schema on a shared dev Postgres without touching real audit data.
+    """
+
+    _ORDER_COL = "row_seq"
+
+    def __init__(self, dsn: str | None = None, schema: str = "public"):
+        import psycopg  # lazy: only needed when AUDIT_BACKEND=postgres
+
+        if dsn is None:
+            from backend.shared.config import settings
+
+            dsn = settings.POSTGRES_URL
+        if not _PG_IDENT_RE.match(schema):
+            raise ValueError(f"invalid Postgres schema name: {schema!r}")
+        self._schema = schema
+        self._lock = threading.RLock()
+        # Fail LOUDLY here if Postgres is unreachable: with AUDIT_BACKEND=
+        # postgres the gateway must not boot without its audit store
+        # (invariant #4 — better no service than a service with no audit).
+        self._conn = psycopg.connect(dsn, autocommit=False)
+        with self._lock:
+            with self._conn.cursor() as cur:
+                cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+                cur.execute(f'SET search_path TO "{schema}"')
+                for stmt in _PG_DDL_STATEMENTS:
+                    cur.execute(stmt)
+            self._conn.commit()
+
+    @staticmethod
+    def _translate(sql: str) -> str:
+        # The shared base class writes portable SQL with ``?`` placeholders
+        # (the SQLite paramstyle); psycopg uses ``%s``. The audit SQL never
+        # contains a literal '?' so plain replace is safe.
+        return sql.replace("?", "%s")
+
+    def _fetchall(self, sql: str, params: tuple = ()) -> list[tuple]:
+        with self._lock:
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute(self._translate(sql), params)
+                    rows = cur.fetchall()
+                # End the implicit read transaction so we never hold an old
+                # snapshot (and an aborted tx can't poison later statements).
+                self._conn.commit()
+                return rows
+            except Exception:
+                self._conn.rollback()
+                raise
+
+    def _insert_row(self, values: tuple) -> None:
+        sql = self._translate(
+            """
+            INSERT INTO audit (
+                audit_id, timestamp_utc, timestamp_local, user_id, tenant_id, case_id,
+                endpoint, request_hash, response_hash, masked_field_rules,
+                model_used, prompt_tokens, completion_tokens, latency_ms,
+                policy_decisions, prev_row_hash, row_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+        )
+        with self._lock:
+            try:
+                with self._conn.cursor() as cur:
+                    cur.execute(sql, values)
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
+    def read_all_rows(self) -> list[dict[str, Any]]:
+        """Insertion-ordered chain rows, fetched under a READ ONLY transaction.
+
+        Defence in depth mirroring the SQLite archiver's ``mode=ro`` URI: the
+        archival read path physically cannot mutate the audit table even if a
+        bug ever routed a write through it.
+        """
+        cols = [c.strip() for c in _CHAIN_COLS.split(",")]
+        sql = f"SELECT {_CHAIN_COLS} FROM audit ORDER BY {self._ORDER_COL} ASC"  # noqa: S608
+        with self._lock:
+            try:
+                with self._conn.cursor() as cur:
+                    # psycopg (non-autocommit) opens the transaction implicitly
+                    # on first execute; SET TRANSACTION must be its first
+                    # statement, which this is.
+                    cur.execute("SET TRANSACTION READ ONLY")
+                    cur.execute(sql)
+                    rows = cur.fetchall()
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+        return [dict(zip(cols, r, strict=True)) for r in rows]
+
+    def close(self) -> None:
+        self._conn.close()
+
+
+def _make_writer() -> _BaseAuditWriter:
+    from backend.shared.config import settings
+
+    if settings.AUDIT_BACKEND == "postgres":
+        return PostgresAuditWriter()
+    return AuditWriter()
+
+
+writer = _make_writer()
+
+
+def read_live_rows() -> list[dict[str, Any]]:
+    """Read every audit row in insertion order for the WORM archiver.
+
+    Backend-aware single entry point so ``audit_archive.py`` never needs to
+    know which store is live:
+
+      * **sqlite** — opens a fresh, short-lived connection in URI read-only
+        mode (``mode=ro``) against ``config.AUDIT_DB_PATH``. This module-level
+        path lookup is lazy so conftest/tests that monkeypatch the path are
+        honoured, and the ro mode means the archiver physically cannot mutate
+        the live log (defence in depth on top of the append-only triggers).
+      * **postgres** — delegates to the live writer's :meth:`read_all_rows`,
+        which wraps the fetch in a ``READ ONLY`` transaction for the same
+        guarantee.
+    """
+    from backend.shared import config
+
+    if config.settings.AUDIT_BACKEND == "postgres":
+        return writer.read_all_rows()
+
+    path = Path(config.AUDIT_DB_PATH)
+    if not path.exists():
+        return []
+    uri = f"file:{path.as_posix()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    try:
+        cur = conn.execute(
+            f"SELECT {_CHAIN_COLS} FROM audit ORDER BY rowid ASC"  # noqa: S608
+        )
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
+    finally:
+        conn.close()

@@ -100,10 +100,40 @@ services:
     # scripts/smoke_keycloak.sh probes the discovery document from the host.
     restart: unless-stopped
 
+  minio:
+    # Q13 WORM archive target (ARCHIVE_BACKEND=s3): S3-compatible Object Lock.
+    # Pin a release tag in production; latest is acceptable for the POC box.
+    image: minio/minio:latest
+    container_name: patentmind-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-patentmind}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-patentmind-minio}
+    ports:
+      # Loopback only — dev credentials. Host ports 19000/19001 chosen to
+      # dodge everything already taken on the delivery box (5432/8010/8011/
+      # 8088/18080/6333/6379/15432) and MinIO's own common 9000/9001.
+      - "127.0.0.1:19000:9000"   # S3 API  (ARCHIVE_S3_ENDPOINT)
+      - "127.0.0.1:19001:9001"   # web console
+    volumes:
+      - minio_data:/data
+    networks:
+      - patentmind-net
+    healthcheck:
+      # `mc` ships inside the minio/minio image; `mc ready local` is the
+      # upstream-documented container healthcheck.
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
 volumes:
   qdrant_storage:
   postgres_data:
   redis_data:
+  minio_data:
 
 networks:
   patentmind-net:

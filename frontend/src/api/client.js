@@ -1,7 +1,13 @@
 // API client — the only place that knows the gateway URL contract.
 // Production: wrap in a TanStack Query layer; POC stays plain fetch.
 
-const BASE = '/api'; // proxied by vite to http://localhost:8000
+const BASE = '/api'; // proxied by vite to the gateway (:8010 — see vite.config.js)
+
+// Generous default: most calls answer in ms, but a hung gateway should not
+// spin forever. Analyze/export ride the full LLM chain (Dify → local model can
+// take minutes on CPU), so they pass their own much larger budget.
+const DEFAULT_TIMEOUT_MS = 30_000;
+const LLM_TIMEOUT_MS = 420_000; // > orchestrator's DIFY_TIMEOUT_SEC(300)+30s margin
 
 export class ApiError extends Error {
   constructor(status, message, body) {
@@ -11,14 +17,40 @@ export class ApiError extends Error {
   }
 }
 
-async function call(path, { method = 'GET', body, token, headers = {} } = {}) {
+// 401 on an AUTHED call means the session died server-side (expired JWT or
+// jti revoked by logout-elsewhere). The SPA can't recover by retrying — it
+// must re-login. Emit one window event; App.jsx owns the logout + toast.
+// Login-shaped 401s (bad password, bad magic token) carry no Bearer token and
+// therefore never fire this.
+export const SESSION_EXPIRED_EVENT = 'pm:session-expired';
+
+async function call(
+  path,
+  { method = 'GET', body, token, headers = {}, timeoutMs = DEFAULT_TIMEOUT_MS } = {}
+) {
   const fullHeaders = { 'Content-Type': 'application/json', ...headers };
   if (token) fullHeaders.Authorization = `Bearer ${token}`;
-  const res = await fetch(BASE + path, {
-    method,
-    headers: fullHeaders,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let res;
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      headers: fullHeaders,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    // Normalise transport-level failures to ApiError(0/408) so every caller's
+    // `instanceof ApiError` branch handles them with a readable message
+    // instead of a raw TypeError("Failed to fetch").
+    if (e?.name === 'AbortError') {
+      throw new ApiError(408, `request timed out after ${Math.round(timeoutMs / 1000)}s: ${path}`);
+    }
+    throw new ApiError(0, 'network error: gateway unreachable. check your connection.', null);
+  } finally {
+    clearTimeout(timer);
+  }
   const text = await res.text();
   let data = null;
   try {
@@ -26,7 +58,12 @@ async function call(path, { method = 'GET', body, token, headers = {} } = {}) {
   } catch {
     data = { raw: text };
   }
-  if (!res.ok) throw new ApiError(res.status, data?.detail || res.statusText, data);
+  if (!res.ok) {
+    if (res.status === 401 && token) {
+      window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT));
+    }
+    throw new ApiError(res.status, data?.detail || res.statusText, data);
+  }
   return data;
 }
 
@@ -69,6 +106,7 @@ export const api = {
       token,
       body: payload,
       headers: { 'X-Case-Id': payload.case_id },
+      timeoutMs: LLM_TIMEOUT_MS,
     }),
   // Q16 sign-off export. Mirrors `analyze`: POST with the X-Case-Id header.
   // payload = { case_id, rejection_id?, segments:[{segment_id, text, source,

@@ -67,6 +67,7 @@ const resources = {
       },
       yes: '是',
       no: '否',
+      session_expired: '登入已過期或已在他處登出，請重新登入。',
       coming_soon: '即將推出',
       upload: {
         drop_zone: '拖放 PDF / DOCX 到這裡，或',
@@ -393,6 +394,7 @@ const resources = {
       },
       yes: 'Yes',
       no: 'No',
+      session_expired: 'Your session has expired or was signed out elsewhere. Please log in again.',
       coming_soon: 'Coming soon',
       upload: {
         drop_zone: 'Drop PDF / DOCX here, or',

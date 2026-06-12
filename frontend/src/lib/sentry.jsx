@@ -10,7 +10,8 @@
 // Wrap the tree in <SentryErrorBoundary> for surface-level UI crash capture;
 // until the SDK resolves (or when no DSN is set) it is a transparent passthrough.
 
-import { useEffect, useState } from 'react';
+/* eslint-disable react-refresh/only-export-components */
+import { Component, useEffect, useState } from 'react';
 
 let _enabled = false;
 let _Boundary = null; // resolved Sentry.ErrorBoundary component
@@ -56,9 +57,40 @@ export function sentryEnabled() {
   return _enabled;
 }
 
+// Plain React boundary used whenever the Sentry SDK is absent (no DSN, or the
+// dynamic import failed). Before this existed, DSN-less builds had NO error
+// boundary at all — any render error white-screened the whole SPA. Same
+// `fallback` contract as Sentry.ErrorBoundary (element, or function receiving
+// { error, resetError }).
+class LocalErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    // eslint-disable-next-line no-console
+    console.error('UI crash caught by LocalErrorBoundary:', error, info?.componentStack);
+  }
+
+  render() {
+    const { error } = this.state;
+    if (error === null) return this.props.children;
+    const { fallback } = this.props;
+    if (typeof fallback === 'function') {
+      return fallback({ error, resetError: () => this.setState({ error: null }) });
+    }
+    return fallback ?? null;
+  }
+}
+
 // ErrorBoundary wrapper so callers don't import @sentry/react directly.
-// Renders children directly until the SDK has loaded; then upgrades to the real
-// Sentry.ErrorBoundary.
+// Starts as a plain local boundary; upgrades to the real Sentry.ErrorBoundary
+// (with event capture) once the SDK has loaded.
 export function SentryErrorBoundary({ children, fallback }) {
   const [, force] = useState(0);
   useEffect(() => {
@@ -72,5 +104,5 @@ export function SentryErrorBoundary({ children, fallback }) {
     const Boundary = _Boundary;
     return <Boundary fallback={fallback}>{children}</Boundary>;
   }
-  return children;
+  return <LocalErrorBoundary fallback={fallback}>{children}</LocalErrorBoundary>;
 }

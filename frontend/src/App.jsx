@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Folder } from 'lucide-react';
@@ -8,6 +8,20 @@ import Analyze from './components/Analyze.jsx';
 import AuditView from './components/AuditView.jsx';
 import AppShell from './components/AppShell.jsx';
 import { Button } from './components/ui/button.jsx';
+import { SESSION_EXPIRED_EVENT } from './api/client.js';
+import { toast } from './lib/toast.jsx';
+import i18n from './lib/i18n.js';
+
+// 設計系統審稿頁（/design）— 內部用，lazy load 讓它不進主 bundle。
+const DesignSystem = lazy(() => import('./components/DesignSystem.jsx'));
+
+function DesignRoute() {
+  return (
+    <Suspense fallback={null}>
+      <DesignSystem />
+    </Suspense>
+  );
+}
 
 /**
  * Role-aware landing route. After login each role lands on the page it can
@@ -53,11 +67,28 @@ export default function App() {
     setTrustContext({ caseId: '', maskedEntityCount: 0 });
   }, []);
 
+  // Server-side session death (expired JWT / revoked jti) surfaces as a 401
+  // on any authed call — the api client emits one event, we log out once and
+  // tell the user why they're back at the login screen instead of letting
+  // every query silently fail in place.
+  useEffect(() => {
+    const onExpired = () => {
+      setSession((cur) => {
+        if (cur) toast.error(i18n.t('session_expired'));
+        return null;
+      });
+      setTrustContext({ caseId: '', maskedEntityCount: 0 });
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);
+  }, []);
+
   if (!session) {
-    // Login is the only public route. Anything else redirects here.
+    // Login + the design-system review page are the only public routes.
     return (
       <Routes>
         <Route path="/login" element={<LoginRoute onLogin={setSession} />} />
+        <Route path="/design" element={<DesignRoute />} />
         <Route path="*" element={<LoginRoute onLogin={setSession} />} />
       </Routes>
     );
@@ -81,6 +112,7 @@ export default function App() {
         />
         <Route path="/audit" element={<AuditRoute session={session} onLogout={handleLogout} />} />
         <Route path="/cases" element={<CasesPlaceholder />} />
+        <Route path="/design" element={<DesignRoute />} />
         <Route path="*" element={<Navigate to={landingPath} replace />} />
       </Routes>
     </AppShell>

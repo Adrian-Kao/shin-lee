@@ -14,6 +14,9 @@ numpy==2.1.1
 # auth (Q12)
 # ---------------------------------------------------------------------------
 PyJWT==2.9.0
+# argon2id password KDF (P1 hardening). auth.py degrades to the legacy
+# sha256+salt scheme (demo accounts only) with a loud warning if absent.
+argon2-cffi>=23.1.0
 
 # ---------------------------------------------------------------------------
 # crypto (Q3/Q10 — at-rest encryption of the reversible redaction mapping

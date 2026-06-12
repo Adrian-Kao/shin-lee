@@ -35,10 +35,12 @@ from pydantic import BaseModel, Field
 
 from backend.gateway import audit, audit_outbox, cache, masking, rate_limit, signoff
 from backend.gateway.auth import (
+    _DUMMY_HASH_FOR_TIMING,
     IdpError,
     _get_password_hash,
     _get_user,
     _internal_headers,
+    _maybe_upgrade_hash,
     _verify_password,
     auth_dependency,
     authenticate_oidc_callback,
@@ -413,6 +415,13 @@ def login(
         # Same status + message for unknown user AND bad password (H-8).
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
 
+    # Opportunistic KDF upgrade: a credential that just verified against a
+    # legacy (sha256+salt) or below-policy argon2 hash is re-hashed to current
+    # argon2id parameters. Runs only on the password path (the demo-secret
+    # header proves nothing about the password) and only AFTER success.
+    if password_ok:
+        _maybe_upgrade_hash(req.user_id, req.password)
+
     return LoginResponse(
         token=issue_token(req.user_id),
         user_id=user.user_id,
@@ -422,16 +431,12 @@ def login(
     )
 
 
-# A fixed dummy hash used when the requested user_id is unknown. Picked so
-# the sha256 round in `_verify_password` runs for the unknown-user case too
-# — without it the unknown-user path returns hundreds of nanoseconds faster
-# than the known-user-wrong-password path and an attacker can enumerate.
-# The salt is fixed (not random per request) because the only goal is to
-# make the work factor identical, not to actually authenticate anyone.
-_DUMMY_HASH_FOR_TIMING = (
-    "00000000000000000000000000000000:"
-    "0000000000000000000000000000000000000000000000000000000000000000"
-)
+# The fixed dummy hash used when the requested user_id is unknown now lives in
+# auth.py (`_DUMMY_HASH_FOR_TIMING`, imported above) so its FORMAT always
+# matches the active hashing scheme — argon2id when argon2-cffi is installed,
+# legacy sha256+salt otherwise. A hard-coded legacy-format constant here would
+# reopen the H-8 timing oracle the moment real users moved to argon2 (the two
+# verification paths differ by ~10⁵× in work).
 
 
 # ---------- Magic-link login (Q12) ----------
@@ -1039,6 +1044,8 @@ async def analyze_oa(
             redaction_version=settings.REDACTION_VERSION,
         )
         cached = cache.get_response(user.tenant_id, user.user_id, body.case_id, prompt_hash)
+        # Q19 系統 metric: cache effectiveness (hit ratio panel in Grafana).
+        metrics.CACHE_REQUESTS.inc({"result": "hit" if cached else "miss"})
         if cached:
             cached_payload = cached
             response = AnalysisResponse(**cached)

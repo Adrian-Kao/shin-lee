@@ -154,3 +154,43 @@ bash scripts/smoke_demo.sh                 # demo 前最後一道煙霧測試
 - Qdrant 單元測試會以 **per-run 命名空間**（`pytest_<hex>_tenant_*`）建臨時
   collection 並於 teardown 刪除，不會碰 demo 資料。
 - bge-m3 測試在模型未預載時會 **skip**（不是 fail）。
+
+---
+
+## 7. 維運 / Operations — 排程備份 Scheduled backups (Q20)
+
+`backend/gateway/backup.py` 是備份本體（snapshot / restore / DR drill /
+GDPR erasure）；`scripts/run_backup.py` 是排程器要呼叫的 CLI 包裝 —
+一次呼叫 = snapshot 全部 stateful store（audit.db / mapping.db / patent.db /
+WORM audit archive）+ retention 清理（預設保留 `BACKUP_RETENTION_KEEP=168`
+份，即一週的每小時備份）。**exit code 0 = 成功、1 = 失敗** — 失敗務必告警
+（cron `MAILTO` 或 healthcheck ping），因為 recovery point 沒有前進。
+
+```bash
+# 手動驗證一次 / verify once by hand
+PYTHONUTF8=1 python scripts/run_backup.py --quiet          # snapshot + 清理
+PYTHONUTF8=1 python scripts/run_backup.py --drill --quiet  # DR drill（restore + 驗 audit chain）
+```
+
+**Linux/macOS（crontab）** — 範例與說明見 `scripts/backup_cron.sh`：
+
+```cron
+# 每小時 snapshot；保留最近 168 份
+0 * * * *  /usr/bin/env bash /opt/patentmind/scripts/backup_cron.sh >> /var/log/patentmind-backup.log 2>&1
+# 每季 DR drill（證明備份「真的能還原」且還原後 audit hash-chain 完整）
+15 3 1 1,4,7,10 *  /usr/bin/env bash /opt/patentmind/scripts/backup_cron.sh --drill >> /var/log/patentmind-backup.log 2>&1
+```
+
+**Windows（Task Scheduler）** — 一行建立每小時排程（系統管理員 prompt）：
+
+```bat
+schtasks /Create /TN PatentMindBackup /SC HOURLY /TR "py -3 D:\patentmind-poc\scripts\run_backup.py --quiet" /F
+```
+
+備份輸出目錄由 `BACKUP_DIR` 控制（預設 `data/backups/`）；每份備份附
+`manifest.json` + per-file sha256，restore 時逐檔驗雜湊。
+
+> ⚠ **上線前必升級 streaming replication。** 週期性 snapshot 只能把資料
+> 損失上界壓到 cron 間隔，**無法達成 Q20 的 RPO < 5 min 目標**。正式環境
+> 必須改用串流複寫（audit 遷 Postgres 後走 WAL shipping；仍在 SQLite 階段
+> 可先用 litestream）。本節的 cron 是 POC / pilot 過渡方案。

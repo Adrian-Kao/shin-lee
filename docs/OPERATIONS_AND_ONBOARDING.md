@@ -213,6 +213,10 @@ def _verify_password(p, stored):
 
 Pip dependency: `argon2-cffi==23.1.0`. **In Path B (hybrid)** this entire codepath dies because digiRunner OIDC replaces local password login — no swap needed in hybrid. **In Path A** when the firm uses our local user table (small firms without IdP), the swap is required.
 
+> **Status update:** the swap has shipped (see §11 Gap #3). `_hash_password` /
+> `_verify_password` are argon2id-first with legacy-format verification +
+> opportunistic re-hash; `argon2-cffi` is in `backend/requirements.txt`.
+
 ---
 
 ## 3. Days 8–21 — data ingestion + RAG indexing
@@ -223,24 +227,27 @@ This is the phase where attorneys first feel value. If we load only sample data,
 
 **Sub-path A: bulk import** (preferred for kick-off; one-time backfill of the last 5–10 years).
 
-A `scripts/import_patents.py` CLI script (**P0 — currently a gap; see §11**) that:
+`scripts/import_patents.py` (**shipped** — closes Gap #1 of §11) walks a folder of patent files and indexes each through the running AI Engine's `POST /v1/index/patent` (the same path `backend/patent_db/seed.py` uses), so vectors land in the engine's live per-tenant store.
 
-1. Walks a directory tree of TIPO XML (TW patent format from `data.gov.tw` bulk download) or USPTO XML (from `bulkdata.uspto.gov`).
-2. Extracts patent number, title, claims, abstract, IPC classification, application date.
-3. Batches into `backend/ai_engine/rag.py:index_patent()` (already wired for single-patent indexing; needs a batch wrapper).
-4. Reports progress + writes a CSV of `(patent_no, chunks_indexed, embedding_ms)` for QA review.
+```bash
+# 1. AI Engine must be running (scripts/start_demo.sh / start_delivery.sh)
+# 2. the engine's internal token comes from the environment, never the CLI:
+export INTERNAL_TOKEN=$(grep ^INTERNAL_TOKEN .env | cut -d= -f2)
 
-Targeted spec (~120 lines):
+# validate the folder first (parse-only, nothing sent):
+python scripts/import_patents.py --tenant tenant_a --dir /mnt/firm-archive/patents --dry-run
 
-```python
-# scripts/import_patents.py
-# Usage:
-#   python scripts/import_patents.py --tenant tenant_a --format tipo \
-#       --src /mnt/firm-archive/tipo-xml/ --batch 50 --dry-run
-#
-# Reads TIPO/USPTO XML, batches by 50, calls rag.index_patent() per record,
-# writes progress to data/eval_results/<TIMESTAMP>/import.csv.
+# real run; --recursive for nested folders; --csv for the QA report:
+python scripts/import_patents.py --tenant tenant_a --dir /mnt/firm-archive/patents \
+    --recursive --csv data/eval_results/import.csv
 ```
+
+Accepted inputs (mixable in one folder):
+
+- **`.json`** — one object or an array with the `/v1/index/patent` fields (`patent_no`, `title`, `abstract`, `claims[]`, `publication_date`, `jurisdiction`, optional `is_local` / `spec_text`); see `backend/patent_db/seed.py` for live examples. `tenant_id` is always overridden by `--tenant`.
+- **`.txt`** — TIPO 公報-style text (the `data/cases/*/patent.txt` layout): `公開編號` → patent_no, `【名稱】` → title, `【摘要】` → abstract, `【申請專利範圍】請求項 N：` → claims, `公開日 …（西元 YYYY-MM-DD）` → publication date; the descriptive body becomes `spec_text`. Jurisdiction derives from the patent-number prefix (fallback: `--jurisdiction`).
+
+Failure contract: a bad file/record **never aborts the batch** — failures are listed at the end and the exit code is 1 (0 = all indexed, 2 = usage error), so a cron / CI wrapper can alert on partial imports. TIPO/USPTO **XML** bulk formats remain future work (the parser seam is `parse_tipo_txt` / `parse_json_records`).
 
 **Sub-path B: live sync** (after backfill is done; ongoing).
 
@@ -598,7 +605,12 @@ If the firm is moving to a competitor: we offer a 4-hour transition session (pai
 
 This playbook describes what *should* happen Days 1–90. Several pieces of infrastructure the playbook depends on do not yet exist in the repo. Brutal-honest list:
 
-### Gap #1 — No `scripts/import_patents.py` for bulk ingestion
+### Gap #1 — No `scripts/import_patents.py` for bulk ingestion — ✅ SHIPPED
+
+> **Status:** closed. `scripts/import_patents.py` exists (`--tenant` / `--dir` /
+> `--dry-run` / `--recursive` / `--csv`; .json + TIPO-style .txt; errors listed,
+> batch never aborts). Usage in §3.1. Remaining future work: TIPO/USPTO **XML**
+> bulk formats.
 
 §3.1 is the heart of the value-delivery phase. Without bulk import, the firm spends Days 8–21 manually pasting their historical patents through the SPA — non-starter at scale.
 
@@ -608,7 +620,13 @@ This playbook describes what *should* happen Days 1–90. Several pieces of infr
 
 **Effort:** 1 engineer-day.
 
-### Gap #2 — Backup cron is not wired (`CLAUDE.md §3 Q20: "Daily backup未實作"`)
+### Gap #2 — Backup cron is not wired — ✅ SHIPPED (cron body + wrappers)
+
+> **Status:** closed at the POC bar. `scripts/run_backup.py` (CLI wrapper over
+> `backend/gateway/backup.py`: snapshot + retention, correct exit codes) +
+> `scripts/backup_cron.sh` (crontab example) + Windows `schtasks` one-liner are
+> in `docs/DELIVERY_RUNBOOK.md §7`. **Streaming replication is still mandatory
+> before production** — a periodic snapshot cannot meet RPO < 5 min.
 
 §1.5 and §6 promise RPO 24h. The cron does not exist. Today if the audit DB or mapping DB is lost, **the customer loses everything**.
 
@@ -618,7 +636,13 @@ This playbook describes what *should* happen Days 1–90. Several pieces of infr
 
 **Effort:** 0.5 engineer-day.
 
-### Gap #3 — Production password KDF still sha256+salt
+### Gap #3 — Production password KDF still sha256+salt — ✅ SHIPPED (argon2id)
+
+> **Status:** closed. `backend/gateway/auth.py` now hashes with **argon2id**
+> (`argon2-cffi`, in `backend/requirements.txt`); legacy `salt:sha256` hashes
+> still verify and are opportunistically re-hashed to argon2id on the next
+> successful login. If argon2-cffi is absent the gateway still boots (legacy
+> scheme + loud warning — demo accounts only).
 
 §2.8 calls out the swap to argon2id. `backend/gateway/auth.py:124-128` literally documents "FINE for the demo accounts ... you MUST switch to a proper KDF." Going to production with sha256 = a regulator-facing red flag during the first IT review.
 

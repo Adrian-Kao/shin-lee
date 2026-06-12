@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 from typing import TypedDict
 
 import fitz  # PyMuPDF
@@ -435,7 +436,86 @@ def _build_quality(pages: list[str], sources: list[str]) -> tuple[list[PageQuali
     return quality, low_text_pages
 
 
-# ---------- Q8 figure / region extraction (future Claude-Vision) -----------
+# ---------- Q8 figure / region extraction (P1 — layout-based detector) ------
+
+# Caption patterns mapping a figure label to its drawing region.
+#   western: "FIG. 1", "FIG 2A", "FIGURE 3", "Figs. 4" …
+#   CJK:     「第 1 圖」「第三圖」「第2图」 (TW 圖 + CN 简体 图)
+_FIG_CAPTION_RE = re.compile(
+    r"FIG(?:URE)?S?\.?\s*(?P<western>\d{1,3}[A-Za-z]?)"
+    r"|第\s*(?P<cjk>[0-9０-９一二三四五六七八九十百]{1,4})\s*[圖图]",
+    re.IGNORECASE,
+)
+
+_CJK_DIGIT_MAP = str.maketrans("０１２３４５６７８９", "0123456789")
+_CJK_NUMERALS = {
+    "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+    "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+}  # fmt: skip
+
+# Clustering / filtering knobs (PDF points; 72 pt = 1 inch).
+_CLUSTER_GAP_PT = 24.0  # rects closer than this merge into one figure region
+_MIN_REGION_AREA_PT2 = 400.0  # drop clusters smaller than ~20×20pt (stray rules)
+_CAPTION_MAX_DIST_PT = 200.0  # a caption further than this is not "for" a region
+
+
+def _normalise_fig_label(match: re.Match[str]) -> str:
+    """Normalise a caption regex match to a plain figure label string.
+
+    "FIG. 2A" -> "2A"; 「第３圖」-> "3"; 「第三圖」-> "3". CJK numerals are
+    resolved for the common 1–99 range (十/廿 composition); anything exotic is
+    returned verbatim — the label is an identifier, not arithmetic.
+    """
+    western = match.group("western")
+    if western:
+        return western.upper()
+    raw = (match.group("cjk") or "").translate(_CJK_DIGIT_MAP)
+    if raw.isdigit():
+        return str(int(raw))
+    # CJK numeral composition: 三 -> 3, 十 -> 10, 十五 -> 15, 二十一 -> 21.
+    total, current = 0, 0
+    for ch in raw:
+        val = _CJK_NUMERALS.get(ch)
+        if val is None:
+            return raw  # unexpected char — return verbatim
+        if val == 10:
+            total += (current or 1) * 10
+            current = 0
+        else:
+            current = val
+    return str(total + current) if (total or current) else raw
+
+
+def _rects_close(a: fitz.Rect, b: fitz.Rect, gap: float) -> bool:
+    """True when two rects intersect once each is inflated by ``gap/2``."""
+    ax = fitz.Rect(a.x0 - gap / 2, a.y0 - gap / 2, a.x1 + gap / 2, a.y1 + gap / 2)
+    return ax.intersects(fitz.Rect(b.x0 - gap / 2, b.y0 - gap / 2, b.x1 + gap / 2, b.y1 + gap / 2))
+
+
+def _cluster_rects(
+    items: list[tuple[fitz.Rect, str]], gap: float
+) -> list[tuple[fitz.Rect, set[str]]]:
+    """Agglomerate (rect, source) items into merged regions.
+
+    Classic union-by-merge loop: keep folding any two clusters whose bounding
+    boxes come within ``gap`` of each other until a fixed point. O(n²) per
+    pass, fine for the tens-to-hundreds of strokes a patent drawing page has.
+    """
+    clusters: list[tuple[fitz.Rect, set[str]]] = [(fitz.Rect(r), {src}) for r, src in items]
+    merged = True
+    while merged:
+        merged = False
+        out: list[tuple[fitz.Rect, set[str]]] = []
+        for rect, sources in clusters:
+            for i, (orect, osources) in enumerate(out):
+                if _rects_close(rect, orect, gap):
+                    out[i] = (orect | rect, osources | sources)
+                    merged = True
+                    break
+            else:
+                out.append((rect, sources))
+        clusters = out
+    return clusters
 
 
 async def extract_figure_regions(
@@ -444,27 +524,42 @@ async def extract_figure_regions(
     *,
     security_level: str = "public",
 ) -> list[dict]:
-    """STUB (Q8 P1) — per-figure region extraction for the drawing pages.
+    """Q8 P1 — detect per-figure regions on a (drawing) page.
 
-    Planned: render the page, detect figure bounding boxes (the drawing area +
-    its reference numerals/callouts), and hand each crop to Claude Vision so we
-    can answer "describe figure 2" or "what does numeral 102 point at" with a
-    grounded image citation, instead of inferring everything from the OCR'd
-    flat text.
+    Layout-based detector, fully on-prem (PyMuPDF only — no LLM call):
 
-    Why a stub for now: needs a real Vision call (cost) and a layout/region
-    detector; out of scope for the deterministic POC. Returns [] so any caller
-    wired ahead of the real implementation degrades to "no figure regions"
-    rather than erroring.
+      1. Collect raster-image placements (``page.get_images`` +
+         ``get_image_rects``) and vector-drawing strokes (``page.get_drawings``).
+      2. Agglomerate them into figure-sized clusters (rects within
+         ``_CLUSTER_GAP_PT`` of each other merge; sub-``_MIN_REGION_AREA_PT2``
+         clusters — stray rules/underlines — are dropped).
+      3. Match "FIG. N" / 「第 N 圖」 caption text blocks to the nearest
+         cluster so each region carries its figure label.
 
-    Confidential routing note: when this is built it MUST obey invariant #7 —
-    a confidential document's figure crops can ONLY go through an on-prem
-    vision model, never `llm_client.vision_ocr`. We assert it here so a future
-    implementer cannot wire the cloud path in without tripping a test.
+    Returns a list of region dicts, top-to-bottom::
+
+        {
+          "page":    int,                  # 0-indexed page
+          "figure":  str | None,           # normalised label ("1", "2A") or None
+          "caption": str | None,           # matched caption text, e.g. "FIG. 1"
+          "bbox":    [x0, y0, x1, y1],     # PDF points, page coordinate space
+          "sources": ["image" | "drawing", ...],
+        }
+
+    A text-only page (no images, no vector art) yields ``[]`` — the historical
+    stub contract callers already rely on. A future Vision pass can crop each
+    ``bbox`` and ask "what does numeral 102 point at"; the routing guard below
+    already enforces that a confidential doc's crops could only ever go to an
+    on-prem backend (invariant #7 / Q15).
+
+    Raises ``ValueError`` for empty/invalid PDF bytes or an out-of-range
+    ``page_index``; ``PermissionError`` for an encrypted PDF — mirroring
+    ``extract_pdf_text`` so callers handle one error surface.
     """
     if _is_confidential(security_level):
         # Defense-in-depth, same as `_resolve_ocr_backend`: refuse to even
-        # *contemplate* cloud figure extraction for a privileged doc.
+        # *contemplate* cloud figure extraction for a privileged doc. Checked
+        # BEFORE parsing so a misconfigured caller is refused outright.
         if settings.OCR_BACKEND != "tesseract":
             raise RuntimeError(
                 f"figure-region extraction for confidential document "
@@ -473,7 +568,104 @@ async def extract_figure_regions(
                 "(invariant #7 / Q15). Cloud Vision figure crops are not "
                 "allowed for confidential cases."
             )
-    return []  # TODO(claude-code): Q8 P1 real Vision figure-region extraction.
+
+    if not pdf_bytes:
+        raise ValueError("empty PDF bytes")
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception as exc:
+        raise ValueError(f"not a valid PDF: {exc}") from exc
+
+    with doc:
+        if doc.needs_pass:
+            raise PermissionError("PDF is password-protected. Decrypt before uploading.")
+        if not 0 <= page_index < doc.page_count:
+            raise ValueError(
+                f"page_index {page_index} out of range for a {doc.page_count}-page PDF"
+            )
+        page = doc.load_page(page_index)
+
+        # --- 1. candidate rects: raster image placements + vector strokes ---
+        candidates: list[tuple[fitz.Rect, str]] = []
+        for img in page.get_images(full=True):
+            xref = img[0]
+            try:
+                rects = page.get_image_rects(xref)
+            except Exception:  # noqa: BLE001 — a broken xref must not kill the page
+                continue
+            for r in rects:
+                if not r.is_empty:
+                    candidates.append((fitz.Rect(r), "image"))
+        try:
+            drawings = page.get_drawings()
+        except Exception:  # noqa: BLE001 — malformed content stream
+            drawings = []
+        for d in drawings:
+            r = d.get("rect")
+            if r is not None and not fitz.Rect(r).is_infinite:
+                candidates.append((fitz.Rect(r), "drawing"))
+
+        if not candidates:
+            return []  # text-only page — no figure regions (stub-compatible)
+
+        # --- 2. cluster + size-filter ---
+        clusters = [
+            (rect, sources)
+            for rect, sources in _cluster_rects(candidates, _CLUSTER_GAP_PT)
+            if rect.get_area() >= _MIN_REGION_AREA_PT2
+        ]
+        if not clusters:
+            return []
+
+        # --- 3. captions: "FIG. N" / 「第 N 圖」 text blocks ---
+        captions: list[tuple[str, str, fitz.Rect]] = []  # (label, text, rect)
+        try:
+            blocks = page.get_text("blocks") or []
+        except Exception:  # noqa: BLE001
+            blocks = []
+        for blk in blocks:
+            # block tuple: (x0, y0, x1, y1, text, block_no, block_type)
+            if len(blk) >= 7 and blk[6] != 0:
+                continue  # not a text block
+            text = (blk[4] or "").strip()
+            m = _FIG_CAPTION_RE.search(text)
+            if m:
+                captions.append((_normalise_fig_label(m), m.group(0).strip(), fitz.Rect(blk[:4])))
+
+        # --- 4. label each region with its nearest caption ---
+        def _center(r: fitz.Rect) -> tuple[float, float]:
+            return ((r.x0 + r.x1) / 2.0, (r.y0 + r.y1) / 2.0)
+
+        regions: list[dict] = []
+        for rect, sources in clusters:
+            best: tuple[float, str, str] | None = None  # (dist, label, caption)
+            cx, cy = _center(rect)
+            for label, cap_text, cap_rect in captions:
+                px, py = _center(cap_rect)
+                dist = ((cx - px) ** 2 + (cy - py) ** 2) ** 0.5
+                # Distance to the region EDGE matters more than to its center
+                # for big figures whose caption hugs the bottom edge.
+                edge_dy = max(cap_rect.y0 - rect.y1, rect.y0 - cap_rect.y1, 0.0)
+                score = min(dist, edge_dy + abs(cx - px))
+                if score <= _CAPTION_MAX_DIST_PT and (best is None or score < best[0]):
+                    best = (score, label, cap_text)
+            regions.append(
+                {
+                    "page": page_index,
+                    "figure": best[1] if best else None,
+                    "caption": best[2] if best else None,
+                    "bbox": [
+                        round(rect.x0, 2),
+                        round(rect.y0, 2),
+                        round(rect.x1, 2),
+                        round(rect.y1, 2),
+                    ],
+                    "sources": sorted(sources),
+                }
+            )
+
+        regions.sort(key=lambda r: (r["bbox"][1], r["bbox"][0]))
+        return regions
 
 
 # ---------- usage aggregation helpers --------------------------------------

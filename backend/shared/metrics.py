@@ -411,6 +411,18 @@ LLM_ROUTE = REGISTRY.register(
     )
 )
 
+# Q9 response-cache effectiveness. One bump per /v1/oa/analyze cache lookup,
+# result=hit|miss — the Grafana "cache hit ratio" panel divides the two rates.
+# No tenant label: the ratio is an infra signal, not a tenant report, and the
+# tenant split would multiply series for no operational gain.
+CACHE_REQUESTS = REGISTRY.register(
+    Counter(
+        "cache_requests_total",
+        "Response-cache lookups on the analyze path, by result (hit|miss) (Q9).",
+        labels=("result",),
+    )
+)
+
 # 業務 (business)
 OA_ANALYZED = REGISTRY.register(
     Counter(
@@ -554,6 +566,116 @@ LLM_COST_USD_MTD = REGISTRY.register(
         "Month-to-date LLM spend in USD per tenant and model "
         "(bridged read-only from the rate_limit accounting layer).",
         collect=_cost_bridge_rows,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Q18 cost-circuit-breaker bridge — read rate_limit.cost_circuit_state() at
+# scrape time (same read-only pattern as the cost bridge above) so Grafana can
+# chart breaker state without the gateway mirroring the accumulator.
+# ---------------------------------------------------------------------------
+def _circuit_state() -> dict:
+    try:
+        from backend.gateway import rate_limit
+
+        state = rate_limit.cost_circuit_state()
+        return state if isinstance(state, dict) else {}
+    except Exception:  # noqa: BLE001 — a broken bridge must not 500 /metrics
+        return {}
+
+
+def _circuit_tripped_rows() -> Iterable[tuple[dict[str, str], float]]:
+    state = _circuit_state()
+    if not state:
+        return []
+    return [({}, 1.0 if state.get("tripped") else 0.0)]
+
+
+def _circuit_spend_rows() -> Iterable[tuple[dict[str, str], float]]:
+    state = _circuit_state()
+    if not state:
+        return []
+    return [({}, float(state.get("current_usd") or 0.0))]
+
+
+def _circuit_threshold_rows() -> Iterable[tuple[dict[str, str], float]]:
+    state = _circuit_state()
+    if not state:
+        return []
+    return [({}, float(state.get("threshold_usd") or 0.0))]
+
+
+COST_CIRCUIT_TRIPPED = REGISTRY.register(
+    Gauge(
+        "cost_circuit_breaker_tripped",
+        "Q18 cost circuit breaker state: 1 = tripped (auto-degrade to cheap "
+        "model), 0 = closed. Bridged read-only from rate_limit at scrape time.",
+        collect=_circuit_tripped_rows,
+    )
+)
+COST_CIRCUIT_SPEND = REGISTRY.register(
+    Gauge(
+        "cost_circuit_breaker_daily_usd",
+        "Realised fleet-wide LLM spend today in USD (the breaker's input).",
+        collect=_circuit_spend_rows,
+    )
+)
+COST_CIRCUIT_THRESHOLD = REGISTRY.register(
+    Gauge(
+        "cost_circuit_breaker_threshold_usd",
+        "Daily USD threshold at which the Q18 cost circuit breaker trips.",
+        collect=_circuit_threshold_rows,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Q18 tenant token-quota bridge — month-to-date token usage + configured cap
+# per tenant, for the Grafana quota-utilisation panel. Read-only, defensive.
+# ---------------------------------------------------------------------------
+def _tenant_tokens_used_rows() -> Iterable[tuple[dict[str, str], float]]:
+    try:
+        from backend.gateway import rate_limit
+
+        month = rate_limit._this_month()  # noqa: SLF001 — read-only accessor
+        rows: list[tuple[dict[str, str], float]] = []
+        for (tenant, mo), used in list(rate_limit._tenant_monthly_tokens.items()):  # noqa: SLF001
+            if mo != month:
+                continue
+            rows.append(({"tenant": tenant}, float(used)))
+        return rows
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _tenant_token_cap_rows() -> Iterable[tuple[dict[str, str], float]]:
+    try:
+        from backend.shared.config import settings as _settings
+
+        rows: list[tuple[dict[str, str], float]] = []
+        tenants = _settings.DEMO_TENANTS if isinstance(_settings.DEMO_TENANTS, dict) else {}
+        for tenant, conf in tenants.items():
+            cap = (conf or {}).get("monthly_token_cap", _settings.TENANT_MONTHLY_TOKENS)
+            rows.append(({"tenant": tenant}, float(cap)))
+        return rows
+    except Exception:  # noqa: BLE001
+        return []
+
+
+TENANT_TOKENS_USED_MTD = REGISTRY.register(
+    Gauge(
+        "tenant_monthly_tokens_used",
+        "Month-to-date LLM tokens consumed per tenant (Q18 quota numerator; "
+        "bridged read-only from the rate_limit accounting layer).",
+        collect=_tenant_tokens_used_rows,
+    )
+)
+TENANT_TOKEN_CAP = REGISTRY.register(
+    Gauge(
+        "tenant_monthly_token_cap",
+        "Configured monthly token cap per tenant (Q18 quota denominator).",
+        collect=_tenant_token_cap_rows,
     )
 )
 

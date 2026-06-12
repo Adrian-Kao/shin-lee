@@ -118,18 +118,17 @@ invariant has broken.
 
 ### 3b. Still stubbed (your job to harden)
 
-程式碼裡剩餘的 `TODO(claude-code)` 只有一處（`pdf_parser.py:476`）；其他項目是架構層缺口。
+程式碼裡已無剩餘 `TODO(claude-code)`（pdf_parser.py:476 的 figure-region 已實作）；下列項目是架構層缺口。
 （`docs/ARCHITECTURE.md` 內的 TODO 標記是早期敘述，多數已實作 — 對照本表為準。）
 
 | What's stubbed | What real impl needs |
 |----------------|----------------------|
 | Q4 — No SSR landing page | Build separate Next.js app (out of POC repo) |
-| Q8 — Vision figure-region extraction returns `[]` | `pdf_parser.py:476` TODO — real figure callout extraction |
+| Q8 — figure 區域偵測已實作（PyMuPDF layout：影像/向量聚類 + FIG. N／第 N 圖 caption 對應）| 後續：把每個 bbox crop 丟 Vision 模型做「描述圖 2」問答（機密案僅限地端 vision）|
 | Q12 — SAML IdP 是 stub（OIDC 已接真 Keycloak ✅，`OIDC_MODE=keycloak`） | SAML 換 python3-saml + 真 ADFS/Azure AD；OIDC 換企業級 IdP 只需改 issuer/client（`digirunner/oidc.yaml` 模板已對齊 realm `patentmind`） |
 | Q13 — WORM 封存目標是本地唯讀目錄 | 換成真 S3 Object Lock / Azure Immutable Blob bucket |
 | Audit DB 仍是 SQLite | Postgres 容器已在 compose（:15432）但 audit 未遷移 |
-| Q19 — Grafana dashboard JSONs 未出 | `docs/observability/README.md` 只有 wiring 說明 |
-| Q20 — cron 排程未接 | `backup.py` 是 cron job 的 body；**must upgrade to streaming replication before prod** |
+| Q20 — 排程 wrapper 已出（`scripts/run_backup.py` + `backup_cron.sh` + schtasks，見 DELIVERY_RUNBOOK §7）| **must upgrade to streaming replication before prod**（snapshot cron 達不到 RPO<5min）|
 
 ## 4. Design invariants — never violate these
 
@@ -153,12 +152,12 @@ invariant has broken.
 - [x] ✅ Real IdP integration（Keycloak）— `OIDC_MODE=keycloak`：discovery + code→token + JWKS 驗章 + role/tenant 映射，gateway 簽自己的 session JWT（`backend/gateway/oidc_keycloak.py`；`docker compose up -d keycloak` 自動匯入 realm；smoke `scripts/smoke_keycloak.sh`）。SAML 仍是 stub；Azure AD 對接留 ops
 
 ### P1 — feature gaps
-- [ ] Q8 vision LLM for OA **figures**（`pdf_parser.py:476` TODO；OCR 部分已完成）
+- [x] ✅ Q8 figure-region extraction（`extract_figure_regions` PyMuPDF layout 偵測 + caption 對應）— Vision 描述問答仍 future
 - [x] ✅ Q14 independent verifier model（`assert_verifier_independence`；anthropic 模式走 Haiku）
 - [x] ✅ Q17 holiday fetcher（`scripts/fetch_holidays.py` + `data/calendars/`，`HOLIDAY_SOURCE=remote`）
-- [ ] Q19 Grafana dashboard JSONs — Prometheus `/metrics` 已上 ✅（兩個 service），差 dashboards
+- [x] ✅ Q19 Grafana dashboard JSONs（`docs/observability/grafana/`：system overview + AI quality/cost，import 步驟見 observability README）
 - [x] ✅ Q19 AI quality eval pipeline（`quality_eval.py` + `scripts/eval_cases.py` / `eval_compare.py`）
-- [x] ✅ Q20 backup + restore drill（`backup.py`，含 DR drill）— cron 排程留給 ops
+- [x] ✅ Q20 backup + restore drill（`backup.py`，含 DR drill）+ 排程 wrapper（`scripts/run_backup.py`／`backup_cron.sh`／schtasks）
 
 ### P2 — UX / polish
 - [x] ✅ Frontend: PDF preview pane（`OAUpload.jsx` `<embed>`）— figure callouts 部分仍缺（綁 Q8 P1）

@@ -124,30 +124,47 @@ _UPSTREAM_DEFAULT_ROLE: UserRole = UserRole.PARALEGAL
 
 
 # ---------------------------------------------------------------------------
-# Password hashing (Security Chunk A — C-1, H-8).
+# Password hashing (Security Chunk A — C-1, H-8; upgraded to argon2id, P1).
 #
-# ⚠ POC ONLY — NOT PRODUCTION-SAFE FOR REAL USER PASSWORDS ⚠
+# New hashes are **argon2id** via ``argon2-cffi`` (the KDF the original
+# POC-only docstring demanded before production). Storage format is the PHC
+# string argon2-cffi emits (``$argon2id$v=19$m=...,t=...,p=...$salt$hash``).
 #
-# We use sha256 + 16-byte hex salt + hmac.compare_digest. This is FINE for
-# the demo accounts (passwords `demo-{user_id}` are published in
-# .env.example, so brute-force cost is moot). For real user passwords you
-# MUST switch to a proper KDF — argon2id (preferred), bcrypt, or scrypt —
-# because sha256 is rainbow-table-vulnerable for short passwords.
+# Backwards compatibility: the original POC scheme was
+# ``sha256(salt+password)`` stored as ``"salt:hash"``. ``_verify_password``
+# still accepts that legacy format (dispatching on the ``$argon2`` prefix),
+# and the login path opportunistically re-hashes a legacy credential to
+# argon2id after a successful verification (``_maybe_upgrade_hash``).
 #
-# When the demo accounts are replaced with real IdP-backed users
-# (CLAUDE.md §5 P0 "OIDC integration"), the hash storage moves to the IdP
-# and these helpers can be DELETED. Do NOT reuse this helper for new
-# user-supplied passwords — the docstring is its only safety guard.
-#
-# Day 8 post-review (Important #3): warning made loud per Chunk A/B
-# reviewer feedback so a future contributor can't quietly extend this
-# to a real auth path.
+# Dependency posture: argon2-cffi is listed in backend/requirements.txt, but
+# the POC MUST NOT fail to boot when it is absent (e.g. a stripped CI env).
+# When the import fails we fall back to the legacy sha256+salt scheme and log
+# a LOUD warning — acceptable only because the built-in accounts are the
+# published `demo-{user_id}` demo users. Production with real passwords
+# requires argon2 installed (or, in Path B, delegates login to the IdP and
+# this codepath is unreachable). See docs/OPERATIONS_AND_ONBOARDING.md §2.8.
 # ---------------------------------------------------------------------------
-def _hash_password(password: str, salt: str | None = None) -> str:
-    """Return ``'salt:hash'`` for storage.
+try:  # pragma: no cover — exercised indirectly; absence path tested via monkeypatch
+    from argon2 import PasswordHasher as _Argon2PasswordHasher
+    from argon2 import exceptions as _argon2_exceptions
 
-    ``salt`` is 16-byte hex by default. Hex (not raw bytes) so the stored
-    value is always pure-ASCII and round-trips through any text channel.
+    # Library defaults (argon2-cffi >= 21): time_cost=3, memory_cost=64MiB,
+    # parallelism=4 — at/above the OWASP argon2id minimums. Keep defaults so a
+    # library security bump propagates automatically.
+    _ARGON2_HASHER: _Argon2PasswordHasher | None = _Argon2PasswordHasher()
+except ImportError:  # pragma: no cover — covered by monkeypatched unit test
+    _ARGON2_HASHER = None
+    _argon2_exceptions = None  # type: ignore[assignment]
+
+_ARGON2_PREFIX = "$argon2"
+
+
+def _legacy_hash_password(password: str, salt: str | None = None) -> str:
+    """LEGACY (pre-argon2) scheme: ``'salt:sha256(salt+password)'``.
+
+    Kept ONLY so (a) old stored hashes keep verifying and (b) the gateway can
+    still boot when argon2-cffi is absent. Never call this directly for new
+    passwords — go through ``_hash_password``.
     """
     if salt is None:
         salt = secrets.token_hex(16)
@@ -155,18 +172,89 @@ def _hash_password(password: str, salt: str | None = None) -> str:
     return f"{salt}:{h}"
 
 
-def _verify_password(password: str, stored: str) -> bool:
-    """Constant-time compare via ``hmac.compare_digest``.
+def _hash_password(password: str, salt: str | None = None) -> str:
+    """Hash ``password`` for storage.
 
-    Returns ``False`` (not an exception) for malformed/empty stored strings
-    so the caller always gets a single uniform "wrong creds" path and there
-    is no shape oracle the attacker can probe.
+    argon2id (PHC string) whenever argon2-cffi is importable. ``salt`` is only
+    honoured on the legacy fallback path (argon2 manages its own salt); a
+    caller passing an explicit salt gets the legacy format — that parameter
+    exists solely for deterministic legacy-fixture construction in tests.
     """
-    if not stored or ":" not in stored:
+    if _ARGON2_HASHER is not None and salt is None:
+        return _ARGON2_HASHER.hash(password)
+    if _ARGON2_HASHER is None and salt is None:
+        logger.warning(
+            "auth: argon2-cffi NOT installed — falling back to the legacy "
+            "sha256+salt password scheme. Acceptable for the published demo "
+            "accounts only; install argon2-cffi before storing real passwords."
+        )
+    return _legacy_hash_password(password, salt)
+
+
+def _verify_password(password: str, stored: str) -> bool:
+    """Verify ``password`` against either hash format.
+
+    * ``$argon2…`` → argon2id verification (constant-work KDF).
+    * ``salt:hash`` → legacy sha256 compare via ``hmac.compare_digest``.
+
+    Returns ``False`` (never raises) for malformed/empty stored strings or
+    any verification failure, so the caller always gets a single uniform
+    "wrong creds" path and there is no shape oracle the attacker can probe.
+    """
+    if not stored:
+        return False
+    if stored.startswith(_ARGON2_PREFIX):
+        if _ARGON2_HASHER is None:
+            logger.warning(
+                "auth: stored hash is argon2 but argon2-cffi is not installed — "
+                "cannot verify; refusing login for this credential."
+            )
+            return False
+        try:
+            return _ARGON2_HASHER.verify(stored, password)
+        except _argon2_exceptions.VerifyMismatchError:
+            return False
+        except Exception:  # noqa: BLE001 — malformed hash / internal error
+            return False
+    if ":" not in stored:
         return False
     salt, expected = stored.split(":", 1)
     candidate = hashlib.sha256(f"{salt}{password}".encode()).hexdigest()
     return hmac.compare_digest(candidate, expected)
+
+
+def _needs_rehash(stored: str) -> bool:
+    """True when a stored hash should be upgraded on next successful login.
+
+    Covers (a) the legacy ``salt:hash`` format and (b) an argon2 hash whose
+    parameters are below the hasher's current policy (argon2-cffi
+    ``check_needs_rehash``). Always False when argon2 is unavailable — there
+    is nothing better to upgrade to.
+    """
+    if _ARGON2_HASHER is None or not stored:
+        return False
+    if not stored.startswith(_ARGON2_PREFIX):
+        return True
+    try:
+        return _ARGON2_HASHER.check_needs_rehash(stored)
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _maybe_upgrade_hash(user_id: str, password: str) -> bool:
+    """Opportunistic re-hash after a SUCCESSFUL password verification.
+
+    Call ONLY with a password that just verified — this function trusts the
+    caller on that and re-derives a fresh argon2id hash for storage. Returns
+    True when the stored hash was upgraded. No-op (False) when argon2 is
+    unavailable, the user is unknown, or the hash is already current.
+    """
+    stored = _PASSWORD_HASHES.get(user_id)
+    if stored is None or not _needs_rehash(stored):
+        return False
+    _PASSWORD_HASHES[user_id] = _ARGON2_HASHER.hash(password)
+    logger.info("auth: upgraded stored password hash to argon2id for user_id=%s", user_id)
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +307,16 @@ _USERS: dict[str, User] = {
 # `demo-{uid}`") stay the single source of truth — change the password
 # convention in one place and every hash regenerates.
 _PASSWORD_HASHES: dict[str, str] = {uid: _hash_password(f"demo-{uid}") for uid in _USERS}
+
+# A fixed dummy hash used by the login endpoint when the requested user_id is
+# unknown, so `_verify_password` performs the SAME work for the unknown-user
+# case as for known-user-wrong-password (H-8 timing oracle). Derived through
+# `_hash_password` so its format ALWAYS matches the scheme real users are
+# stored under — argon2id when available, legacy sha256 otherwise. (A
+# format mismatch would reopen the oracle: argon2 verification costs ~10⁵×
+# a sha256 round.) The password is fixed/garbage because the only goal is
+# identical work factor, not authenticating anyone.
+_DUMMY_HASH_FOR_TIMING: str = _hash_password("!patentmind-dummy-timing-equalisation!")
 
 
 # ---------------------------------------------------------------------------

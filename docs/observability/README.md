@@ -41,6 +41,10 @@ default is the hand-rolled path the test-suite exercises.
 | `http_request_duration_seconds` | histogram | `endpoint`, `method`, `status` | request latency → p50/p95/p99 per route (both services). |
 | `audit_write_duration_seconds` | histogram | — | audit-row write latency. **SLO: p99 < 0.1s** (invariant #4). |
 | `llm_errors_total` | counter | `model` | LLM call errors per model. |
+| `cache_requests_total` | counter | `result` (`hit`/`miss`) | Q9 response-cache lookups on the analyze path → cache hit ratio. |
+| `cost_circuit_breaker_tripped` | gauge | — | Q18 breaker state: 1 = tripped (auto-degrade), 0 = closed. Bridged read-only from `rate_limit.cost_circuit_state()` at scrape time. |
+| `cost_circuit_breaker_daily_usd` | gauge | — | realised fleet-wide LLM spend today (the breaker's input). |
+| `cost_circuit_breaker_threshold_usd` | gauge | — | daily USD threshold at which the breaker trips (`COST_CIRCUIT_DAILY_USD`). |
 
 **品質 (quality)**
 
@@ -66,6 +70,8 @@ default is the hand-rolled path the test-suite exercises.
 | `llm_cost_usd_month_to_date` | gauge | `tenant`, `model` | MTD spend, bridged **read-only** from rate_limit at scrape time. |
 | `llm_tokens_total` | counter | `model`, `kind` (`prompt`/`completion`) | LLM token throughput. |
 | `llm_route_total` | counter | `model` | which model the Q15 router picked (local↔cloud↔cheap mix). |
+| `tenant_monthly_tokens_used` | gauge | `tenant` | Q18 quota numerator: month-to-date tokens per tenant (read-only bridge from rate_limit). |
+| `tenant_monthly_token_cap` | gauge | `tenant` | Q18 quota denominator: configured monthly token cap per tenant. |
 
 ### Cardinality discipline
 
@@ -141,10 +147,32 @@ the request-id filter on the root handler (called at the top of each app's
 
 ## 4. Grafana
 
-* Dashboard: `ops/grafana/patentmind_q19_dashboard.json` — import into Grafana,
-  pick your Prometheus datasource. Panels cover all four layers + a `tenant`
-  template variable.
-* Scrape config: `ops/grafana/prometheus_scrape.example.yml`.
+Two import-ready dashboards live in `docs/observability/grafana/`:
+
+| File | Covers |
+|---|---|
+| `patentmind_system_overview.json` | 系統總覽 — request rate / p50-p95-p99 latency / 4xx-5xx error rate per endpoint, Q9 cache hit ratio, Q18 cost circuit breaker state + spend-vs-threshold, Q13 audit-write p99 SLO stat. |
+| `patentmind_ai_quality_cost.json` | AI 品質與成本 — tokens by model + Q15 router mix, MTD + cumulative spend per tenant/model, Q14 verifier citation strip rate, Q11 injection detections, Q18 tenant quota utilisation, OAs analyzed. Has a `tenant` template variable. |
+
+(`ops/grafana/patentmind_q19_dashboard.json` is the original combined
+four-layer board and still works; the two boards above are the maintained
+split.)
+
+### Import steps
+
+1. Make sure Prometheus scrapes both services — start from
+   `ops/grafana/prometheus_scrape.example.yml` (gateway `:8010/metrics`,
+   ai_engine `:8011/metrics`).
+2. In Grafana: **Dashboards → New → Import → Upload JSON file** and pick one
+   of the two files (or paste its contents).
+3. Grafana prompts for the **`DS_PROMETHEUS`** input — select your Prometheus
+   datasource. Every panel references the datasource through that variable, so
+   no JSON editing is needed for any environment.
+4. Click **Import**. Repeat for the second dashboard.
+
+Provisioning note: if you deploy dashboards via Grafana provisioning instead
+of the UI import, replace the `${DS_PROMETHEUS}` references with your
+provisioned datasource uid (provisioning does not resolve `__inputs`).
 
 ---
 

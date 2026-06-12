@@ -27,6 +27,7 @@ export default function DraftsPane({
   citationLookup,
   caseId,
   session,
+  onCitationClick,
 }) {
   const { t } = useTranslation();
 
@@ -110,6 +111,7 @@ export default function DraftsPane({
             citationLookup={citationLookup}
             caseId={caseId}
             session={session}
+            onCitationClick={onCitationClick}
           />
         )}
       </div>
@@ -170,7 +172,7 @@ const REJECTION_TYPE_CHIP = {
   _default: 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
 };
 
-function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) {
+function RejectionDetail({ rejection, draft, citationLookup, caseId, session, onCitationClick }) {
   const { t } = useTranslation();
   // Export (Q16 sign-off) is an ATTORNEY act — the backend 403s a paralegal.
   // Only surface the sign-off gate to attorneys so the UI matches the policy.
@@ -218,6 +220,7 @@ function RejectionDetail({ rejection, draft, citationLookup, caseId, session }) 
             token={session?.token}
             canExport={canExport}
             role={session?.role}
+            onCitationClick={onCitationClick}
           />
           <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400">
             <span>

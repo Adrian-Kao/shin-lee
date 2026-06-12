@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle } from 'lucide-react';
@@ -100,6 +100,14 @@ export default function Analyze({
   const [activeRejectionId, setActiveRejectionId] = useState(null);
   // < xl: which pane is visible. Desktop ignores this.
   const [mobileTab, setMobileTab] = useState('input'); // 'input' | 'drafts' | 'refs'
+  // ★2 跨窗格連動：DraftEditor 點 grounded pill → ReferencesPane 捲動 + 高亮。
+  // {patentNo, nonce} — nonce 讓重複點同一顆 pill 也會重新觸發。
+  const [selectedCitation, setSelectedCitation] = useState(null);
+  const handleCitationClick = (citation) => {
+    setSelectedCitation(citation);
+    // 行動版 refs pane 沒掛載時先切過去，掛載時 effect 會吃到 selectedCitation。
+    setMobileTab('refs');
+  };
 
   const handleExtractSuccess = (payload) => {
     setOaText(payload.extracted_text || '');
@@ -217,11 +225,13 @@ export default function Analyze({
     citationLookup,
     caseId,
     session,
+    onCitationClick: handleCitationClick,
   };
 
   const referencesPaneProps = {
     result,
     activeRejectionId,
+    selectedCitation,
   };
 
   return (

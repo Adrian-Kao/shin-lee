@@ -1,0 +1,164 @@
+{
+  "realm": "patentmind",
+  "enabled": true,
+  "displayName": "PatentMind POC",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "rememberMe": false,
+  "loginTheme": "keycloak",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"email\",\"displayName\":\"${email}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"firstName\",\"displayName\":\"${firstName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"lastName\",\"displayName\":\"${lastName}\",\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"tenant_id\",\"displayName\":\"Tenant\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]}}],\"groups\":[],\"unmanagedAttributePolicy\":\"ENABLED\"}"
+          ]
+        }
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "patentmind-gateway",
+      "name": "PatentMind Gateway (confidential)",
+      "description": "PatentMind thick gateway — authorization-code flow; the gateway exchanges the code server-side and issues its OWN session JWT. Aligned with digirunner/oidc.yaml.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "patentmind-gateway-dev-secret-change-me",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": true,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://localhost:8010/*",
+        "http://localhost:18010/*"
+      ],
+      "webOrigins": ["+"],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "tenant_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "tenant_id",
+            "claim.name": "tenant_id",
+            "jsonType.label": "String",
+            "multivalued": "false",
+            "aggregate.attrs": "false",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "gateway-client-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-client-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "usermodel.clientRoleMapping.clientId": "patentmind-gateway",
+            "claim.name": "role",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "roles": {
+    "client": {
+      "patentmind-gateway": [
+        {
+          "name": "attorney",
+          "description": "律師：可上傳 OA、看分析、簽核 (backend/shared/models.py:UserRole.ATTORNEY)"
+        },
+        {
+          "name": "paralegal",
+          "description": "法務助理：協助上傳、查詢 (UserRole.PARALEGAL)"
+        },
+        {
+          "name": "it_admin",
+          "description": "客戶 IT：管理 connector、看儀表板 (UserRole.IT_ADMIN) — privileged; the gateway only honours it for users pinned in its server-side table"
+        },
+        {
+          "name": "auditor",
+          "description": "合規：唯讀 audit log (UserRole.AUDITOR) — privileged; same server-side pinning rule"
+        }
+      ]
+    }
+  },
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Chen",
+      "email": "alice@demo.patentmind.local",
+      "attributes": { "tenant_id": ["tenant_a"] },
+      "credentials": [
+        { "type": "password", "value": "demo-alice", "temporary": false }
+      ],
+      "clientRoles": { "patentmind-gateway": ["attorney"] },
+      "requiredActions": []
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Lin",
+      "email": "bob@demo.patentmind.local",
+      "attributes": { "tenant_id": ["tenant_a"] },
+      "credentials": [
+        { "type": "password", "value": "demo-bob", "temporary": false }
+      ],
+      "clientRoles": { "patentmind-gateway": ["paralegal"] },
+      "requiredActions": []
+    },
+    {
+      "username": "carol",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Carol",
+      "lastName": "Wang",
+      "email": "carol@demo.patentmind.local",
+      "attributes": { "tenant_id": ["tenant_b"] },
+      "credentials": [
+        { "type": "password", "value": "demo-carol", "temporary": false }
+      ],
+      "clientRoles": { "patentmind-gateway": ["it_admin"] },
+      "requiredActions": []
+    },
+    {
+      "username": "audit_dave",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Dave",
+      "lastName": "Yu",
+      "email": "dave@demo.patentmind.local",
+      "attributes": { "tenant_id": ["tenant_a"] },
+      "credentials": [
+        { "type": "password", "value": "demo-audit_dave", "temporary": false }
+      ],
+      "clientRoles": { "patentmind-gateway": ["auditor"] },
+      "requiredActions": []
+    }
+  ]
+}

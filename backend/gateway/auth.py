@@ -818,6 +818,17 @@ class StubSAMLProvider(SAMLProvider):
 # on the *_PROVIDER setting.
 # ---------------------------------------------------------------------------
 def get_oidc_provider() -> OIDCProvider:
+    # OIDC_MODE is the deployment-shape selector (stub | keycloak). The legacy
+    # OIDC_PROVIDER knob still gates WHICH stub implementation backs stub mode.
+    if settings.OIDC_MODE == "keycloak":
+        # Imported lazily: oidc_keycloak imports IdpError/IdpIdentity from us.
+        from backend.gateway.oidc_keycloak import get_keycloak_provider
+
+        return get_keycloak_provider()
+    if settings.OIDC_MODE != "stub":
+        raise IdpError(
+            f"oidc: unknown OIDC_MODE '{settings.OIDC_MODE}' (expected stub | keycloak)."
+        )
     if settings.OIDC_PROVIDER == "stub":
         return StubOIDCProvider(
             settings.OIDC_STUB_SIGNING_SECRET,

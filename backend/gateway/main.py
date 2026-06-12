@@ -676,11 +676,26 @@ def oidc_begin(request: Request):
         rate_limit.check_login_rpm(client_ip)
         state, nonce = begin_oidc_login()
         minted_state = state
-        authorize_url = (
-            f"{settings.OIDC_ISSUER}/authorize"
-            f"?response_type=code&client_id={settings.OIDC_CLIENT_ID}"
-            f"&state={state}&nonce={nonce}&scope=openid"
-        )
+        if settings.OIDC_MODE == "keycloak":
+            # Real IdP: the authorize endpoint comes from the realm's
+            # discovery document, never hand-assembled. Discovery being down
+            # is an IdP availability problem, not an auth failure → 503 (the
+            # uniform-401 rule is for credential-shaped failures only).
+            from backend.gateway.oidc_keycloak import get_keycloak_provider
+
+            try:
+                authorize_url = get_keycloak_provider().authorize_url(state=state, nonce=nonce)
+            except IdpError as exc:
+                logger.error("oidc/begin: keycloak discovery unavailable: %s", exc)
+                raise HTTPException(
+                    status.HTTP_503_SERVICE_UNAVAILABLE, "OIDC provider unavailable"
+                ) from exc
+        else:
+            authorize_url = (
+                f"{settings.OIDC_ISSUER}/authorize"
+                f"?response_type=code&client_id={settings.OIDC_CLIENT_ID}"
+                f"&state={state}&nonce={nonce}&scope=openid"
+            )
         return OIDCBeginResponse(state=state, nonce=nonce, authorize_url=authorize_url)
     except BaseException as exc:  # noqa: BLE001 — must reach the finally
         error = exc

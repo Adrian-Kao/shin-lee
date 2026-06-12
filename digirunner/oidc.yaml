@@ -16,14 +16,20 @@ metadata:
 
 provider:
   # The IdP issuer URL. digiRunner discovers /.well-known/openid-configuration.
-  # Examples:
-  #   Keycloak: https://idp.lawfirm.example/realms/patentmind
+  # The repo now ships a REAL Keycloak realm matching this template
+  # (docker compose up -d keycloak; realm auto-imports from
+  # keycloak/realm-patentmind.json — gateway-direct integration is
+  # OIDC_MODE=keycloak, see backend/gateway/oidc_keycloak.py):
+  #   Keycloak (local POC): http://localhost:8081/realms/patentmind
+  # Other examples:
+  #   Keycloak (prod): https://idp.lawfirm.example/realms/patentmind
   #   Auth0:    https://lawfirm.us.auth0.com/
   #   Okta:     https://lawfirm.okta.com/oauth2/default
   #   Azure AD: https://login.microsoftonline.com/<tenant-id>/v2.0
-  issuer: ${OIDC_ISSUER_URL}
-  client_id: ${OIDC_CLIENT_ID}
+  issuer: ${OIDC_ISSUER_URL}  # local POC: http://localhost:8081/realms/patentmind
+  client_id: ${OIDC_CLIENT_ID}  # local POC realm registers: patentmind-gateway
   client_secret: ${OIDC_CLIENT_SECRET}  # from external secret vault
+  #   (local POC realm dev secret: patentmind-gateway-dev-secret-change-me)
   # Redirect URI registered at the IdP. digiRunner will receive the code here.
   redirect_uri: https://patentmind.lawfirm.example/api/auth/callback
   # PKCE recommended for SPA-initiated flows. digiRunner supports it.
@@ -50,6 +56,8 @@ claim_mapping:
   # Tenant_id from a custom IdP claim or group attribute.
   # If the IdP can't supply this directly, configure a Keycloak mapper:
   #   user-attribute "tenant_id" → token claim "tenant_id"
+  # (keycloak/realm-patentmind.json ships exactly this mapper on the
+  # patentmind-gateway client.)
   tenant_id:
     source: claim.tenant_id
     required: true
@@ -57,6 +65,11 @@ claim_mapping:
   # Role mapping. The IdP must emit one of:
   #   "attorney" | "paralegal" | "auditor" | "it_admin"
   # See backend/shared/models.py:UserRole for the enum.
+  # keycloak/realm-patentmind.json defines these four as CLIENT ROLES on
+  # patentmind-gateway and maps them into the token as claim "role" (also
+  # visible under resource_access.patentmind-gateway.roles). The gateway's
+  # own mapper (backend/gateway/oidc_keycloak.py:extract_role_hint) reads
+  # claim.role first, then resource_access, then realm_access.
   role:
     source: claim.role
     required: true

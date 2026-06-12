@@ -108,7 +108,7 @@ invariant has broken.
 | Q8 | PDF/DOCX 上傳 + 萃取（`pdf_parser.py` PyMuPDF）+ Tesseract 地端 OCR（`ocr_local.py`，機密案不離機）+ Claude Vision OCR fallback | `/v1/oa/upload`；Tesseract 為 optional dep |
 | Q9 | Redis cache（graceful degradation；JSON 序列化） | `CACHE_BACKEND=redis`（另有 `RATE_LIMIT_BACKEND` / `REVOCATION_BACKEND=redis`） |
 | Q10 | Per-tenant uploadable JSON dictionary（file drop + reload，不用重啟） | `data/tenant_dicts/<tenant_id>.json` + `reload_tenant_dictionary()` |
-| Q12 | `/auth/oidc/begin` + `/auth/oidc/callback`、`/auth/saml/acs`、`/auth/magic/request` + `/consume`（stub IdP）+ JWT 撤銷（`revocation.py`） | `backend/gateway/main.py` |
+| Q12 | `/auth/oidc/begin` + `/auth/oidc/callback`、`/auth/saml/acs`、`/auth/magic/request` + `/consume` + JWT 撤銷（`revocation.py`）。OIDC 可走**真 Keycloak**（discovery + code→token + JWKS 驗章 + role/tenant claim 映射，`backend/gateway/oidc_keycloak.py`；realm 匯入檔 `keycloak/realm-patentmind.json`，compose 服務 :8081） | `OIDC_MODE=stub\|keycloak`；smoke: `bash scripts/smoke_keycloak.sh` |
 | Q13 | WORM archiver（`audit_archive.py`：sealed segments + Merkle root chain，本地 Object-Lock 語意）+ write-ahead outbox（`audit_outbox.py`，invariant #4 backstop） | 自動；驗證走 `verify_archive` |
 | Q14 | Verifier 是獨立第二 model call（`assert_verifier_independence()`；anthropic 模式 = Haiku） | `LLM_MODEL_VERIFIER`（必 ≠ REASONING） |
 | Q15 | 真地端 LLM：Ollama OpenAI-compat endpoint | `LLM_MODE=local` + `LLM_MODEL_LOCAL`（這台機器用 `qwen2.5:7b`，**無** llama3.1:8b） |
@@ -125,7 +125,7 @@ invariant has broken.
 |----------------|----------------------|
 | Q4 — No SSR landing page | Build separate Next.js app (out of POC repo) |
 | Q8 — Vision figure-region extraction returns `[]` | `pdf_parser.py:476` TODO — real figure callout extraction |
-| Q12 — IdP 是 stub（自簽流程） | 接真 Keycloak / Azure AD（`digirunner/oidc.yaml` 模板已備） |
+| Q12 — SAML IdP 是 stub（OIDC 已接真 Keycloak ✅，`OIDC_MODE=keycloak`） | SAML 換 python3-saml + 真 ADFS/Azure AD；OIDC 換企業級 IdP 只需改 issuer/client（`digirunner/oidc.yaml` 模板已對齊 realm `patentmind`） |
 | Q13 — WORM 封存目標是本地唯讀目錄 | 換成真 S3 Object Lock / Azure Immutable Blob bucket |
 | Audit DB 仍是 SQLite | Postgres 容器已在 compose（:15432）但 audit 未遷移 |
 | Q19 — Grafana dashboard JSONs 未出 | `docs/observability/README.md` 只有 wiring 說明 |
@@ -150,7 +150,7 @@ invariant has broken.
 - [x] ✅ Redis cache (`CACHE_BACKEND=redis`)
 - [x] ✅ Qdrant vector store (`VECTOR_BACKEND=qdrant`)
 - [x] ✅ Real PDF/DOCX OA upload（`/v1/oa/upload` + PyMuPDF + Tesseract/Vision OCR）
-- [ ] Real IdP integration（Keycloak/Azure AD）— OIDC/SAML/magic **endpoints + stub IdP 已上 ✅**，差真 IdP 對接
+- [x] ✅ Real IdP integration（Keycloak）— `OIDC_MODE=keycloak`：discovery + code→token + JWKS 驗章 + role/tenant 映射，gateway 簽自己的 session JWT（`backend/gateway/oidc_keycloak.py`；`docker compose up -d keycloak` 自動匯入 realm；smoke `scripts/smoke_keycloak.sh`）。SAML 仍是 stub；Azure AD 對接留 ops
 
 ### P1 — feature gaps
 - [ ] Q8 vision LLM for OA **figures**（`pdf_parser.py:476` TODO；OCR 部分已完成）

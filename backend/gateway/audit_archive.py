@@ -1,20 +1,35 @@
 """Q13 — WORM archiver: seal audit rows into tamper-evident immutable segments.
 
 The live audit log (``backend/gateway/audit.py``) is an append-only,
-hash-chained SQLite table. That is solid against *casual* tampering (the
-UPDATE/DELETE triggers abort), but Q13 (docs/QUESTIONS.md) additionally
-requires periodic archival to **WORM** storage:
+hash-chained table (SQLite or Postgres — ``AUDIT_BACKEND``). That is solid
+against *casual* tampering (the UPDATE/DELETE triggers abort), but Q13
+(docs/QUESTIONS.md) additionally requires periodic archival to **WORM**
+storage:
 
     "Append-only ... + WORM: 定期 archive 到 S3 Object Lock / Azure Immutable
      Blob; 保存期 7 年; 可匯出"
 
-This module is a *local POC* of that hourly S3 Object Lock archiver. It
-captures the WORM SEMANTICS so production can swap the storage target (a
-directory ↔ an Object-Lock bucket) without changing the logic:
+Two storage targets are supported (``ARCHIVE_BACKEND``):
+
+  * ``local`` (default) — a local directory whose sealed files are flipped
+    read-only (the original POC of Object Lock semantics; zero infra).
+  * ``s3``    — a real S3-compatible Object Lock bucket (MinIO in the
+    delivery stack — compose service on :19000; AWS S3 in production).
+    Segments + manifests are uploaded with a per-object retention
+    (``ARCHIVE_S3_RETENTION_MODE`` GOVERNANCE|COMPLIANCE +
+    ``ARCHIVE_S3_RETENTION_DAYS``), so the object store itself refuses
+    deletion/version-removal until the retain-until date. The bucket MUST be
+    created with Object Lock enabled (versioning implied) — one-shot init:
+    ``python scripts/init_minio.py``.
+
+Both targets capture the same WORM SEMANTICS, so flipping the knob changes
+the storage, never the logic:
 
   * **Write-once** — rows are sealed into ``segment-<NNNN>.jsonl`` batches.
-    Once a segment is written its files are flipped read-only (``chmod``),
-    simulating Object Lock retention. Re-sealing the same range is refused.
+    Local: files are flipped read-only after fsync. S3: objects carry an
+    Object Lock retention; an overwrite can only ADD a version (the sealed
+    version stays retrievable) and deleting the sealed version is refused by
+    the store. Re-sealing the same range is refused in both modes.
   * **Sealed manifest** — each segment gets a ``segment-<NNNN>.manifest.json``
     recording the audit_id range, row count, sealed_at, a Merkle root over the
     segment's rows, and the *previous* segment's root. The manifests therefore
@@ -28,21 +43,24 @@ directory ↔ an Object-Lock bucket) without changing the logic:
 High-water mark
 ---------------
 We track *how many* audit rows have been archived, as an integer persisted in
-``<archive_dir>/_state.json`` (``{"archived_rows": N, "last_audit_id": "...",
-"last_segment_root": "...", "segment_index": K}``). The audit table is strictly
-append-only (insertion order == ``rowid`` ASC, never reused), so "the first N
-rows in rowid order" is a stable, monotonic cursor — row N+1 is always the next
-one to seal. We deliberately do NOT rely on ``rowid`` *values* (which could in
-principle be non-contiguous if a future migration ever VACUUMed); we rely only
-on the count + ordering, recomputed from the live DB each run, then sliced with
-``OFFSET archived_rows``. The state file is the durable cursor; if it is lost,
-:func:`verify_archive` can still re-derive the truth from the segment files
-(each manifest records its absolute ``row_offset_start``/``row_count``), so the
-state file is a fast-path cache, not the source of truth.
+``_state.json`` (``{"archived_rows": N, "last_audit_id": "...",
+"last_segment_root": "...", "segment_index": K}``) — a file in the archive dir
+(local) or a plain versioned object in the bucket (s3; deliberately NOT
+object-locked, it must stay rewritable). The audit table is strictly
+append-only (insertion order == ``rowid``/``row_seq`` ASC, never reused), so
+"the first N rows in insertion order" is a stable, monotonic cursor — row N+1
+is always the next one to seal. We deliberately do NOT rely on rowid *values*
+(which could in principle be non-contiguous if a future migration ever
+VACUUMed); we rely only on the count + ordering, recomputed from the live DB
+each run, then sliced with ``OFFSET archived_rows``. The state file is the
+durable cursor; if it is lost, :func:`verify_archive` can still re-derive the
+truth from the segment files (each manifest records its absolute
+``row_offset_start``/``row_count``), so the state file is a fast-path cache,
+not the source of truth.
 
-Production note: in S3, ``_state.json`` would itself be a versioned object (or
-the high-water mark would be the max ``last_audit_id`` across listed manifest
-objects). The directory layout here maps 1:1 onto an S3 prefix.
+Live-DB access goes through :func:`backend.gateway.audit.read_live_rows`,
+which is backend-aware (SQLite read-only URI / Postgres READ ONLY tx) — this
+module never opens the audit store directly.
 """
 
 from __future__ import annotations
@@ -50,28 +68,19 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sqlite3
 import stat
 import sys
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from backend.gateway import audit
 
 # Coarse process-wide lock. Sealing is an ops/cron operation off the request
 # hot path, so serialising the read-DB → write-segment → update-state sequence
 # is fine and keeps the archive internally consistent under concurrent calls.
 _lock = threading.Lock()
-
-# Columns pulled from the live audit row, in the exact shape that feeds the
-# audit writer's row_hash (see AuditWriter.write / verify_global_chain). We
-# store these verbatim in the segment so verify_archive can (a) recompute the
-# row_hash offline and (b) cross-check it against the live DB.
-_AUDIT_SELECT = (
-    "SELECT audit_id, timestamp_utc, user_id, tenant_id, case_id, "
-    "       endpoint, request_hash, response_hash, prev_row_hash, row_hash "
-    "FROM audit ORDER BY rowid ASC"
-)
 
 _STATE_FILENAME = "_state.json"
 
@@ -88,12 +97,12 @@ def _archive_dir() -> Path:
     return Path(config.AUDIT_ARCHIVE_DIR)
 
 
-def _audit_db_path() -> Path:
-    """Resolve the live audit DB path lazily through config (conftest
-    redirects ``config.AUDIT_DB_PATH`` to a tmp file)."""
+def _backend() -> str:
+    """``local`` | ``s3`` — resolved lazily so tests can monkeypatch
+    ``config.settings.ARCHIVE_BACKEND`` per-test."""
     from backend.shared import config
 
-    return Path(config.AUDIT_DB_PATH)
+    return getattr(config.settings, "ARCHIVE_BACKEND", "local")
 
 
 def _state_path() -> Path:
@@ -101,27 +110,12 @@ def _state_path() -> Path:
 
 
 # ---------------------------------------------------------------------------
-# Live audit DB read access (READ-ONLY — we never write the audit DB here).
+# Live audit DB read access (READ-ONLY — we never write the audit store here).
 # ---------------------------------------------------------------------------
 def _read_live_rows() -> list[dict[str, Any]]:
-    """Read every audit row in insertion (rowid ASC) order as plain dicts.
-
-    Opens a fresh, short-lived connection (the live AuditWriter owns its own
-    long-lived connection; we deliberately do NOT touch it). We open in URI
-    read-only mode so this module can never mutate the audit log — defence in
-    depth on top of the append-only triggers.
-    """
-    path = _audit_db_path()
-    if not path.exists():
-        return []
-    uri = f"file:{path.as_posix()}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
-    try:
-        cur = conn.execute(_AUDIT_SELECT)
-        cols = [c[0] for c in cur.description]
-        return [dict(zip(cols, r, strict=True)) for r in cur.fetchall()]
-    finally:
-        conn.close()
+    """Every audit row in insertion order, via the backend-aware read-only
+    entry point in audit.py (SQLite ``mode=ro`` URI / Postgres READ ONLY tx)."""
+    return audit.read_live_rows()
 
 
 def _live_row_hash_index() -> dict[str, str]:
@@ -173,22 +167,148 @@ def _merkle_root(rows: list[dict[str, Any]], prev_root: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# S3 / MinIO target (ARCHIVE_BACKEND=s3).
+# ---------------------------------------------------------------------------
+def _s3_client():
+    """Build a boto3 S3 client against the configured endpoint (MinIO/AWS).
+
+    Lazy import: boto3 is only required when ARCHIVE_BACKEND=s3. Settings are
+    read per call so tests can monkeypatch bucket/endpoint per-test.
+    """
+    import boto3
+    from botocore.config import Config
+
+    from backend.shared.config import settings
+
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.ARCHIVE_S3_ENDPOINT,
+        aws_access_key_id=settings.ARCHIVE_S3_ACCESS_KEY,
+        aws_secret_access_key=settings.ARCHIVE_S3_SECRET_KEY,
+        region_name=settings.ARCHIVE_S3_REGION,
+        config=Config(connect_timeout=5, read_timeout=60, retries={"max_attempts": 2}),
+    )
+
+
+def _s3_bucket() -> str:
+    from backend.shared.config import settings
+
+    return settings.ARCHIVE_S3_BUCKET
+
+
+def _s3_object_exists(client, bucket: str, key: str) -> bool:
+    from botocore.exceptions import ClientError
+
+    try:
+        client.head_object(Bucket=bucket, Key=key)
+        return True
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return False
+        raise
+
+
+def _s3_get_text(client, bucket: str, key: str) -> str | None:
+    """Fetch an object's body as utf-8 text; None when the key is absent."""
+    from botocore.exceptions import ClientError
+
+    try:
+        resp = client.get_object(Bucket=bucket, Key=key)
+        return resp["Body"].read().decode("utf-8")
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return None
+        raise
+
+
+def _s3_put_locked(client, bucket: str, key: str, content: str) -> None:
+    """Upload one sealed artefact WITH Object Lock retention.
+
+    The retain-until date is now + ARCHIVE_S3_RETENTION_DAYS, in the
+    configured mode (GOVERNANCE by default — a privileged principal can
+    bypass with an explicit governance-bypass header; COMPLIANCE cannot be
+    bypassed by anyone until expiry, which is the production posture for the
+    7-year Q13 retention). Requires the bucket to have Object Lock enabled
+    (scripts/init_minio.py creates it that way).
+    """
+    from botocore.exceptions import ClientError
+
+    from backend.shared.config import settings
+
+    retain_until = datetime.now(UTC) + timedelta(days=settings.ARCHIVE_S3_RETENTION_DAYS)
+    try:
+        client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=content.encode("utf-8"),
+            ContentType="application/json",
+            ObjectLockMode=settings.ARCHIVE_S3_RETENTION_MODE,
+            ObjectLockRetainUntilDate=retain_until,
+        )
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code == "NoSuchBucket":
+            raise RuntimeError(
+                f"WORM bucket {bucket!r} does not exist at the configured "
+                f"endpoint. Create it (Object Lock enabled) with: "
+                f"python scripts/init_minio.py"
+            ) from exc
+        if code == "InvalidRequest":
+            raise RuntimeError(
+                f"put_object with Object Lock retention was refused for "
+                f"bucket {bucket!r} — the bucket was probably created WITHOUT "
+                f"Object Lock. Recreate it via: python scripts/init_minio.py"
+            ) from exc
+        raise
+
+
+def _s3_put_plain(client, bucket: str, key: str, content: str) -> None:
+    """Upload a NON-locked object (the rewritable _state.json cursor)."""
+    client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=content.encode("utf-8"),
+        ContentType="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
 # State (high-water mark) persistence.
 # ---------------------------------------------------------------------------
+_DEFAULT_STATE: dict[str, Any] = {
+    "archived_rows": 0,
+    "segment_index": 0,
+    "last_audit_id": None,
+    "last_segment_root": "",
+}
+
+
 def _read_state() -> dict[str, Any]:
+    if _backend() == "s3":
+        text = _s3_get_text(_s3_client(), _s3_bucket(), _STATE_FILENAME)
+        if text is None:
+            return dict(_DEFAULT_STATE)
+        return json.loads(text)
     p = _state_path()
     if not p.exists():
-        return {
-            "archived_rows": 0,
-            "segment_index": 0,
-            "last_audit_id": None,
-            "last_segment_root": "",
-        }
+        return dict(_DEFAULT_STATE)
     with p.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
 
 def _write_state(state: dict[str, Any]) -> None:
+    if _backend() == "s3":
+        # S3 PUT is atomic per object; the bucket is versioned (Object Lock
+        # implies versioning) so every previous cursor value stays recoverable.
+        _s3_put_plain(
+            _s3_client(),
+            _s3_bucket(),
+            _STATE_FILENAME,
+            json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True),
+        )
+        return
     p = _state_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     # The state file is rewritten each seal, so (unlike segments) it is NOT
@@ -203,14 +323,14 @@ def _write_state(state: dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Immutability simulation (Object Lock).
+# Immutability simulation (local Object Lock).
 # ---------------------------------------------------------------------------
 def _make_read_only(p: Path) -> None:
     """Flip a file to read-only to simulate S3 Object Lock retention.
 
     On POSIX this clears the write bits; on Windows it sets FILE_ATTRIBUTE_
     READONLY (os.chmod honours stat.S_IWRITE there). Production swaps this for
-    an Object Lock retention period on the uploaded object.
+    an Object Lock retention period on the uploaded object (= ARCHIVE_BACKEND=s3).
     """
     try:
         os.chmod(p, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
@@ -243,8 +363,7 @@ def seal_next_segment(now_iso: str | None = None) -> dict:
         now_iso = datetime.now(UTC).isoformat()
 
     with _lock:
-        adir = _archive_dir()
-        adir.mkdir(parents=True, exist_ok=True)
+        backend = _backend()
 
         state = _read_state()
         archived = int(state.get("archived_rows", 0))
@@ -266,44 +385,58 @@ def seal_next_segment(now_iso: str | None = None) -> dict:
         pending = live_rows[archived:]  # slice past the high-water mark
         new_index = seg_index + 1
         basename = _seg_basename(new_index)
-        seg_path = adir / f"{basename}.jsonl"
-        manifest_path = adir / f"{basename}.manifest.json"
+        seg_name = f"{basename}.jsonl"
+        manifest_name = f"{basename}.manifest.json"
 
         # Idempotency / WORM guard: refuse to overwrite an existing sealed
-        # segment. If either file already exists the range was already sealed
-        # (or a partial seal crashed) — do not double-archive.
-        if seg_path.exists() or manifest_path.exists():
-            return {
-                "sealed": False,
-                "reason": "segment_already_exists",
-                "segment_index": new_index,
-                "path": str(seg_path),
-            }
+        # segment. If either artefact already exists the range was already
+        # sealed (or a partial seal crashed) — do not double-archive.
+        if backend == "s3":
+            client = _s3_client()
+            bucket = _s3_bucket()
+            if _s3_object_exists(client, bucket, seg_name) or _s3_object_exists(
+                client, bucket, manifest_name
+            ):
+                return {
+                    "sealed": False,
+                    "reason": "segment_already_exists",
+                    "segment_index": new_index,
+                    "path": f"s3://{bucket}/{seg_name}",
+                }
+        else:
+            adir = _archive_dir()
+            adir.mkdir(parents=True, exist_ok=True)
+            seg_path = adir / seg_name
+            manifest_path = adir / manifest_name
+            if seg_path.exists() or manifest_path.exists():
+                return {
+                    "sealed": False,
+                    "reason": "segment_already_exists",
+                    "segment_index": new_index,
+                    "path": str(seg_path),
+                }
 
         # Compute the segment Merkle root (chained off the previous root).
         seg_root = _merkle_root(pending, prev_root)
 
-        # --- write the segment file (append-only JSONL) ---
-        # Build content first, write once, fsync, then flip read-only.
-        with seg_path.open("w", encoding="utf-8") as fh:
-            for i, row in enumerate(pending):
-                record = {
-                    "row_offset": archived + i,  # absolute index in the log
-                    "audit_id": row["audit_id"],
-                    "timestamp_utc": row["timestamp_utc"],
-                    "user_id": row["user_id"],
-                    "tenant_id": row["tenant_id"],
-                    "case_id": row["case_id"],
-                    "endpoint": row["endpoint"],
-                    "request_hash": row["request_hash"],
-                    "response_hash": row["response_hash"],
-                    "prev_row_hash": row["prev_row_hash"],
-                    "row_hash": row["row_hash"],
-                }
-                fh.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
-                fh.write("\n")
-            fh.flush()
-            os.fsync(fh.fileno())
+        # --- build the segment content (append-only JSONL) ---
+        seg_lines: list[str] = []
+        for i, row in enumerate(pending):
+            record = {
+                "row_offset": archived + i,  # absolute index in the log
+                "audit_id": row["audit_id"],
+                "timestamp_utc": row["timestamp_utc"],
+                "user_id": row["user_id"],
+                "tenant_id": row["tenant_id"],
+                "case_id": row["case_id"],
+                "endpoint": row["endpoint"],
+                "request_hash": row["request_hash"],
+                "response_hash": row["response_hash"],
+                "prev_row_hash": row["prev_row_hash"],
+                "row_hash": row["row_hash"],
+            }
+            seg_lines.append(json.dumps(record, ensure_ascii=False, sort_keys=True))
+        seg_content = "\n".join(seg_lines) + "\n"
 
         manifest = {
             "segment_index": new_index,
@@ -315,17 +448,36 @@ def seal_next_segment(now_iso: str | None = None) -> dict:
             "sealed_at": now_iso,
             "merkle_root": seg_root,
             "prev_root": prev_root,
-            "segment_file": seg_path.name,
+            "segment_file": seg_name,
             "algo": "sha256-chained-merkle-v1",
         }
-        with manifest_path.open("w", encoding="utf-8") as fh:
-            json.dump(manifest, fh, ensure_ascii=False, indent=2, sort_keys=True)
-            fh.flush()
-            os.fsync(fh.fileno())
+        manifest_content = json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True)
 
-        # Flip both files read-only AFTER content is durable (Object Lock sim).
-        _make_read_only(seg_path)
-        _make_read_only(manifest_path)
+        if backend == "s3":
+            # Object Lock retention IS the immutability: the store refuses to
+            # delete the sealed version until retain-until. Segment first,
+            # manifest second — a crash in between leaves a discoverable,
+            # re-sealable gap (the existence guard above refuses index reuse,
+            # so an operator resolves it explicitly rather than silently).
+            _s3_put_locked(client, bucket, seg_name, seg_content)
+            _s3_put_locked(client, bucket, manifest_name, manifest_content)
+            seg_location = f"s3://{bucket}/{seg_name}"
+            manifest_location = f"s3://{bucket}/{manifest_name}"
+        else:
+            # Build content first, write once, fsync, then flip read-only.
+            with seg_path.open("w", encoding="utf-8") as fh:
+                fh.write(seg_content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            with manifest_path.open("w", encoding="utf-8") as fh:
+                fh.write(manifest_content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            # Flip both read-only AFTER content is durable (Object Lock sim).
+            _make_read_only(seg_path)
+            _make_read_only(manifest_path)
+            seg_location = str(seg_path)
+            manifest_location = str(manifest_path)
 
         # Advance the high-water mark durably.
         _write_state(
@@ -345,21 +497,46 @@ def seal_next_segment(now_iso: str | None = None) -> dict:
             "row_offset_end": archived + len(pending) - 1,
             "merkle_root": seg_root,
             "prev_root": prev_root,
-            "segment_file": str(seg_path),
-            "manifest_file": str(manifest_path),
+            "segment_file": seg_location,
+            "manifest_file": manifest_location,
             "sealed_at": now_iso,
         }
 
 
-def _load_segments() -> list[tuple[dict, Path, Path]]:
+def _load_segments() -> list[tuple[dict, Any, Any]]:
     """Discover sealed segments, sorted by segment_index.
 
-    Returns ``[(manifest_dict, manifest_path, segment_path), ...]``.
+    Returns ``[(manifest_dict, manifest_ref, segment_ref), ...]`` where the
+    refs are :class:`Path` objects (local) or object keys (s3).
     """
+    if _backend() == "s3":
+        client = _s3_client()
+        bucket = _s3_bucket()
+        out_s3: list[tuple[dict, Any, Any]] = []
+        paginator = client.get_paginator("list_objects_v2")
+        try:
+            pages = paginator.paginate(Bucket=bucket, Prefix="segment-")
+            keys = [
+                obj["Key"]
+                for page in pages
+                for obj in page.get("Contents", [])
+                if obj["Key"].endswith(".manifest.json")
+            ]
+        except client.exceptions.NoSuchBucket:
+            return []
+        for key in sorted(keys):
+            text = _s3_get_text(client, bucket, key)
+            if text is None:
+                continue
+            manifest = json.loads(text)
+            out_s3.append((manifest, key, manifest.get("segment_file", "")))
+        out_s3.sort(key=lambda t: t[0].get("segment_index", 0))
+        return out_s3
+
     adir = _archive_dir()
     if not adir.exists():
         return []
-    out: list[tuple[dict, Path, Path]] = []
+    out: list[tuple[dict, Any, Any]] = []
     for manifest_path in sorted(adir.glob("segment-*.manifest.json")):
         with manifest_path.open("r", encoding="utf-8") as fh:
             manifest = json.load(fh)
@@ -369,14 +546,31 @@ def _load_segments() -> list[tuple[dict, Path, Path]]:
     return out
 
 
-def _read_segment_rows(seg_path: Path) -> list[dict[str, Any]]:
+def _parse_segment_lines(text: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    with seg_path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if line:
-                rows.append(json.loads(line))
+    for line in text.splitlines():
+        line = line.strip()
+        if line:
+            rows.append(json.loads(line))
     return rows
+
+
+def _read_segment_rows(seg_path: Path) -> list[dict[str, Any]]:
+    with seg_path.open("r", encoding="utf-8") as fh:
+        return _parse_segment_lines(fh.read())
+
+
+def _segment_rows_or_none(seg_ref: Any) -> list[dict[str, Any]] | None:
+    """Fetch a sealed segment's rows; ``None`` when the artefact is missing."""
+    if _backend() == "s3":
+        text = _s3_get_text(_s3_client(), _s3_bucket(), str(seg_ref))
+        if text is None:
+            return None
+        return _parse_segment_lines(text)
+    seg_path = Path(seg_ref)
+    if not seg_path.exists():
+        return None
+    return _read_segment_rows(seg_path)
 
 
 def verify_archive() -> dict:
@@ -386,7 +580,9 @@ def verify_archive() -> dict:
 
     1. **Merkle root** — recompute each segment's root from its own rows and
        its recorded ``prev_root``; flag a mismatch (segment file was mutated
-       or a root was forged).
+       or a root was forged). In s3 mode the rows come back from the bucket,
+       so this also catches a tampered *latest version* of a sealed object
+       (Object Lock keeps the original version retrievable as evidence).
     2. **Segment chain** — each manifest's ``prev_root`` must equal the
        previous segment's recomputed root, and offsets must be contiguous
        (no gap / overlap between segments). The first segment must have
@@ -407,18 +603,18 @@ def verify_archive() -> dict:
 
     expected_prev_root = ""
     expected_offset = 0
-    for manifest, _manifest_path, seg_path in segments:
+    for manifest, _manifest_ref, seg_ref in segments:
         seg_index = manifest.get("segment_index")
 
-        if not seg_path.exists():
+        seg_rows = _segment_rows_or_none(seg_ref)
+        if seg_rows is None:
             anomalies.append(
-                {"type": "missing_segment_file", "segment_index": seg_index, "path": str(seg_path)}
+                {"type": "missing_segment_file", "segment_index": seg_index, "path": str(seg_ref)}
             )
             # Can't verify rows of a missing file; keep chain expectation as-is
             # so subsequent segments still get checked against the prior root.
             continue
 
-        seg_rows = _read_segment_rows(seg_path)
         rows_archived += len(seg_rows)
 
         # --- (2) chain: prev_root linkage ---
@@ -509,6 +705,10 @@ def archive_status() -> dict:
     archived = int(state.get("archived_rows", 0))
     total = len(_read_live_rows())
     segments = _load_segments()
+    if _backend() == "s3":
+        location = f"s3://{_s3_bucket()}"
+    else:
+        location = str(_archive_dir())
     return {
         "archived_rows": archived,
         "last_audit_id": state.get("last_audit_id"),
@@ -516,7 +716,7 @@ def archive_status() -> dict:
         "segment_count": len(segments),
         "live_rows_total": total,
         "rows_pending": max(0, total - archived),
-        "archive_dir": str(_archive_dir()),
+        "archive_dir": location,
     }
 
 

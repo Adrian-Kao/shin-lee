@@ -2,10 +2,11 @@
 
 Invariant #4 (CLAUDE.md §4) says *every* gateway request writes exactly one
 audit row — even errors. The gateway enforces the "always attempt a write"
-half with a try/finally in each handler. But the primary audit store is a
-local SQLite file, and a SQLite write can still fail at runtime: disk full,
-file locked by a concurrent backup, or the append-only trigger refusing the
-INSERT. When that happens, ``_safe_audit_write`` (main.py) must NOT re-raise —
+half with a try/finally in each handler. But the primary audit store (SQLite
+file or Postgres — ``AUDIT_BACKEND``) can still fail a write at runtime: disk
+full, file locked by a concurrent backup, a dropped Postgres connection, or
+the append-only trigger refusing the INSERT. When that happens,
+``_safe_audit_write`` (main.py) must NOT re-raise —
 re-raising would mask the genuine response/error the caller is about to see.
 Pre-outbox the swallowed failure meant the audit row was lost *forever*, which
 silently breaks invariant #4: the contract claims "exactly one row even on

@@ -65,6 +65,41 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  keycloak:
+    # Q12 P0 — real IdP for OIDC_MODE=keycloak. Dev mode (start-dev) is fine
+    # for the POC: http, embedded H2 storage. Realm `patentmind` (client
+    # `patentmind-gateway` + the four demo users alice/bob/carol/audit_dave,
+    # passwords demo-<user>) auto-imports from keycloak/realm-patentmind.json.
+    # Host port 8081: 5432/8010/8011/8088/18080/6333/6379/15432 are taken on
+    # the delivery box. Smoke: bash scripts/smoke_keycloak.sh
+    image: quay.io/keycloak/keycloak:26.2
+    container_name: patentmind-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASS:-admin}
+      # Issuer URLs must look like the host-side URL the gateway verifies
+      # (http://localhost:8081/realms/patentmind), so pin hostname to the
+      # host-mapped port rather than the in-container 8080.
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_HOST_PORT:-8081}
+      KC_HTTP_ENABLED: "true"
+    ports:
+      # Loopback only — dev-mode Keycloak with default admin creds is not
+      # safe on a LAN.
+      - "127.0.0.1:${KEYCLOAK_HOST_PORT:-8081}:8080"
+    volumes:
+      # No data volume on purpose: a named volume at /opt/keycloak/data/h2 is
+      # created root-owned while the keycloak image runs as uid 1000 → H2
+      # AccessDenied at boot. Dev-mode state is throwaway; the realm (clients,
+      # users, roles) re-imports from this JSON on every container start.
+      - ./keycloak/realm-patentmind.json:/opt/keycloak/data/import/realm-patentmind.json:ro
+    networks:
+      - patentmind-net
+    # No container healthcheck: the keycloak image has no curl/wget and the
+    # health endpoints live on the management port (9000) only when enabled.
+    # scripts/smoke_keycloak.sh probes the discovery document from the host.
+    restart: unless-stopped
+
 volumes:
   qdrant_storage:
   postgres_data:

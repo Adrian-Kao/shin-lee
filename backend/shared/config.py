@@ -450,6 +450,49 @@ class Settings:
     OIDC_PROVIDER: str = os.getenv("OIDC_PROVIDER", "stub")  # stub | authlib (prod)
     OIDC_CLIENT_ID: str = os.getenv("OIDC_CLIENT_ID", "patentmind-spa")
     OIDC_ISSUER: str = os.getenv("OIDC_ISSUER", "https://idp.example.com")
+
+    # ------------------------------------------------------------------
+    # Real Keycloak OIDC (P0 — replaces the stub IdP when selected).
+    # ------------------------------------------------------------------
+    # OIDC_MODE selects which provider get_oidc_provider() wires:
+    #   "stub"     — offline HMAC stub (default; demo + the entire test suite
+    #                run WITHOUT docker, behaviour unchanged).
+    #   "keycloak" — real Keycloak: /auth/oidc/begin redirects to the realm's
+    #                authorize endpoint (auto-discovered via
+    #                {issuer}/.well-known/openid-configuration); /auth/oidc/
+    #                callback does the code->token exchange, verifies the ID
+    #                token signature against the realm JWKS (PyJWT, RS256),
+    #                pins iss/aud/exp/nonce, maps realm/client roles + the
+    #                tenant claim to our four roles, then issues OUR OWN
+    #                gateway session JWT (the Keycloak token is never used as
+    #                a gateway token). See backend/gateway/oidc_keycloak.py.
+    OIDC_MODE: str = os.getenv("OIDC_MODE", "stub")  # stub | keycloak
+    # Realm issuer URL. Discovery doc = {issuer}/.well-known/openid-configuration.
+    # docker-compose maps Keycloak to host port 8081 (8080 is Dify-adjacent and
+    # 18080 is digiRunner); realm `patentmind` is auto-imported from
+    # keycloak/realm-patentmind.json via `start-dev --import-realm`.
+    OIDC_KEYCLOAK_ISSUER: str = os.getenv(
+        "OIDC_KEYCLOAK_ISSUER", "http://localhost:8081/realms/patentmind"
+    )
+    # Confidential client registered in the realm (client_secret_post auth at
+    # the token endpoint). The compose realm import ships a dev secret; any
+    # real deployment MUST rotate it in the Keycloak admin console + env.
+    OIDC_KEYCLOAK_CLIENT_ID: str = os.getenv("OIDC_KEYCLOAK_CLIENT_ID", "patentmind-gateway")
+    OIDC_KEYCLOAK_CLIENT_SECRET: str = os.getenv("OIDC_KEYCLOAK_CLIENT_SECRET", "")
+    # redirect_uri sent in the authorize request AND the token exchange (must
+    # match a registered redirect URI on the client, and must be byte-identical
+    # in both legs or Keycloak rejects the exchange).
+    OIDC_REDIRECT_URI: str = os.getenv(
+        "OIDC_REDIRECT_URI", "http://localhost:5173/auth/oidc/callback"
+    )
+    # Wall-clock timeout for discovery / token / JWKS HTTP calls.
+    OIDC_HTTP_TIMEOUT_SEC: float = float(os.getenv("OIDC_HTTP_TIMEOUT_SEC", "10"))
+    # Claim names the role/tenant mapper reads from the ID token. A flat
+    # `role` claim (protocol mapper) wins; otherwise client roles under
+    # resource_access.<client>.roles, then realm_access.roles. Tenant comes
+    # from a user-attribute protocol mapper (fallback claim name: "tenant").
+    OIDC_ROLE_CLAIM: str = os.getenv("OIDC_ROLE_CLAIM", "role")
+    OIDC_TENANT_CLAIM: str = os.getenv("OIDC_TENANT_CLAIM", "tenant_id")
     # Shared secret the stub OIDC provider HMAC-signs its code blobs with. In
     # production this is replaced by the IdP's published JWKS public key — the
     # stub uses a symmetric secret only so the suite needs no key material.
@@ -644,10 +687,20 @@ def _validate_stub_idp_config() -> None:
     problems = []
     if (
         settings.OIDC_ENABLED
+        and settings.OIDC_MODE == "stub"
         and settings.OIDC_PROVIDER == "stub"
         and settings.OIDC_STUB_SIGNING_SECRET == "oidc-stub-shared-secret-do-not-ship"
     ):
         problems.append("OIDC_PROVIDER=stub with the published default OIDC_STUB_SIGNING_SECRET")
+    if (
+        settings.OIDC_ENABLED
+        and settings.OIDC_MODE == "keycloak"
+        and not settings.OIDC_KEYCLOAK_CLIENT_SECRET
+    ):
+        # A confidential client without its secret can never complete the
+        # code->token exchange — every OIDC login would 401 with a server-side
+        # log nobody reads until a user complains. Fail at boot instead.
+        problems.append("OIDC_MODE=keycloak with an empty OIDC_KEYCLOAK_CLIENT_SECRET")
     if (
         settings.SAML_ENABLED
         and settings.SAML_PROVIDER == "stub"

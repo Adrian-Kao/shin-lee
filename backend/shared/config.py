@@ -187,6 +187,12 @@ class Settings:
     # Embedding (Q5/Q7 — POC 預設 mock；切 bge-m3 用 SentenceTransformer)
     EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "mock")  # mock | bge-m3
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
+    # Retrieval fusion mode. `dense` = embedding cosine only (historical default).
+    # `hybrid` = dense + BM25 lexical fused via RRF (catches exact-term matches —
+    # element numbers, chemical formulae, proper nouns — that dense embeddings
+    # blur). Hybrid applies to the in-process memory store; the qdrant store has
+    # no sparse index yet, so hybrid falls back to dense there.
+    RETRIEVAL_MODE: str = os.getenv("RETRIEVAL_MODE", "dense")  # dense | hybrid
 
     # Storage (Q13 archive / Q20 backups)
     AUDIT_BACKEND: str = os.getenv("AUDIT_BACKEND", "sqlite")  # sqlite | postgres

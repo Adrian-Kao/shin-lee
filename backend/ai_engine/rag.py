@@ -691,6 +691,68 @@ class MemoryVectorStore(VectorStore):
         out.sort(key=lambda c: c.claim_no or 0)
         return out
 
+    def lexical_search(self, tenant_id, query, top_k=5, metadata_filter=None):
+        """BM25 lexical retrieval over this tenant's chunk text (no embeddings).
+
+        Complements dense search for EXACT-TERM matching — element numbers
+        ("元件 102"), chemical formulae, version strings, proper nouns — that
+        semantic vectors blur. Uses the SAME two-script tokenizer as the lexical
+        embedding backend (``_lexical_tokens``: latin words + CJK bigrams), so a
+        TW/CN/JP query is tokenised meaningfully without whitespace.
+
+        Corpus stats (df / avgdl) are computed on the fly over the tenant's
+        chunks — fine for the POC corpus; a production store (qdrant) would back
+        this with a real sparse/inverted index instead (hence the hybrid path
+        falls back to dense when the store has no ``lexical_search``).
+
+        Returns ``[(chunk, bm25_score)]`` sorted by score desc. Standard BM25
+        (k1=1.5, b=0.75); chunks sharing no query term are dropped.
+        """
+        ids = self._tenant_index.get(tenant_id, set())
+        if not ids:
+            return []
+        # Candidate chunks honour the same exact-match metadata filter as search().
+        cand: list[Chunk] = []
+        for cid in ids:
+            ch = self._chunks[cid]
+            if metadata_filter and not all(
+                getattr(ch, k, None) == v or ch.metadata.get(k) == v
+                for k, v in metadata_filter.items()
+            ):
+                continue
+            cand.append(ch)
+        if not cand:
+            return []
+
+        docs_tokens = [_lexical_tokens(ch.text) for ch in cand]
+        n = len(cand)
+        df: dict[str, int] = {}
+        for toks in docs_tokens:
+            for t in set(toks):
+                df[t] = df.get(t, 0) + 1
+        doc_len = [len(toks) for toks in docs_tokens]
+        avgdl = (sum(doc_len) / n) if n else 0.0
+        q_terms = set(_lexical_tokens(query))
+        k1, b = 1.5, 0.75
+
+        scored: list[tuple[Chunk, float]] = []
+        for ch, toks, dl in zip(cand, docs_tokens, doc_len, strict=True):
+            tf: dict[str, int] = {}
+            for t in toks:
+                if t in q_terms:
+                    tf[t] = tf.get(t, 0) + 1
+            if not tf:
+                continue
+            score = 0.0
+            for t, f in tf.items():
+                idf = math.log(1 + (n - df[t] + 0.5) / (df[t] + 0.5))
+                denom = f + k1 * (1 - b + b * (dl / avgdl if avgdl else 0.0))
+                score += idf * (f * (k1 + 1)) / denom
+            if score > 0:
+                scored.append((ch, score))
+        scored.sort(key=lambda x: -x[1])
+        return scored[:top_k]
+
 
 def _should_drop_for_dim(existing_dim: int, new_dim: int, allow_reindex: bool) -> bool:
     """Decide whether a dim-mismatched Qdrant collection may be dropped.
@@ -978,6 +1040,28 @@ def _passes_prior_art(ch: "Chunk", max_pub_date: date) -> bool:
     return d < max_pub_date
 
 
+def _rrf_fuse(
+    ranked_lists: list[list[tuple["Chunk", float]]], rrf_k: int = 60
+) -> list[tuple["Chunk", float]]:
+    """Reciprocal Rank Fusion of several ranked ``[(chunk, score)]`` lists.
+
+    RRF combines rankings by RANK, not raw score, so dense cosine and BM25 —
+    whose score scales are not comparable — fuse cleanly: a chunk's fused score
+    is ``Σ 1/(rrf_k + rank)`` over the lists it appears in (rank 0 = best). A
+    chunk surfaced by BOTH signals outranks one strong in only one. ``rrf_k=60``
+    is the standard default. Returns one entry per unique chunk, sorted desc.
+    """
+    scores: dict[str, float] = {}
+    chunk_by_id: dict[str, "Chunk"] = {}
+    for lst in ranked_lists:
+        for rank, (ch, _s) in enumerate(lst):
+            scores[ch.chunk_id] = scores.get(ch.chunk_id, 0.0) + 1.0 / (rrf_k + rank + 1)
+            chunk_by_id.setdefault(ch.chunk_id, ch)
+    fused = [(chunk_by_id[cid], sc) for cid, sc in scores.items()]
+    fused.sort(key=lambda x: -x[1])
+    return fused
+
+
 def retrieve(
     tenant_id: str,
     query: str,
@@ -985,8 +1069,16 @@ def retrieve(
     jurisdiction: str | None = None,
     prefer_patent_no: str | None = None,
     max_pub_date: date | datetime | str | None = None,
+    hybrid: bool | None = None,
 ) -> list[RetrievalHit]:
     """RAG retrieval with optional same-patent boost.
+
+    `hybrid` fuses dense (embedding cosine) retrieval with BM25 lexical
+    retrieval via Reciprocal Rank Fusion — catching exact-term matches (element
+    numbers, formulae, proper nouns) dense embeddings blur. None (the default)
+    reads ``settings.RETRIEVAL_MODE`` ("dense"|"hybrid"); it is a no-op when the
+    active store has no ``lexical_search`` (e.g. qdrant), falling back to dense.
+    When hybrid is active the returned ``score`` is the RRF fusion score.
 
     `prefer_patent_no` (typically the case's target patent) gets a score
     boost so its chunks float to the top even when the embedding signal is
@@ -1010,11 +1102,20 @@ def retrieve(
     qvec = embed(query, tenant_id=tenant_id)
     base_filter: dict = {"jurisdiction": jurisdiction} if jurisdiction else {}
 
+    if hybrid is None:
+        hybrid = getattr(settings, "RETRIEVAL_MODE", "dense").lower() == "hybrid"
+    # Hybrid needs a store that can do lexical (BM25) search; qdrant has none yet
+    # → fall back to dense rather than error.
+    use_hybrid = bool(hybrid) and hasattr(_store, "lexical_search")
+    if hybrid and not use_hybrid:
+        logger.debug("hybrid retrieval requested but %s has no lexical_search; using dense.",
+                     type(_store).__name__)
+
     cutoff = _coerce_date(max_pub_date)
-    # Over-fetch when the date filter is active so post-filtering still yields
-    # up to top_k admissible hits (the store can't do a range filter itself —
-    # its metadata filter is exact-match only).
-    fetch_k = max(top_k * 4, 20) if cutoff is not None else top_k
+    # Over-fetch when the date filter OR hybrid fusion is active so post-filtering
+    # / fusion still yields up to top_k results (the store can't do a range filter
+    # itself — its metadata filter is exact-match only).
+    fetch_k = max(top_k * 4, 20) if (cutoff is not None or use_hybrid) else top_k
 
     semantic_hits = _store.search(
         tenant_id, qvec, top_k=fetch_k, metadata_filter=base_filter or None
@@ -1033,6 +1134,16 @@ def retrieve(
         hits = sorted(merged.values(), key=lambda x: -x[1])
     else:
         hits = list(semantic_hits)
+
+    if use_hybrid:
+        lexical_hits = _store.lexical_search(
+            tenant_id, query, top_k=fetch_k, metadata_filter=base_filter or None
+        )
+        if lexical_hits:
+            # Fuse the dense ranking (prefer-boosted above) with BM25 via RRF.
+            # The dense list already floats the preferred target, and RRF keeps
+            # it high while letting exact-term lexical hits surface alongside.
+            hits = _rrf_fuse([hits, lexical_hits])
 
     if cutoff is not None:
         # The application's OWN patent (prefer_patent_no) is exempt: it is the

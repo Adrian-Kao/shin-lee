@@ -74,7 +74,7 @@
 
 | 工作流環節 | 系統模組 | 成熟度 | 關鍵不變量 |
 |-----------|---------|--------|-----------|
-| 先前技術檢索 | `rag.py`（chunk + 向量 store + retrieve） | 🟡 可用，待升級 hybrid/rerank、前案日期過濾、中文切塊 | 引用須來自 grounded set（#5） |
+| 先前技術檢索 | `rag.py`（chunk + 向量 store + retrieve） | 🟡 中文切塊✅ / 前案日期過濾✅ / hybrid(BM25+dense)✅;待 bge-m3 + rerank + qdrant sparse | 引用須來自 grounded set（#5） |
 | OA 拆解分類 | `oa_analyzer.py`（spotlight） | 🟢 成熟 | 逐請求項×逐法條矩陣 |
 | claim 結構解析 | `claim_tree.py`、`element_table.py`（純 regex） | 🟢 成熟 | 確定性優先於 LLM |
 | 引用接地/防幻覺 | `oa_analyzer.verify_citations` + 獨立 verifier | 🟢 成熟，待加管轄感知 | 硬牆 + 第二模型獨立（#5、Q14） |
@@ -98,7 +98,7 @@
 ### B. 檢索品質級
 
 4. **中文說明書切塊塌陷**（分冊 03）。`rag.py` `_SECTION_HEADINGS` 全英文正則,TW/CN/JP 說明書 fall back 成單一 BODY chunk,喪失節結構 → 檢索變差。直接傷害 TW 重心。→ **本輪實驗 1 已修（見分冊 05）**。
-5. **dense-only 檢索不夠**（分冊 03）。專利檢索需 hybrid（BM25 + dense）+ reranker;元件編號/化學式/專有名詞靠精確詞彙。建議 BGE-M3 一模型出 dense+sparse+ColBERT,再 `bge-reranker-v2-m3` 重排 top-50→top-5。
+5. **dense-only 檢索不夠**（分冊 03）。專利檢索需 hybrid（BM25 + dense）+ reranker;元件編號/化學式/專有名詞靠精確詞彙。→ **hybrid(BM25 + dense via RRF)v1 已實作**(`RETRIEVAL_MODE=hybrid`,memory store;mock 下 recall@5 0.350→0.750,見分冊 06)。**仍待**:qdrant sparse 向量(production hybrid)+ `bge-reranker-v2-m3` 重排。
 6. **切 bge-m3 後上調 CI 門檻**（分冊 03）。`retrieval_eval.py` 的 gate 目前 0.10,bge-m3 後應棘輪到 ~0.70 並補 span 級回溯。
 
 ### C. 規模/可靠性級

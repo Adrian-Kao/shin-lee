@@ -286,6 +286,113 @@ def test_retrieve_without_filter_is_unchanged():
     assert any(h.patent_no == "TW-Z" for h in hits)
 
 
+# ---------------------------------------------------------------------------
+# Hybrid retrieval (Phase 2): dense + BM25 lexical fused via RRF. The win is
+# exact-term recall (element numbers / proper nouns) that semantic vectors blur.
+# ---------------------------------------------------------------------------
+def _term_patent(patent_no, abstract, claim, jurisdiction="US"):
+    return Patent(
+        patent_no=patent_no,
+        title="t",
+        abstract=abstract,
+        claims=[claim],
+        publication_date=datetime(2020, 1, 1, tzinfo=UTC),
+        jurisdiction=jurisdiction,
+        is_local=False,
+    )
+
+
+def test_rrf_fuse_rewards_cross_list_agreement():
+    from backend.ai_engine.rag import Chunk, _rrf_fuse
+
+    def ch(cid):
+        return Chunk(
+            chunk_id=cid, patent_no=cid, section="s", claim_no=None,
+            text="t", jurisdiction="US", metadata={},
+        )
+
+    a, b, c = ch("A"), ch("B"), ch("C")
+    dense = [(a, 0.9), (b, 0.8), (c, 0.7)]
+    lexical = [(c, 5.0), (b, 4.0)]  # c, b appear in BOTH lists; a only in dense
+    order = [x[0].chunk_id for x in _rrf_fuse([dense, lexical])]
+    # Cross-list agreement (B, C) must outrank the dense-only chunk (A).
+    assert order.index("B") < order.index("A")
+    assert order.index("C") < order.index("A")
+
+
+def test_bm25_lexical_search_finds_exact_term():
+    from backend.ai_engine.rag import _store
+
+    rag.index_patent(
+        "lex_tenant",
+        _term_patent("ZOG-1", "a zogplex turbine cooling apparatus", "A zogplex turbine."),
+    )
+    rag.index_patent("lex_tenant", _patent(["A generic cooling microchannel system."], "GEN-2"))
+    if not hasattr(_store, "lexical_search"):
+        import pytest
+
+        pytest.skip("active store has no lexical_search (qdrant)")
+    results = _store.lexical_search("lex_tenant", "zogplex turbine", top_k=5)
+    assert results, "BM25 must return the exact-term chunk"
+    assert results[0][0].patent_no == "ZOG-1"
+
+
+def test_hybrid_retrieve_surfaces_exact_term_dense_blurs():
+    from backend.ai_engine.rag import _store
+
+    if not hasattr(_store, "lexical_search"):
+        import pytest
+
+        pytest.skip("active store has no lexical_search (qdrant)")
+    rag.index_patent(
+        "hyb_tenant",
+        _term_patent("ZOG-H", "a zogplex turbine cooling apparatus", "A zogplex turbine with fins."),
+    )
+    for i in range(4):
+        rag.index_patent("hyb_tenant", _patent([f"A generic cooling system number {i}."], f"GEN-{i}"))
+    hits = rag.retrieve("hyb_tenant", "zogplex turbine", top_k=5, hybrid=True)
+    # The exact-term patent floats to the top via the BM25 signal (mock dense
+    # alone would rank it near-randomly).
+    assert hits[0].patent_no == "ZOG-H"
+
+
+def test_hybrid_explicit_off_matches_default_dense():
+    rag.index_patent("hyb_off_tenant", _patent(["A cooling base plate with microchannels."], "OFF-1"))
+    a = [h.patent_no for h in rag.retrieve("hyb_off_tenant", "microchannel cooling", top_k=5)]
+    b = [h.patent_no for h in rag.retrieve("hyb_off_tenant", "microchannel cooling", top_k=5, hybrid=False)]
+    assert a == b  # default (dense) and explicit hybrid=False are identical
+
+
+def test_hybrid_respects_prior_art_date_filter():
+    from backend.ai_engine.rag import _store
+
+    if not hasattr(_store, "lexical_search"):
+        import pytest
+
+        pytest.skip("active store has no lexical_search (qdrant)")
+    rag.index_patent(
+        "hyb_date_tenant",
+        _term_patent("ZOG-OLD", "zogplex turbine", "A zogplex turbine.", "US"),
+    )
+    # Same distinctive term, but published AFTER the filing cut-off → inadmissible.
+    rag.index_patent(
+        "hyb_date_tenant",
+        Patent(
+            patent_no="ZOG-NEW", title="t", abstract="zogplex turbine",
+            claims=["A zogplex turbine."], publication_date=datetime(2030, 1, 1, tzinfo=UTC),
+            jurisdiction="US", is_local=False,
+        ),
+    )
+    nos = {
+        h.patent_no
+        for h in rag.retrieve(
+            "hyb_date_tenant", "zogplex turbine", top_k=10, hybrid=True, max_pub_date="2025-01-01"
+        )
+    }
+    assert "ZOG-OLD" in nos
+    assert "ZOG-NEW" not in nos  # hybrid still honours the §22/§23 date filter
+
+
 def test_prior_art_filter_exempts_preferred_target_patent():
     # The application's OWN patent (prefer_patent_no) must survive the filter
     # even though its publication date is after the filing cut-off — it is the

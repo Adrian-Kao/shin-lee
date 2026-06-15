@@ -209,6 +209,10 @@ async def orchestrate_analysis(
                 "rejection": rej.model_dump(),
                 "target_patent_no": req.target_patent_no,
                 "top_k": 5,
+                # When the case carries a filing/priority date, prior-art
+                # retrieval hard-excludes art published on/after it (專利法
+                # §22/§23). None (the default) = no date filter, unchanged.
+                "filing_date": req.filing_date,
             },
         )
         for rej in oa_doc.rejections
@@ -284,12 +288,17 @@ async def orchestrate_analysis(
     # Only verify drafts that actually generated. Placeholders carry no
     # citations and must never reach the verifier (nothing to ground).
     verifiable = [d for d in drafts if d.rejection_id not in failed_rejection_ids]
+    # Pass the case jurisdiction so the verifier can strip cross-jurisdiction
+    # citation leaks (e.g. a TW 申復書 must not cite 35 U.S.C.). Same derivation
+    # the deadline step uses.
+    case_jurisdiction = _jurisdiction_for_patent(req.target_patent_no)
     verify_tasks = [
         ai.call(
             "/v1/verify_citations",
             {
                 "draft": d.model_dump(),
                 "grounded_set": [h.model_dump() for h in hits_by_rejection.get(d.rejection_id, [])],
+                "jurisdiction": case_jurisdiction,
             },
         )
         for d in verifiable
@@ -460,20 +469,35 @@ def _degraded_draft(rejection_id: str) -> DraftResponse:
     )
 
 
+_KNOWN_JURISDICTIONS = {"US", "TW", "EP", "JP", "CN", "KR"}
+
+
 def _jurisdiction_for_patent(patent_no: str) -> str:
     """Q17: the answer period + holiday calendar differ per jurisdiction, so
     a US patent must NOT be scored against TW's 60-day rule (and vice versa).
+    Also drives cross-jurisdiction citation-leak detection in verify_citations
+    (a TW 申復書 must not cite 35 U.S.C.) — so a wrong code mis-routes that gate.
 
-    POC: derive from the patent-number country prefix (US…, TW…, EP…, JP…,
-    CN…). Production: read jurisdiction from the case-management record.
-    Unknown / missing prefix falls back to TW (this firm's home office) — the
-    deadline module additionally warns for any jurisdiction it can't compute.
+    POC: derive from the patent-number country/office code, taken as the LEADING
+    RUN OF LETTERS (so "TWI123456" → TW, "US-9999999" → US, but a bare numeric
+    "1234567" cleanly falls through instead of coincidentally matching its first
+    two digits). PCT publications ("WO…") have no single national response period,
+    so they route to the firm's home office. Anything unrecognised / missing also
+    falls back to TW; the deadline module additionally warns for any jurisdiction
+    it can't compute. Production: read jurisdiction from the case-management
+    record rather than parsing the number.
     """
     if not patent_no:
         return "TW"
-    prefix = patent_no.strip().upper()[:2]
-    known = {"US", "TW", "EP", "JP", "CN", "KR"}
-    return prefix if prefix in known else "TW"
+    s = patent_no.strip().upper()
+    i = 0
+    while i < len(s) and s[i].isascii() and s[i].isalpha():
+        i += 1
+    code = s[:i][:2]  # leading letters, first two (the ISO-ish country/office code)
+    if code in _KNOWN_JURISDICTIONS:
+        return code
+    # WO = PCT international phase; route to home office for deadline purposes.
+    return "TW"
 
 
 def _security_level_for_case(case_id: str) -> str:

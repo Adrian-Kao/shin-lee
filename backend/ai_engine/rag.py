@@ -24,6 +24,7 @@ import re
 import uuid
 import zlib
 from dataclasses import dataclass, field
+from datetime import date, datetime
 
 import numpy as np
 
@@ -44,12 +45,50 @@ class Chunk:
     metadata: dict = field(default_factory=dict)
 
 
+# Section headings are matched in BOTH English and CJK (TW/CN/JP) form so a
+# Traditional-Chinese 發明說明書 (the focus jurisdiction) splits into the same
+# canonical sections instead of collapsing into a single BODY chunk. The CJK
+# headings follow 專利法施行細則 §17 (TW) 明細書結構, the CNIPA 说明书 structure,
+# and the JP 明細書 headings. TIPO templates wrap each heading in 【】 brackets
+# (【技術領域】) but plain-text extraction often strips them, so we match the bare
+# term — which also matches the bracketed form as a substring.
 _SECTION_HEADINGS = [
-    ("FIELD_OF_INVENTION", re.compile(r"\bField of (the )?Invention\b", re.I)),
-    ("BACKGROUND", re.compile(r"\bBackground\b", re.I)),
-    ("SUMMARY", re.compile(r"\bSummary\b", re.I)),
-    ("DETAILED_DESCRIPTION", re.compile(r"\bDetailed Description\b", re.I)),
-    ("CLAIMS", re.compile(r"\bWhat is claimed is\b|\bClaims:\b", re.I)),
+    (
+        "FIELD_OF_INVENTION",
+        re.compile(r"\bField of (the )?Invention\b|技術領域|技术领域|技術分野", re.I),
+    ),
+    (
+        "BACKGROUND",
+        re.compile(r"\bBackground\b|先前技術|背景技術|背景技术|發明背景", re.I),
+    ),
+    (
+        "SUMMARY",
+        re.compile(r"\bSummary\b|發明內容|发明内容|發明概要|発明の概要", re.I),
+    ),
+    (
+        "DRAWINGS",
+        re.compile(
+            r"\bBrief Description of (the )?Drawings\b|圖式簡單說明|圖式簡要說明|"
+            r"附圖說明|附图说明|図面の簡単な説明",
+            re.I,
+        ),
+    ),
+    (
+        "DETAILED_DESCRIPTION",
+        re.compile(
+            r"\bDetailed Description\b|實施方式|实施方式|具體實施方式|具体实施方式|"
+            r"発明を実施するための形態",
+            re.I,
+        ),
+    ),
+    (
+        "CLAIMS",
+        re.compile(
+            r"\bWhat is claimed is\b|\bClaims:\b|申請專利範圍|权利要求書|权利要求|"
+            r"特許請求の範囲",
+            re.I,
+        ),
+    ),
 ]
 
 
@@ -894,12 +933,58 @@ def index_patent(tenant_id: str, patent: Patent, spec_text: str = "") -> int:
     return len(chunks)
 
 
+def _coerce_date(value: date | datetime | str | None) -> date | None:
+    """Normalise a filing/priority cut-off to a plain ``date``.
+
+    Accepts a ``date``, a ``datetime`` (datetime subclasses date, so test it
+    first), or an ISO-8601 string. Returns None for None / unparseable input
+    (the caller treats None as "no date filter")."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def _chunk_pub_date(ch: "Chunk") -> date | None:
+    raw = ch.metadata.get("pub_date")
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw)[:10])
+    except (TypeError, ValueError):
+        return None
+
+
+def _passes_prior_art(ch: "Chunk", max_pub_date: date) -> bool:
+    """Prior-art admissibility: a reference is only citable against an
+    application if it was published BEFORE that application's filing/priority
+    date (專利法 §22 / §23 新穎性·擬制喪失新穎性 — and the universal rule that you
+    cannot reject a claim over art that post-dates it).
+
+    Fail-CLOSED: a chunk with a missing/unparseable ``pub_date`` is REJECTED
+    when the filter is active. The caller only sets ``max_pub_date`` when it
+    explicitly wants a prior-art-admissible set, so surfacing a reference we
+    cannot prove predates the filing date is the dangerous default — better to
+    drop it than to ground an OA response on inadmissible art."""
+    d = _chunk_pub_date(ch)
+    if d is None:
+        return False
+    return d < max_pub_date
+
+
 def retrieve(
     tenant_id: str,
     query: str,
     top_k: int = 5,
     jurisdiction: str | None = None,
     prefer_patent_no: str | None = None,
+    max_pub_date: date | datetime | str | None = None,
 ) -> list[RetrievalHit]:
     """RAG retrieval with optional same-patent boost.
 
@@ -907,6 +992,16 @@ def retrieve(
     boost so its chunks float to the top even when the embedding signal is
     weak — important on mock embeddings where cosine scores cluster within
     ~0.02 and rankings are near random.
+
+    `max_pub_date` (the case's filing / priority date) turns on a HARD prior-art
+    admissibility filter: only chunks whose ``pub_date`` is strictly before this
+    date survive. This is a legal-correctness gate, not a quality knob — art that
+    post-dates the application can never support a §22/§23 rejection, so it must
+    never reach an OA-response grounded set. Default None = no date filter
+    (backwards-compatible). The filter fails closed (undated chunks are dropped),
+    so it over-fetches first to still return up to ``top_k`` admissible hits.
+    ``prefer_patent_no`` (the case's own patent) is EXEMPT from the cut-off — the
+    application is not its own prior art and must stay available for context.
     """
     # H-3: salt the query vector with the same tenant_id used at index time
     # so retrieval scores are computed in the tenant's vector space. Without
@@ -915,11 +1010,19 @@ def retrieve(
     qvec = embed(query, tenant_id=tenant_id)
     base_filter: dict = {"jurisdiction": jurisdiction} if jurisdiction else {}
 
-    semantic_hits = _store.search(tenant_id, qvec, top_k=top_k, metadata_filter=base_filter or None)
+    cutoff = _coerce_date(max_pub_date)
+    # Over-fetch when the date filter is active so post-filtering still yields
+    # up to top_k admissible hits (the store can't do a range filter itself —
+    # its metadata filter is exact-match only).
+    fetch_k = max(top_k * 4, 20) if cutoff is not None else top_k
+
+    semantic_hits = _store.search(
+        tenant_id, qvec, top_k=fetch_k, metadata_filter=base_filter or None
+    )
 
     if prefer_patent_no:
         target_filter = {**base_filter, "patent_no": prefer_patent_no}
-        target_hits = _store.search(tenant_id, qvec, top_k=top_k, metadata_filter=target_filter)
+        target_hits = _store.search(tenant_id, qvec, top_k=fetch_k, metadata_filter=target_filter)
         # OR-merge: boost target chunks so they outrank pure semantic on mock embeddings.
         boost = 0.20
         merged: dict[str, tuple] = {}
@@ -927,9 +1030,23 @@ def retrieve(
             merged[ch.chunk_id] = (ch, s)
         for ch, s in target_hits:
             merged[ch.chunk_id] = (ch, s + boost)
-        hits = sorted(merged.values(), key=lambda x: -x[1])[:top_k]
+        hits = sorted(merged.values(), key=lambda x: -x[1])
     else:
-        hits = semantic_hits
+        hits = list(semantic_hits)
+
+    if cutoff is not None:
+        # The application's OWN patent (prefer_patent_no) is exempt: it is the
+        # case being prosecuted, not its own prior art, so the date cut-off must
+        # never drop it from the grounded set (the drafter needs its claims for
+        # context). Every OTHER hit must predate the filing date to be admissible.
+        hits = [
+            (ch, s)
+            for ch, s in hits
+            if (prefer_patent_no and ch.patent_no == prefer_patent_no)
+            or _passes_prior_art(ch, cutoff)
+        ]
+
+    hits = hits[:top_k]
 
     return [
         RetrievalHit(

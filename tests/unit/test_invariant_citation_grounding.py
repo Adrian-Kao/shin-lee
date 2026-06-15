@@ -70,3 +70,51 @@ def test_fully_grounded_draft_passes_clean():
     assert result["invalid_citations"] == []
     assert result["valid"] is True
     assert "[CITATION_REMOVED]" not in result["cleaned_draft_text"]
+
+
+# ---------------------------------------------------------------------------
+# Cross-jurisdiction leak detection (opt-in via jurisdiction="TW"): a TW 申復書
+# must not cite US law. 35 U.S.C. § 103 is a well-formed statute, so the default
+# whitelist keeps it — but in a TW case it is a legal error and must be stripped.
+# ---------------------------------------------------------------------------
+def test_us_statute_stripped_in_tw_case():
+    grounded = [RetrievalHit(patent_no="US7654321", section="claim_1", text="x", score=0.9)]
+    draft = _draft(
+        "依 [GROUNDED_REF_1]，本案請求項與引證有別，且依 專利法第22條第2項 不具進步性之認定有誤。"
+        "再者，依 35 U.S.C. § 103 之顯而易見性標準……"
+    )
+
+    result, _meta = oa_analyzer.verify_citations(draft, grounded, jurisdiction="TW")
+
+    # The US statute is flagged AND stripped; the TW statute and grounded slot stay.
+    assert any("103" in c for c in result["cross_jurisdiction_citations"])
+    assert any("103" in c for c in result["invalid_citations"])
+    assert "專利法第22條第2項" in result["valid_citations"]
+    assert "[GROUNDED_REF_1]" in result["valid_citations"]
+
+    cleaned = result["cleaned_draft_text"]
+    assert "U.S.C" not in cleaned
+    assert "[CITATION_REMOVED]" in cleaned
+    assert "專利法第22條第2項" in cleaned
+    assert result["valid"] is False
+
+
+def test_us_statute_kept_when_jurisdiction_unspecified():
+    """Regression guard: without a jurisdiction the historical behaviour holds —
+    a US statute is a verifiable statute, not a leak."""
+    grounded = [RetrievalHit(patent_no="US7654321", section="claim_1", text="x", score=0.9)]
+    draft = _draft("Per [GROUNDED_REF_1], under 35 U.S.C. § 103 the rejection fails.")
+
+    result, _meta = oa_analyzer.verify_citations(draft, grounded)  # no jurisdiction
+    assert result["cross_jurisdiction_citations"] == []
+    assert any("103" in c for c in result["valid_citations"])
+    assert result["valid"] is True
+
+
+def test_us_statute_kept_in_us_case():
+    grounded = [RetrievalHit(patent_no="US7654321", section="claim_1", text="x", score=0.9)]
+    draft = _draft("Per [GROUNDED_REF_1], under 35 U.S.C. § 103 the rejection fails.")
+
+    result, _meta = oa_analyzer.verify_citations(draft, grounded, jurisdiction="US")
+    assert result["cross_jurisdiction_citations"] == []
+    assert result["valid"] is True

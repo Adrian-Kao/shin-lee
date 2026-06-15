@@ -61,6 +61,27 @@
       "tenant_id": "tenant_b",
       "relevant": ["EP3210987"],
       "note": "Cross-tenant isolation check: this patent lives in tenant_b only."
+    },
+    {
+      "id": "ev8-cn-load-management",
+      "query": "电动车充电站 负载管理方法 服务器 装置资料 可变动参考值 充电资料超过参考值 停止负载管理",
+      "tenant_id": "tenant_b",
+      "relevant": ["CN101234567"],
+      "note": "CN prior-art (对比文件1 of sample_oa_cn.txt): server-driven charging-station load management; query mirrors its claim 1 (simplified Chinese)."
+    },
+    {
+      "id": "ev9-kr-load-management",
+      "query": "전기차 충전소 부하관리 방법 서버 장치 데이터 가변 기준값 충전 데이터 초과 부하관리 중지",
+      "tenant_id": "tenant_b",
+      "relevant": ["KR1020210012345"],
+      "note": "KR prior-art (인용발명1 of sample_oa_kr.txt): same load-management method in Korean; query mirrors its claim 1."
+    },
+    {
+      "id": "ev10-crosslingual-load-management-cluster",
+      "query": "prior art: charging-station load management where a server uses each station's device data to set a variable reference value and stops load management when the charging data exceeds it",
+      "tenant_id": "tenant_b",
+      "relevant": ["CN101234567", "KR1020210012345"],
+      "note": "Cross-lingual recall: the CN and KR references describe the SAME load-management method. A multilingual embedder (bge-m3) should surface BOTH from an English conceptual query; mock/lexical will not (this case becomes meaningful only on bge-m3)."
     }
   ]
 }

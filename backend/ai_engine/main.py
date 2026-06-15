@@ -166,6 +166,10 @@ class RetrieveRequest(BaseModel):
     rejection: dict  # Rejection serialised
     target_patent_no: str
     top_k: int = 5
+    # Case filing/priority date (ISO-8601). When present, prior-art retrieval
+    # hard-excludes references published on/after it (專利法 §22/§23). Optional +
+    # defaulted so older callers are unaffected. See rag.retrieve(max_pub_date=).
+    filing_date: str | None = None
 
 
 class DraftRequest(BaseModel):
@@ -182,6 +186,11 @@ class DraftRequest(BaseModel):
 class VerifyRequest(BaseModel):
     draft: dict
     grounded_set: list[dict]
+    # The case jurisdiction (e.g. "TW"). Optional + defaulted so older callers
+    # are unaffected. When present it enables cross-jurisdiction citation-leak
+    # detection (a TW 申復書 citing 35 U.S.C. is stripped). See
+    # oa_analyzer.verify_citations.
+    jurisdiction: str | None = None
 
 
 class DeadlineRequest(BaseModel):
@@ -296,8 +305,15 @@ def retrieve_prior_art(req: RetrieveRequest):
     query = rej.examiner_argument + " " + " ".join(rej.cited_prior_art)
     # Boost the case's own target patent in ranking (rag.retrieve implements
     # the preference) so the grounded set fed to the drafter is relevant.
+    # filing_date (when supplied) hard-excludes prior art published on/after the
+    # application's filing/priority date; the target patent itself is exempt
+    # (the application is not its own prior art) — see rag.retrieve.
     hits = rag.retrieve(
-        req.tenant_id, query, top_k=req.top_k, prefer_patent_no=req.target_patent_no
+        req.tenant_id,
+        query,
+        top_k=req.top_k,
+        prefer_patent_no=req.target_patent_no,
+        max_pub_date=req.filing_date,
     )
     return {
         "hits": [h.model_dump(mode="json") for h in hits],
@@ -322,7 +338,7 @@ def verify_citations_endpoint(req: VerifyRequest):
 
     draft = DraftResponse(**req.draft)
     grounded = [RetrievalHit(**g) for g in req.grounded_set]
-    result, meta = oa_analyzer.verify_citations(draft, grounded)
+    result, meta = oa_analyzer.verify_citations(draft, grounded, jurisdiction=req.jurisdiction)
     metrics.record_llm_usage(meta)  # Q19 cost/route/token metrics
     return {**result, **meta}
 

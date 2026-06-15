@@ -182,3 +182,30 @@ def test_default_floor_below_prod_target():
     # the mock suite would be flaky-red. Documents the intended gap.
     assert re_mod.DEFAULT_MIN_RECALL_AT_5 < re_mod.PROD_TARGET_RECALL_AT_5
     assert re_mod.PROD_TARGET_RECALL_AT_5 == 0.70
+
+
+# ---------------------------------------------------------------------------
+# 6. Backend-aware auto-gate (two-track ratchet) — Phase 1 enabler.
+# ---------------------------------------------------------------------------
+def test_auto_gate_uses_floor_for_non_semantic_backends():
+    assert re_mod.gate_threshold_for_backend("mock") == re_mod.DEFAULT_MIN_RECALL_AT_5
+    assert re_mod.gate_threshold_for_backend("lexical") == re_mod.DEFAULT_MIN_RECALL_AT_5
+
+
+def test_auto_gate_ratchets_to_prod_target_for_bge_m3():
+    # The whole point: flipping to bge-m3 enforces the real bar with no other
+    # change. We probe the threshold function directly so this needs no torch.
+    assert re_mod.gate_threshold_for_backend("bge-m3") == re_mod.PROD_TARGET_RECALL_AT_5
+    assert re_mod.gate_threshold_for_backend("bge-m3") == 0.70
+
+
+def test_assert_quality_auto_reports_backend_and_picks_its_gate():
+    from backend.ai_engine import rag
+
+    backend = rag._embedder.backend
+    result = re_mod.assert_quality_auto()
+    assert result["gate_backend"] == backend
+    assert result["min_recall_at_5"] == re_mod.gate_threshold_for_backend(backend)
+    # On a non-semantic backend (the test default) the gate is the floor → green.
+    if backend != "bge-m3":
+        assert result["passed"] is True

@@ -150,6 +150,15 @@ class AnalysisRequest(BaseModel):
     )
     case_id: str = Field(..., max_length=256)
     target_patent_no: str = Field(..., max_length=64)  # 被 OA 的本案專利號
+    filing_date: str | None = Field(
+        default=None,
+        max_length=32,
+        description=(
+            "本案申請/優先權日 (ISO-8601, e.g. '2024-03-01')。提供時，前案檢索硬性排除"
+            "publication_date 晚於此日的引證 (專利法 §22/§23：前案須早於申請日)。"
+            "省略則不做日期過濾 (向後相容)。"
+        ),
+    )
     user_hint: str | None = Field(default=None, max_length=8000)  # 律師補充說明
 
 

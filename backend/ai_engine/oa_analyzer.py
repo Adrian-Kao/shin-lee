@@ -229,6 +229,28 @@ def _is_statute(citation: str) -> bool:
     return any(p.fullmatch(citation) for p in _STATUTE_WHITELIST)
 
 
+# Jurisdiction-specific statute markers, used to catch CROSS-JURISDICTION
+# leakage. A draft for a TW case that cites "35 U.S.C. § 103" is committing a
+# legal error — US law has no force before TIPO — not quoting a verifiable
+# statute. `_is_statute` would otherwise whitelist it because it IS a
+# well-formed statute, just the wrong country's. This check is OPT-IN: it only
+# fires when the caller passes the case `jurisdiction`, so the historical
+# behaviour (no jurisdiction → keep all well-formed statutes) is unchanged.
+_US_STATUTE_RE = re.compile(r"35\s?U\.?S\.?C\.?\s?§\s?\d+")
+
+
+def _is_foreign_statute(citation: str, jurisdiction: str | None) -> bool:
+    """True iff ``citation`` is a statute belonging to a DIFFERENT jurisdiction
+    than the case. Only US-vs-TW is modelled today (the focus jurisdictions);
+    extend as other jurisdictions' statute markers are added. Returns False when
+    ``jurisdiction`` is None/empty so the historical behaviour is unchanged."""
+    if not jurisdiction:
+        return False
+    if jurisdiction.upper() == "TW":
+        return bool(_US_STATUTE_RE.fullmatch(citation))
+    return False
+
+
 def _extract_citations(text: str) -> list[str]:
     found: list[str] = []
     for pat in _CITATION_PATTERNS:
@@ -245,23 +267,37 @@ def _extract_citations(text: str) -> list[str]:
 def verify_citations(
     draft: DraftResponse,
     grounded_set: list[RetrievalHit],
+    jurisdiction: str | None = None,
 ) -> tuple[dict, dict]:
     """Two-stage:
     (a) regex extraction of citations from draft.
     (b) verifier LLM call to confirm semantic correctness.
+
+    ``jurisdiction`` (the case's jurisdiction, e.g. "TW") turns on
+    cross-jurisdiction leak detection: a foreign statute (35 U.S.C. § 103 in a
+    TW 申復書) stops being whitelisted and is stripped + reported under
+    ``cross_jurisdiction_citations``. Default None = the historical behaviour
+    (every well-formed statute is kept).
     """
     found = _extract_citations(draft.draft_text)
     grounded_refs = {f"[GROUNDED_REF_{i + 1}]": h for i, h in enumerate(grounded_set)}
-    valid, invalid = [], []
+    valid, invalid, cross_jurisdiction = [], [], []
     for c in found:
         if c in grounded_refs:
             valid.append(c)
         elif re.match(r"\[GROUNDED_REF_\d+\]", c):
             invalid.append(c)  # references a slot that doesn't exist
         elif _is_statute(c):
-            # Statute refs (專利法第26條第2項, 35 U.S.C. § 103) come from the OA text and
-            # are publicly verifiable — keep them so TW申復書 doesn't get gutted by the verifier.
-            valid.append(c)
+            if _is_foreign_statute(c, jurisdiction):
+                # Foreign law cited in a domestic 申復書 — a legal error. Strip it
+                # like any ungrounded cite AND surface it so the attorney sees
+                # WHY (not just that a citation vanished).
+                invalid.append(c)
+                cross_jurisdiction.append(c)
+            else:
+                # Statute refs (專利法第26條第2項) come from the OA text and are
+                # publicly verifiable — keep them so the 申復書 isn't gutted.
+                valid.append(c)
         else:
             # External patent # without grounding — conservative: strip.
             invalid.append(c)
@@ -299,6 +335,7 @@ def verify_citations(
         "valid": len(invalid) == 0,
         "valid_citations": valid,
         "invalid_citations": invalid,
+        "cross_jurisdiction_citations": cross_jurisdiction,
         "verifier_confidence": float(vdata.get("verifier_confidence", 0.85)),
         "cleaned_draft_text": cleaned,
     }

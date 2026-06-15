@@ -383,6 +383,35 @@ def assert_quality(
     }
 
 
+def gate_threshold_for_backend(backend: str | None = None) -> float:
+    """Auto-select the recall@5 gate for the ACTIVE embedding backend.
+
+    The two-track gate (分冊 06 Phase 1): ``mock`` / ``lexical`` embeddings are
+    NOT a quality signal (mock = deterministic SHA-256 noise; lexical = a
+    dependency-free hashing vectorizer), so they may only gate at the wiring
+    FLOOR (``DEFAULT_MIN_RECALL_AT_5``) — a 0.70 gate would be flaky-red for
+    reasons that say nothing about RAG quality. A real semantic embedder
+    (``bge-m3``) gates at the Q6 PROD target (``PROD_TARGET_RECALL_AT_5``).
+
+    The payoff: flipping ``EMBEDDING_BACKEND=bge-m3`` AUTOMATICALLY ratchets CI
+    up to the real bar — no second config change, no forgotten gate. ``backend``
+    defaults to the live embedder so callers/tests can probe a hypothetical one.
+    """
+    b = backend if backend is not None else rag._embedder.backend
+    return PROD_TARGET_RECALL_AT_5 if b == "bge-m3" else DEFAULT_MIN_RECALL_AT_5
+
+
+def assert_quality_auto(dataset: list[dict] | None = None) -> dict:
+    """CI entry point: ``assert_quality`` with the gate auto-selected per the
+    active embedding backend (see ``gate_threshold_for_backend``).
+
+    Green on mock/lexical (gates at the floor), and enforces the prod target the
+    instant ``EMBEDDING_BACKEND=bge-m3`` is configured — without touching CI."""
+    result = assert_quality(min_recall_at_5=gate_threshold_for_backend(), dataset=dataset)
+    result["gate_backend"] = rag._embedder.backend
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Readable report (python -m backend.ai_engine.retrieval_eval)
 # ---------------------------------------------------------------------------
@@ -432,6 +461,12 @@ def _print_report() -> None:
     print(
         f"mock-floor gate (>= {DEFAULT_MIN_RECALL_AT_5:.2f}): {status} "
         f"(actual {gate['actual_recall_at_5']:.3f})"
+    )
+    auto_th = gate_threshold_for_backend(backend)
+    print(
+        f"active auto gate (backend={backend}, >= {auto_th:.2f}): "
+        f"{'PASS' if report['recall@k'] >= auto_th else 'FAIL'}  "
+        f"← ratchets to {PROD_TARGET_RECALL_AT_5:.2f} automatically on bge-m3"
     )
     prod_ok = report["recall@k"] >= PROD_TARGET_RECALL_AT_5
     print(

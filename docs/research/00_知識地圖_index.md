@@ -30,7 +30,8 @@
 | [03](03_RAG技術_專利應用.md) | 專利 RAG 技術 | 為何難、chunking、embedding 選型、hybrid+rerank、接地防幻覺、落地路線 | `rag.py`、`oa_analyzer.py`、`retrieval_eval.py` |
 | [04](04_分散式架構.md) | 分散式架構 | 有狀態/無狀態盤點、水平擴展、機密性拓樸、多分所、可靠性與 DR | `gateway/*`、`audit*.py`、`rate_limit.py`、Qdrant/Redis/PG/MinIO |
 | [05](05_實驗記錄.md) | 實驗記錄 | 本輪自動實驗：改了什麼、測了什麼、量到什麼 | 見該檔 |
-| [06](06_RAG優化_方向一_實作計畫.md) | RAG 優化(方向一)實作計畫 | 檢索品質的分階段計畫 + filing_date 接線/eval 擴充起手式 | `rag.py`、`retrieval_eval.py`、`main.py`、orchestrator |
+| [06](06_RAG優化_方向一_實作計畫.md) | RAG 優化(方向一)實作計畫 | 檢索品質的分階段計畫 + filing_date 接線/eval 擴充/hybrid 起手式 | `rag.py`、`retrieval_eval.py`、`main.py`、orchestrator |
+| [07](07_深入方向_roadmap.md) | 深入方向 roadmap | 「還能往哪深入」的整理:claim-element grounding / RAG 收尾 / 撰稿側 / 系統面 | 全棧 |
 
 ---
 
